@@ -1,0 +1,12 @@
+@import 'tailwindcss';
+
+:root {
+  font-family: 'Noto Sans', 'Noto Sans Devanagari', system-ui, -apple-system, sans-serif;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  background-color: #F1F5F9;
+  -webkit-font-smoothing: antialiased;
+}

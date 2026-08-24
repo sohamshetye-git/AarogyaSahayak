@@ -1,0 +1,93 @@
+from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy.orm import Session
+from app.database import get_db
+from app.models import User, WorkerProfile, CitizenProfile
+from app.schemas import LoginRequest, StandardResponse, AuthResponseData, UserSessionDTO
+from app.auth.security import verify_password, create_access_token, create_refresh_token
+from app.dependencies import get_current_user
+
+router = APIRouter(prefix="/auth", tags=["Authentication"])
+
+@router.post("/login", response_model=StandardResponse)
+def login(req: LoginRequest, db: Session = Depends(get_db)):
+    user = db.query(User).filter(
+        (User.identifier == req.identifier) | (User.phone == req.identifier) | (User.email == req.identifier)
+    ).first()
+
+    if not user or not verify_password(req.password, user.password_hash):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail={"code": "INVALID_CREDENTIALS", "message": "Invalid identifier or password"}
+        )
+
+    if not user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={"code": "ACCOUNT_INACTIVE", "message": "Account is deactivated"}
+        )
+
+    # Build user session info
+    facility_id = None
+    facility_name = None
+    village_ids = None
+    district_id = None
+
+    if user.worker_profile:
+        facility_id = user.worker_profile.facility_id
+        facility_name = user.worker_profile.facility_name
+        village_ids = user.worker_profile.village_ids
+        district_id = user.worker_profile.district_id
+
+    user_dto = UserSessionDTO(
+        id=user.id,
+        identifier=user.identifier,
+        name=user.name,
+        role=user.role.value,
+        preferred_language=user.preferred_language or "mr-IN",
+        facility_id=facility_id,
+        facility_name=facility_name,
+        village_ids=village_ids,
+        district_id=district_id
+    )
+
+    access_token = create_access_token({"sub": user.id, "role": user.role.value})
+    refresh_token = create_refresh_token({"sub": user.id})
+
+    return StandardResponse(
+        data=AuthResponseData(
+            access_token=access_token,
+            refresh_token=refresh_token,
+            token_type="bearer",
+            user=user_dto
+        ).model_dump()
+    )
+
+@router.get("/me", response_model=StandardResponse)
+def get_current_user_profile(current_user: User = Depends(get_current_user)):
+    facility_id = None
+    facility_name = None
+    village_ids = None
+    district_id = None
+
+    if current_user.worker_profile:
+        facility_id = current_user.worker_profile.facility_id
+        facility_name = current_user.worker_profile.facility_name
+        village_ids = current_user.worker_profile.village_ids
+        district_id = current_user.worker_profile.district_id
+
+    user_dto = UserSessionDTO(
+        id=current_user.id,
+        identifier=current_user.identifier,
+        name=current_user.name,
+        role=current_user.role.value,
+        preferred_language=current_user.preferred_language or "mr-IN",
+        facility_id=facility_id,
+        facility_name=facility_name,
+        village_ids=village_ids,
+        district_id=district_id
+    )
+    return StandardResponse(data=user_dto.model_dump())
+
+@router.post("/logout", response_model=StandardResponse)
+def logout():
+    return StandardResponse(data={"message": "Logged out successfully"})

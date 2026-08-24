@@ -1,0 +1,89 @@
+{
+  "name": "Aarogya Sahayak - Disease Cluster Early Warning Workflow",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "hoursInterval": 6
+            }
+          ]
+        }
+      },
+      "name": "Every 6 Hours Schedule",
+      "type": "n8n-nodes-base.cron",
+      "typeVersion": 1,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "requestMethod": "GET",
+        "url": "http://backend:8000/api/admin/dashboard",
+        "jsonParameters": true,
+        "options": {}
+      },
+      "name": "Fetch Outbreak Cluster Signals",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 1,
+      "position": [450, 300]
+    },
+    {
+      "parameters": {
+        "functionCode": "const alerts = items[0].json.data.alerts || [];\nconst highRiskAlerts = alerts.filter(a => a.risk_level === 'URGENT' || a.case_count >= 10);\nreturn highRiskAlerts.map(alert => ({ json: alert }));"
+      },
+      "name": "Filter Outbreak Thresholds",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [700, 300]
+    },
+    {
+      "parameters": {
+        "requestMethod": "POST",
+        "url": "http://backend:8000/api/admin/alerts/rapid-response",
+        "jsonParameters": true,
+        "options": {}
+      },
+      "name": "Trigger Rapid Response Protocol",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 1,
+      "position": [950, 300]
+    }
+  ],
+  "connections": {
+    "Every 6 Hours Schedule": {
+      "main": [
+        [
+          {
+            "node": "Fetch Outbreak Cluster Signals",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Outbreak Cluster Signals": {
+      "main": [
+        [
+          {
+            "node": "Filter Outbreak Thresholds",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter Outbreak Thresholds": {
+      "main": [
+        [
+          {
+            "node": "Trigger Rapid Response Protocol",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}

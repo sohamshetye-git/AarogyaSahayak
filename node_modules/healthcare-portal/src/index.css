@@ -1,0 +1,67 @@
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=Noto+Sans+Devanagari:wght@400;600;700&display=swap');
+@import 'tailwindcss';
+
+:root {
+  --primary: #1565C0;
+  --primary-dark: #0D47A1;
+  --primary-light: #E3F2FD;
+  --teal: #00897B;
+  --teal-light: #E0F2F1;
+  --bg: #F6F8FB;
+  --surface: #FFFFFF;
+  --text-primary: #17202A;
+  --text-secondary: #5F6B76;
+  --text-disabled: #8A949E;
+  --text-inverse: #FFFFFF;
+  --border: #D9E0E7;
+  --border-strong: #B8C2CC;
+  --divider: #E8EDF2;
+  --urgent: #C62828;
+  --urgent-bg: #FDECEC;
+  --high: #D65A00;
+  --high-bg: #FFF3E8;
+  --followup: #B26A00;
+  --followup-bg: #FFF8E1;
+  --success: #2E7D32;
+  --success-bg: #EAF5EB;
+  --info: #1565C0;
+  --info-bg: #E3F2FD;
+  --offline: #8A5200;
+  --offline-bg: #FFF4E5;
+  --neutral: #5F6B76;
+  --neutral-bg: #F1F3F5;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  font-family: 'Noto Sans', 'Noto Sans Devanagari', sans-serif;
+  background-color: var(--bg);
+  color: var(--text-primary);
+  margin: 0;
+  padding: 0;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Custom scrollbars */
+::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-disabled);
+}
+
+.touch-target {
+  min-height: 48px;
+  min-width: 48px;
+}

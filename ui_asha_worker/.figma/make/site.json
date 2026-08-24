@@ -1,0 +1,10 @@
+{
+  "description": "Streamline your tasks with an intuitive web application designed for professionals, enhancing productivity and collaboration in real-time.",
+  "robots": {
+    "index": false
+  },
+  "accessibility": {
+    "addBypassLinks": false,
+    "ignoreReducedMotion": false
+  }
+}

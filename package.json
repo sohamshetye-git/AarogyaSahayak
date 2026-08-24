@@ -1,0 +1,21 @@
+{
+  "name": "aarogya-sahayak-monorepo",
+  "version": "1.0.0",
+  "private": true,
+  "description": "AI-Powered Voice-First Rural Healthcare Platform for India",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "npm run dev --workspace=apps/healthcare-portal",
+    "dev:portal": "npm run dev --workspace=apps/healthcare-portal",
+    "dev:mobile": "npm run dev --workspace=apps/citizen-mobile",
+    "build": "npm run build --workspaces --if-present",
+    "lint": "npm run lint --workspaces --if-present",
+    "test:backend": "cd backend && python -m pytest tests/ -v"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.3"
+  }
+}

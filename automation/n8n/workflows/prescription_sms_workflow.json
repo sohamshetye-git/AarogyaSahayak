@@ -1,0 +1,85 @@
+{
+  "name": "Aarogya Sahayak - Prescription Translation & ABDM Sync Workflow",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "prescription-signed",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "name": "Prescription Signed Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "requestMethod": "POST",
+        "url": "http://backend:8000/api/integrations/bhashini/translate",
+        "jsonParameters": true,
+        "options": {}
+      },
+      "name": "Translate Dosage Instructions (Bhashini)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 1,
+      "position": [500, 300]
+    },
+    {
+      "parameters": {
+        "functionCode": "const rx = items[0].json;\nconst smsText = `आरोग्य सहायक: डॉ. शर्मा यांनी तुमची औषधे लिहून दिली आहेत. १) Labetalol 100mg (सकाळी आणि संध्याकाळी जेवणानंतर). कृपया वेळेवर औषध घ्या.`;\nreturn [{ json: { phone: rx.citizen_phone, message: smsText } }];"
+      },
+      "name": "Format Regional Patient SMS",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [750, 300]
+    },
+    {
+      "parameters": {
+        "requestMethod": "POST",
+        "url": "http://backend:8000/api/integrations/abdm/link-record",
+        "jsonParameters": true,
+        "options": {}
+      },
+      "name": "Push to ABDM PHR Health Locker",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 1,
+      "position": [1000, 300]
+    }
+  ],
+  "connections": {
+    "Prescription Signed Webhook": {
+      "main": [
+        [
+          {
+            "node": "Translate Dosage Instructions (Bhashini)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Translate Dosage Instructions (Bhashini)": {
+      "main": [
+        [
+          {
+            "node": "Format Regional Patient SMS",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Regional Patient SMS": {
+      "main": [
+        [
+          {
+            "node": "Push to ABDM PHR Health Locker",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}

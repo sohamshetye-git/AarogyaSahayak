@@ -1,0 +1,95 @@
+{
+  "name": "Aarogya Sahayak - Maternal High Risk Alert Workflow",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "maternal-alert",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "name": "Webhook Intake",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "number": [
+            {
+              "value1": "={{$json[\"body\"][\"vitals\"][\"systolic_bp\"]}}",
+              "operation": "largerEqual",
+              "value2": 140
+            },
+            {
+              "value1": "={{$json[\"body\"][\"vitals\"][\"diastolic_bp\"]}}",
+              "operation": "largerEqual",
+              "value2": 90
+            }
+          ]
+        }
+      },
+      "name": "Check Pre-eclampsia Criteria",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [450, 300]
+    },
+    {
+      "parameters": {
+        "functionCode": "const data = items[0].json.body;\nconst message = `🚨 URGENT HEALTH ALERT: Patient ${data.citizen_name} in ${data.village_name} (28w pregnant) recorded BP ${data.vitals.systolic_bp}/${data.vitals.diastolic_bp} mmHg with symptoms (${data.symptoms.join(', ')}). Immediate PHC evaluation required.`;\nreturn [{ json: { phone: data.asha_phone, message: message, priority: 'HIGH', facility: 'Kalyanpur PHC' } }];"
+      },
+      "name": "Format ASHA SMS Alert",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [700, 200]
+    },
+    {
+      "parameters": {
+        "requestMethod": "POST",
+        "url": "http://backend:8000/api/integrations/notifications/dispatch",
+        "jsonParameters": true,
+        "options": {}
+      },
+      "name": "Dispatch Notification Service",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 1,
+      "position": [950, 200]
+    }
+  ],
+  "connections": {
+    "Webhook Intake": {
+      "main": [
+        [
+          {
+            "node": "Check Pre-eclampsia Criteria",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Pre-eclampsia Criteria": {
+      "main": [
+        [
+          {
+            "node": "Format ASHA SMS Alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format ASHA SMS Alert": {
+      "main": [
+        [
+          {
+            "node": "Dispatch Notification Service",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}

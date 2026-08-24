@@ -1,0 +1,2383 @@
+DESIGN A COMPLETE, PRODUCTION-QUALITY, RESPONSIVE UI/UX IN FIGMA FOR:
+
+AAROGYA SAHAYAK – ASHA COPILOT
+
+A responsive field-healthcare portal for ASHA workers in rural India.
+
+IMPORTANT PRODUCT CONTEXT
+
+Aarogya Sahayak is a voice-first rural healthcare assistance ecosystem connecting:
+
+* Rural citizens
+* ASHA workers
+* PHC doctors
+* District health officers
+* Government health systems
+
+This design is specifically for the ASHA WORKER interface.
+
+Do not design the citizen application in this file.
+
+The citizen uses a separate, simplified React Native voice application. When the citizen reports symptoms or an offline risk is detected, a case is sent to the ASHA Copilot interface.
+
+The ASHA interface helps the worker:
+
+1. View prioritized citizen alerts.
+2. Acknowledge urgent cases.
+3. Call citizens and schedule home visits.
+4. Record symptoms and vital signs.
+5. Verify AI-extracted information.
+6. Conduct consent-based voice-assisted field visits.
+7. Work during limited or unavailable internet.
+8. Refer high-risk cases to a PHC.
+9. Assist citizens with health schemes.
+10. Generate and send structured referral reports.
+11. Track doctor acknowledgement.
+12. Schedule and complete follow-ups.
+
+The interface must never present AI as a doctor.
+
+AI output must always be labelled:
+
+“AI-assisted summary – please verify.”
+
+Do not display definitive diagnoses.
+
+Use language such as:
+
+* Warning signs detected
+* Urgent professional evaluation recommended
+* AI-assisted information
+* Please verify
+* Potentially relevant scheme
+* Final eligibility verification pending
+
+Do not display:
+
+* You have pre-eclampsia
+* AI diagnosis
+* Confirmed disease
+* 97% disease probability
+* Internal chain-of-thought
+* LLM, RAG, Gemini, Neo4j or API terminology in the worker-facing interface
+
+==================================================
+
+1. PLATFORM AND RESPONSIVE STRATEGY
+   ==================================================
+
+Create a RESPONSIVE PROGRESSIVE WEB APP.
+
+The same interface must work on:
+
+1. Android mobile phones used during field visits
+2. Tablets used by ASHA workers
+3. Laptops used at PHCs or offices
+
+PRIMARY MOBILE FRAME:
+
+360 × 800 px
+
+ADDITIONAL MOBILE FRAMES:
+
+* 375 × 812 px
+* 390 × 844 px
+* 412 × 915 px
+
+TABLET FRAMES:
+
+* 768 × 1024 px
+* 800 × 1280 px
+
+DESKTOP FRAME:
+
+* 1440 × 1024 px
+
+Use Figma Auto Layout throughout.
+
+Use responsive constraints and reusable components.
+
+Do not hardcode absolute element positions.
+
+MOBILE LAYOUT:
+
+* Fixed top app bar: 56 px
+* Fixed bottom navigation: 68–72 px
+* Single-column content
+* Screen horizontal padding: 16 px
+* Card gap: 12–16 px
+* Vertical section gap: 24 px
+* Primary button may be sticky above bottom navigation
+* Important actions must remain reachable with one hand
+* Forms must scroll vertically
+* Use bottom sheets for filters and secondary actions
+* Do not use wide tables on mobile
+* Convert tables into stacked cards
+
+TABLET LAYOUT:
+
+* Collapsible left navigation: 80 px collapsed or 220 px expanded
+* Top app bar: 64 px
+* Content padding: 24 px
+* Two-column dashboard where appropriate
+* Forms may use two columns
+* Case details may use main content plus a secondary summary panel
+
+DESKTOP LAYOUT:
+
+* Fixed left sidebar: 240 px
+* Fixed top app bar: 64 px
+* Main content maximum width: 1200 px
+* Main content padding: 32 px
+* Dashboard summary cards in a four-column grid
+* Case details use an 8-column main area and 4-column summary/action panel
+* Do not stretch text across the complete screen
+* Use tables only for task lists and citizen directories
+* Keep forms within a readable maximum width of 760–840 px
+
+==================================================
+2. DESIGN PRINCIPLES
+====================
+
+The interface must feel:
+
+* Trustworthy
+* Calm
+* Professional
+* Human
+* Government-health oriented
+* Accessible
+* Practical
+* Field-ready
+* Modern but not futuristic
+* Suitable for rural India
+* Optimized for intermittent connectivity
+
+Avoid:
+
+* Glassmorphism
+* Excessive gradients
+* Neon colours
+* Gaming-style UI
+* Social-media appearance
+* Corporate fintech appearance
+* Excessive shadows
+* Tiny controls
+* Overly dense hospital-management layouts
+* Decorative charts without operational value
+* Complex medical jargon
+* Long paragraphs
+* Excessive animation
+
+PRIMARY UX PRINCIPLE:
+
+“SEE PRIORITY → CONTACT CITIZEN → CONDUCT VISIT → VERIFY → REFER → FOLLOW UP”
+
+The dashboard must immediately answer:
+
+“What should I do first today?”
+
+==================================================
+3. COLOUR SYSTEM
+================
+
+Create reusable Figma colour variables.
+
+PRIMARY:
+
+Primary Blue:
+#1565C0
+
+Primary Dark:
+#0D47A1
+
+Primary Light:
+#E3F2FD
+
+SECONDARY:
+
+Healthcare Teal:
+#00897B
+
+Teal Light:
+#E0F2F1
+
+BACKGROUND:
+
+App Background:
+#F6F8FB
+
+Surface:
+#FFFFFF
+
+Elevated Surface:
+#FFFFFF
+
+TEXT:
+
+Primary Text:
+#17202A
+
+Secondary Text:
+#5F6B76
+
+Disabled Text:
+#8A949E
+
+Inverse Text:
+#FFFFFF
+
+BORDERS:
+
+Default Border:
+#D9E0E7
+
+Strong Border:
+#B8C2CC
+
+Divider:
+#E8EDF2
+
+SEMANTIC STATUS:
+
+Urgent:
+#C62828
+
+Urgent Background:
+#FDECEC
+
+High Priority Orange:
+#D65A00
+
+High Priority Background:
+#FFF3E8
+
+Follow-up Yellow:
+#B26A00
+
+Follow-up Background:
+#FFF8E1
+
+Success:
+#2E7D32
+
+Success Background:
+#EAF5EB
+
+Information:
+#1565C0
+
+Information Background:
+#E3F2FD
+
+Offline:
+#8A5200
+
+Offline Background:
+#FFF4E5
+
+Neutral:
+#5F6B76
+
+Neutral Background:
+#F1F3F5
+
+Never communicate status using colour alone.
+
+Always combine:
+
+* Colour
+* Icon
+* Written status label
+
+Example:
+
+Red + warning icon + “Urgent”
+
+==================================================
+4. TYPOGRAPHY SYSTEM
+====================
+
+Use:
+
+Noto Sans
+
+For multilingual text use:
+
+* Noto Sans Devanagari
+* Noto Sans Gujarati
+* Noto Sans Bengali
+* Noto Sans Tamil
+* Noto Sans Telugu
+
+Create reusable Figma text styles.
+
+DESKTOP DISPLAY:
+
+Display Large:
+32 px / 40 px line height / Bold 700
+
+Page Title:
+28 px / 36 px / Semibold 600
+
+Section Title:
+22 px / 30 px / Semibold 600
+
+Card Title:
+18 px / 26 px / Semibold 600
+
+Body Large:
+18 px / 28 px / Regular 400
+
+Body:
+16 px / 24 px / Regular 400
+
+Body Medium:
+14 px / 21 px / Regular 400
+
+Caption:
+12 px / 16 px / Regular 400
+
+Button:
+16 px / 20 px / Semibold 600
+
+Status Label:
+13 px / 18 px / Semibold 600
+
+Important Number:
+28 px / 36 px / Bold 700
+
+MOBILE TYPOGRAPHY:
+
+Page Title:
+24 px / 32 px / Semibold 600
+
+Section Title:
+20 px / 28 px / Semibold 600
+
+Card Title:
+17 px / 24 px / Semibold 600
+
+Body:
+16 px / 24 px / Regular 400
+
+Secondary Body:
+14 px / 20 px / Regular 400
+
+Caption:
+12 px / 16 px / Regular 400
+
+Button:
+16 px / 20 px / Semibold 600
+
+Important Number:
+24 px / 32 px / Bold 700
+
+Do not use body text below 14 px except non-essential captions.
+
+Use sentence case.
+
+Do not use full uppercase headings.
+
+Support dynamic font scaling up to 200%.
+
+Layouts must not break when text increases.
+
+==================================================
+5. SPACING, RADIUS AND ELEVATION
+================================
+
+Use an 8-point spacing system.
+
+Allowed spacing values:
+
+4, 8, 12, 16, 24, 32, 40, 48
+
+Mobile horizontal padding:
+16 px
+
+Tablet horizontal padding:
+24 px
+
+Desktop content padding:
+32 px
+
+Card padding:
+16 px mobile
+20–24 px desktop
+
+Button height:
+48–52 px
+
+Large primary button:
+52–56 px
+
+Icon button:
+48 × 48 px minimum
+
+Input height:
+52–56 px
+
+Card corner radius:
+12–16 px
+
+Button corner radius:
+12 px
+
+Input corner radius:
+10–12 px
+
+Modal corner radius:
+16 px
+
+Bottom sheet top radius:
+20 px
+
+Use subtle shadows only for:
+
+* Floating action button
+* Modal
+* Bottom sheet
+* Sticky action bar
+
+Use borders rather than heavy shadows for normal cards.
+
+==================================================
+6. ICONOGRAPHY
+==============
+
+Use one consistent icon family:
+
+Material Symbols Rounded or Material Icons Rounded
+
+Use simple and recognizable icons:
+
+* Home
+* Tasks
+* Add visit
+* People
+* More
+* Warning
+* Check circle
+* Clock
+* Calendar
+* Phone
+* Message
+* Location
+* Hospital
+* Microphone
+* Stop
+* Volume
+* Edit
+* Search
+* Filter
+* Synchronize
+* Cloud offline
+* Document
+* Scheme/government building
+* QR scanner
+* Vitals/heart pulse
+* Pregnant woman/maternal health
+* Child health
+* Lock
+* Consent
+* Logout
+* Help
+* Language
+
+Do not mix outline, filled and illustrated icon families randomly.
+
+Active navigation icons may use filled variants.
+
+Inactive navigation icons should use outlined variants.
+
+==================================================
+7. ACCESSIBILITY REQUIREMENTS
+=============================
+
+Meet WCAG 2.2 AA contrast requirements.
+
+Design for:
+
+* ASHA workers using low-cost Android phones
+* Outdoor sunlight
+* Limited digital familiarity
+* Multilingual use
+* One-handed use
+* Limited connectivity
+* Elderly ASHA workers
+* Screen-reader users
+
+Requirements:
+
+* Minimum touch target: 48 × 48 px
+* Visible keyboard focus states
+* Strong colour contrast
+* Screen-reader labels
+* Dynamic font scaling
+* Logical reading order
+* Form labels above fields
+* Do not use placeholder text as the only label
+* Error message beside the relevant field
+* Icon + label for every important action
+* Do not use swipe-only actions
+* Provide alternatives to voice input
+* Allow reduced-motion mode
+* Keep warning messages calm and actionable
+* Avoid flashing animations
+* Never make an urgent action depend only on colour
+
+==================================================
+8. NAVIGATION
+=============
+
+MOBILE BOTTOM NAVIGATION:
+
+1. Home
+2. Tasks
+3. Visit
+4. People
+5. More
+
+The Visit destination should be visually prominent but not oversized.
+
+Use:
+
+Home icon + “Home”
+Task list icon + “Tasks”
+Add/medical bag icon + “Visit”
+People icon + “People”
+More icon + “More”
+
+Bottom navigation height:
+68–72 px
+
+Place navigation above the device safe area.
+
+DESKTOP/TABLET SIDEBAR:
+
+* Aarogya Sahayak logo
+* Home
+* Tasks
+* Start Visit
+* People
+* Schemes
+* Reports
+* Offline Data
+* Notifications
+* Help
+
+Bottom section:
+
+* Logged-in ASHA worker
+* Language
+* Logout
+
+Desktop sidebar width:
+240 px
+
+Tablet collapsed sidebar:
+80 px
+
+TOP APP BAR:
+
+Mobile:
+
+* Screen title on left
+* Notification icon on right
+* Optional overflow menu
+
+Desktop:
+
+* Page title
+* Global citizen search
+* Online/offline status
+* Notification icon
+* Worker profile menu
+
+==================================================
+9. FIGMA FILE STRUCTURE
+=======================
+
+Create these Figma pages:
+
+01 – Cover
+02 – Foundations
+03 – Design Tokens
+04 – Components
+05 – Responsive Layouts
+06 – Authentication
+07 – ASHA Dashboard
+08 – Tasks and Alerts
+09 – Citizen Case
+10 – Field Visit
+11 – Vitals and Safety
+12 – Referral and Reports
+13 – Schemes
+14 – People
+15 – Follow-up
+16 – Notifications
+17 – Offline and Sync
+18 – Empty, Error and Loading States
+19 – Accessibility
+20 – Mobile Prototype
+21 – Tablet Prototype
+22 – Desktop Prototype
+23 – Developer Handoff
+
+==================================================
+10. COMPONENT LIBRARY
+=====================
+
+Create all components using Figma Auto Layout.
+
+Create properties and variants for each component.
+
+A. BUTTONS
+
+Primary Button
+
+Variants:
+
+* Default
+* Pressed
+* Hover
+* Focused
+* Loading
+* Disabled
+* Full width
+* Icon left
+* Icon right
+
+Secondary Button
+
+Variants:
+
+* Default
+* Pressed
+* Hover
+* Focused
+* Disabled
+
+Tertiary/Text Button
+
+Danger Button
+
+Emergency Call Button
+
+Icon Button
+
+Floating Start Visit Button
+
+B. NAVIGATION
+
+Mobile Bottom Navigation
+
+Desktop Sidebar
+
+Tablet Collapsed Sidebar
+
+Top App Bar
+
+Breadcrumb
+
+Tab Bar
+
+Segmented Filter
+
+Pagination
+
+C. STATUS COMPONENTS
+
+Priority Badge
+
+Variants:
+
+* Urgent
+* High
+* Follow-up
+* Routine
+* Information
+
+Case Status Badge
+
+Variants:
+
+* New
+* Acknowledged
+* Contacted
+* Visit planned
+* Visit in progress
+* ASHA reviewed
+* Referred
+* Doctor acknowledged
+* Follow-up required
+* Completed
+* Unreachable
+* Pending sync
+
+Online Indicator
+
+Offline Banner
+
+Weak Connectivity Banner
+
+Sync Status Indicator
+
+D. CARDS
+
+Dashboard Summary Card
+
+Urgent Alert Card
+
+Task Card
+
+Visit Card
+
+Follow-up Card
+
+Citizen Card
+
+Patient Summary Card
+
+Warning Sign Card
+
+Vital Sign Card
+
+AI-Assisted Summary Card
+
+Scheme Card
+
+Facility Card
+
+Referral Card
+
+Document Card
+
+Notification Card
+
+Offline Queue Card
+
+Empty State Card
+
+E. FORM COMPONENTS
+
+Text Input
+
+Numeric Input
+
+Phone Input
+
+Search Input
+
+Text Area
+
+Select
+
+Date Picker
+
+Time Picker
+
+Radio Group
+
+Checkbox
+
+Choice Card
+
+Yes/No/Not Sure Control
+
+Consent Card
+
+Symptom Selector
+
+Vital Sign Input
+
+Unit Selector
+
+Voice Note Input
+
+File Upload
+
+QR Scanner Entry
+
+Form Validation Message
+
+F. WORKFLOW COMPONENTS
+
+Step Progress Indicator
+
+Status Timeline
+
+Case Activity Timeline
+
+Visit Stepper
+
+Citizen Identity Confirmation
+
+Consent Confirmation
+
+AI Extraction Verification Row
+
+Report Preview
+
+Referral Facility Selector
+
+Follow-up Scheduler
+
+Call Outcome Bottom Sheet
+
+Filter Bottom Sheet
+
+Confirmation Dialog
+
+Success Dialog
+
+Data Conflict Dialog
+
+Session Expired Dialog
+
+G. SYSTEM STATES
+
+Skeleton Loader
+
+Spinner
+
+Processing State
+
+Empty State
+
+Error State
+
+Offline State
+
+Permission Denied State
+
+No Results State
+
+Syncing State
+
+Sync Success State
+
+Sync Failure State
+
+Data Conflict State
+
+==================================================
+11. SCREEN 1 – LOGIN
+====================
+
+Create mobile, tablet and desktop login layouts.
+
+Content:
+
+Aarogya Sahayak
+ASHA Copilot
+
+Title:
+“Welcome back”
+
+Subtitle:
+“Sign in to view your assigned health tasks.”
+
+Fields:
+
+* Mobile number or Worker ID
+* 4-digit PIN or password
+
+Actions:
+
+Primary:
+“Sign in”
+
+Secondary:
+“Forgot PIN?”
+
+Tertiary:
+“Change language”
+
+Footer:
+“Need help? Contact support”
+
+Show:
+
+* Secure login icon
+* Government-health trust appearance
+* App version
+* Privacy link
+
+Do not create a decorative marketing page.
+
+On desktop, place the login card in the centre with a simple healthcare illustration or trusted public-health pattern on one side.
+
+Do not use stock photographs of patients.
+
+==================================================
+12. SCREEN 2 – ASHA HOME DASHBOARD
+==================================
+
+Create mobile, tablet and desktop variants.
+
+HEADER:
+
+“Good morning, Sita”
+
+Secondary:
+“Kalyanpur Village”
+
+Connectivity:
+
+“Internet is weak”
+“Last synced at 10:42 AM”
+
+SUMMARY CARDS:
+
+* 2 Urgent
+* 5 Visits today
+* 8 Follow-ups
+* 1 Waiting to sync
+
+Mobile:
+Use 2 × 2 grid.
+
+Desktop:
+Use four-column grid.
+
+PRIMARY SECTION:
+
+“Needs attention now”
+
+Urgent alert card:
+
+Priority:
+“Urgent”
+
+Citizen:
+“Sunita Devi, 28”
+
+Context:
+“Approximately 7 months pregnant”
+
+Warning signs:
+
+* Blurred vision
+* Severe headache
+* BP 150/100
+
+Received:
+“12 minutes ago”
+
+Primary action:
+“View case”
+
+Secondary action:
+“Acknowledge”
+
+Additional section:
+
+“Today’s visits”
+
+Show:
+
+10:00 AM
+Ramesh Patil
+Blood-pressure follow-up
+
+11:30 AM
+Sunita Devi
+Urgent maternal-health visit
+
+Additional section:
+
+“Recent updates”
+
+* Dr Sharma acknowledged Sunita’s referral
+* Meena’s vaccination visit was completed
+* One field visit is waiting to sync
+
+Mobile placement:
+
+* Top app bar
+* Connectivity banner only when needed
+* Greeting
+* 2 × 2 summary grid
+* Urgent section
+* Today’s visits
+* Recent updates
+* Fixed bottom navigation
+
+Desktop placement:
+
+* Sidebar
+* Top app bar
+* Four summary cards
+* Main left column: urgent tasks and visits
+* Right column: recent activity and sync status
+
+==================================================
+13. SCREEN 3 – TASK LIST
+========================
+
+Title:
+“Tasks”
+
+Search:
+“Search citizen or task”
+
+Primary filters:
+
+* All
+* Urgent
+* Today
+* Follow-up
+
+Secondary filters in a filter bottom sheet:
+
+* Village
+* Date
+* Status
+* Task type
+
+Task card example:
+
+Priority:
+“Same-day visit”
+
+Citizen:
+“Ramesh Patil, 56”
+
+Village:
+“Kalyanpur”
+
+Task:
+“Blood-pressure follow-up”
+
+Due:
+“Today, 2:00 PM”
+
+Status:
+“Not started”
+
+Action:
+“Start visit”
+
+Desktop:
+Use a structured list or accessible table.
+
+Columns:
+
+* Priority
+* Citizen
+* Village
+* Task
+* Due
+* Status
+* Action
+
+Mobile:
+Use stacked task cards.
+
+Include:
+
+* Loading
+* Empty
+* Error
+* Offline cached state
+
+==================================================
+14. SCREEN 4 – NEW URGENT ALERT
+===============================
+
+Create a calm but prominent urgent alert.
+
+Title:
+“Urgent case assigned”
+
+Citizen:
+“Sunita Devi, 28”
+
+Message:
+“Pregnancy-related warning signs were reported. Please review and contact the citizen.”
+
+Warning signs:
+
+* Blurred vision
+* Severe headache
+* Swelling in feet
+* BP 150/100
+
+Time:
+“Reported 12 minutes ago”
+
+Actions:
+
+Primary:
+“Acknowledge and view”
+
+Secondary:
+“Call citizen”
+
+Tertiary:
+“Unable to respond”
+
+Do not use frightening animation.
+
+Do not automatically play sensitive audio.
+
+==================================================
+15. SCREEN 5 – CITIZEN CASE DETAILS
+===================================
+
+MOBILE LAYOUT:
+
+Use stacked sections.
+
+DESKTOP LAYOUT:
+
+Use 8-column main content and 4-column sticky summary/action panel.
+
+HEADER:
+
+Case reference:
+“Request from 23 August”
+
+Internal ID may appear in small secondary text:
+“Case A102”
+
+Status:
+“Urgent – ASHA review required”
+
+PATIENT SUMMARY:
+
+Sunita Devi
+Age: 28
+Village: Kalyanpur
+Language: Marathi
+Pregnancy: Approximately 7 months
+ABHA status: Linked
+
+PRIMARY WARNING CARD:
+
+“Urgent professional evaluation recommended”
+
+“Pregnancy-related warning signs were detected.”
+
+REPORTED WARNING SIGNS:
+
+* Blurred vision
+* Severe headache
+* Swelling in feet
+* High blood-pressure reading
+
+ORIGINAL MESSAGE:
+
+Button:
+“Listen to citizen’s message”
+
+Secondary:
+“View transcript”
+
+Privacy note:
+“This message may contain private health information. Use headphones when possible.”
+
+STRUCTURED INFORMATION:
+
+* Main concern
+* Symptoms
+* Duration
+* Vitals
+* Pregnancy status
+* Relevant history
+
+AI SUMMARY:
+
+Label:
+“AI-assisted summary – please verify.”
+
+Actions:
+
+* Confirm summary
+* Correct information
+* Mark as unclear
+
+SOURCE:
+
+“Approved maternal-health triage guidance”
+
+Do not show internal AI reasoning.
+
+STICKY ACTION PANEL:
+
+* Acknowledge case
+* Call citizen
+* Plan home visit
+* Refer to PHC
+* Add note
+
+TIMELINE:
+
+* Request received
+* Safety warning created
+* ASHA notified
+* Waiting for acknowledgement
+
+==================================================
+16. SCREEN 6 – CALL OUTCOME
+===========================
+
+Use a bottom sheet on mobile and modal on desktop.
+
+Title:
+“Did you reach the citizen?”
+
+Choices:
+
+* Spoke to citizen
+* No answer
+* Number unavailable
+* Family member answered
+* Call later
+
+Next action:
+
+* Plan home visit
+* Refer directly to PHC
+* Schedule follow-up
+* Add note
+
+Primary:
+“Save call result”
+
+==================================================
+17. SCREEN 7 – PLAN HOME VISIT
+==============================
+
+Title:
+“Plan home visit”
+
+Fields:
+
+* Citizen
+* Visit date
+* Visit time
+* Visit type
+* Priority
+* Address or landmark
+* Notes
+
+Visit types:
+
+* Urgent health assessment
+* Pregnancy follow-up
+* Child-health visit
+* Vaccination
+* Chronic-condition follow-up
+* Scheme-document assistance
+* General visit
+
+Actions:
+
+Primary:
+“Schedule visit”
+
+Secondary:
+“Save as draft”
+
+Success message:
+
+“Visit scheduled. The citizen will be notified.”
+
+==================================================
+18. SCREEN 8 – START FIELD VISIT
+================================
+
+Title:
+“Start field visit”
+
+Step 1:
+“Confirm citizen”
+
+Options:
+
+* Scan ABHA QR
+* Search by phone number
+* Search by name
+* Enter patient ID
+* Continue without ABHA
+
+Show citizen match card:
+
+Sunita Devi
+Age 28
+Kalyanpur
+Phone ending 4821
+
+Actions:
+
+“Confirm citizen”
+“Choose another person”
+
+Prevent accidental selection of the wrong citizen.
+
+==================================================
+19. SCREEN 9 – CONSENT
+======================
+
+Title:
+“Ask for consent”
+
+Explanation:
+
+“Explain that information from this visit will be recorded to support healthcare and referral.”
+
+Question:
+
+“Has the citizen agreed?”
+
+Choices:
+
+* Consent given
+* Consent not given
+* Emergency minimum-data recording
+
+Voice feature:
+
+“Play consent explanation”
+
+Actions:
+
+Primary:
+“Continue”
+
+Secondary:
+“Cancel visit”
+
+Display a lock/privacy icon.
+
+Do not use long legal paragraphs.
+
+==================================================
+20. FIELD-VISIT WIZARD
+======================
+
+Create a seven-step visit workflow:
+
+1. Reason
+2. Symptoms
+3. Vitals
+4. Health questions
+5. Review
+6. Next action
+7. Submit
+
+Use a step-progress indicator.
+
+Mobile:
+Show:
+“Step 2 of 7”
+
+Desktop:
+Show horizontal stepper.
+
+Keep one major task per screen.
+
+Provide:
+
+* Save and exit
+* Previous
+* Continue
+* Saved offline indicator
+
+==================================================
+21. VISIT STEP – REASON AND SYMPTOMS
+====================================
+
+Reason for visit choices:
+
+* Citizen-generated alert
+* Routine follow-up
+* Pregnancy visit
+* Child-health visit
+* Vaccination
+* Chronic-condition visit
+* Scheme assistance
+* Other
+
+Symptoms:
+
+Use selectable cards and search.
+
+Common symptoms:
+
+* Fever
+* Cough
+* Difficulty breathing
+* Dizziness
+* Headache
+* Blurred vision
+* Chest pain
+* Swelling
+* Bleeding
+* Weakness
+* Abdominal pain
+* Vomiting
+
+Include:
+
+“Record voice-assisted notes”
+
+“Type notes”
+
+Voice mode must show:
+
+* Recording status
+* Timer
+* Pause
+* Stop
+* Consent indicator
+
+==================================================
+22. AI EXTRACTION REVIEW
+========================
+
+Title:
+“Please verify what we understood”
+
+Display editable verification rows.
+
+Example:
+
+Symptom:
+Dizziness
+Status:
+Confirmed
+
+Duration:
+Two days
+Status:
+Needs verification
+
+Blood pressure:
+150/100
+Status:
+Confirmed
+
+Pregnancy:
+Approximately seven months
+Status:
+Confirmed
+
+Swelling:
+Feet
+Status:
+Confirmed
+
+Each row contains:
+
+* Extracted label
+* Extracted value
+* Confidence represented as “Needs verification,” not a percentage
+* Confirm icon
+* Edit action
+
+Actions:
+
+Primary:
+“Confirm information”
+
+Secondary:
+“Listen again”
+
+Tertiary:
+“Mark transcript unclear”
+
+==================================================
+23. VITAL-SIGNS SCREEN
+======================
+
+Title:
+“Record vital signs”
+
+Fields:
+
+* Temperature, °C or °F
+* Systolic BP, mmHg
+* Diastolic BP, mmHg
+* SpO₂, %
+* Pulse, bpm
+* Respiratory rate
+* Blood glucose, if measured
+* Weight, kg
+
+Use large numeric input controls.
+
+Display units permanently.
+
+Do not rely on placeholders.
+
+Show previous values when available.
+
+Example warning:
+
+“This reading is outside the expected range. Please check and confirm it.”
+
+Actions:
+
+* Confirm reading
+* Measure again
+* Continue
+
+Do not block a genuine unusual reading. Request confirmation.
+
+==================================================
+24. URGENT SAFETY WARNING
+=========================
+
+Title:
+“Urgent warning”
+
+Icon:
+Warning triangle
+
+Message:
+
+“This combination of symptoms and vital signs needs immediate professional evaluation.”
+
+Detected warning signs:
+
+* Pregnancy
+* Blurred vision
+* Severe headache
+* BP 150/100
+
+Primary action:
+“Refer to PHC now”
+
+Secondary:
+“Call medical officer”
+
+Emergency action:
+“Call emergency help”
+
+Additional:
+“View approved guidance”
+
+Do not display a disease diagnosis.
+
+Use urgent red semantically but keep the visual calm and readable.
+
+==================================================
+25. ASHA REVIEW AND DECISION
+============================
+
+Title:
+“Review visit”
+
+Sections:
+
+* Citizen concern
+* Confirmed symptoms
+* Vitals
+* Warning signs
+* AI-assisted summary
+* Suggested next action
+* Information source
+
+Question:
+
+“Do you agree with this priority?”
+
+Choices:
+
+* Yes
+* No, change priority
+* Need medical officer’s advice
+
+If the worker lowers priority, require:
+
+“Reason for changing priority”
+
+Actions:
+
+* Refer to PHC
+* Schedule follow-up
+* Provide approved guidance
+* Assist with scheme
+
+==================================================
+26. PHC REFERRAL
+================
+
+Title:
+“Refer to healthcare facility”
+
+Urgency choices:
+
+* Immediate
+* Today
+* Within 24 hours
+* Routine appointment
+
+Facility cards:
+
+Kalyanpur PHC
+2.4 km
+Government facility
+Phone number
+Operating information
+Empanelment status if verified
+
+Actions:
+
+* Select facility
+* Call facility
+* Directions
+* Search another facility
+
+Referral reason:
+
+“Pregnancy-related warning signs”
+
+Information included:
+
+* Confirmed symptoms
+* Vitals
+* ASHA notes
+* Warning signs
+* Consent status
+
+Primary:
+“Send referral”
+
+Secondary:
+“Save referral offline”
+
+==================================================
+27. REFERRAL SUCCESS
+====================
+
+Success icon.
+
+Title:
+“Referral sent”
+
+Message:
+
+“Kalyanpur PHC has been notified.”
+
+Status timeline:
+
+* Referral created
+* Doctor notified
+* Waiting for doctor acknowledgement
+
+Actions:
+
+* View referral report
+* Inform citizen
+* Return to dashboard
+
+==================================================
+28. CLINICAL REPORT PREVIEW
+===========================
+
+Title:
+“Field-visit summary”
+
+Label:
+“Not a final medical diagnosis”
+
+Sections:
+
+* Patient reference
+* Consent
+* Chief concern
+* Confirmed symptoms
+* Vitals
+* Warning signs
+* ASHA observations
+* Referral reason
+* Scheme support
+* Timeline
+
+Actions:
+
+Primary:
+“Confirm and send”
+
+Secondary:
+“Correct information”
+
+Tertiary:
+“Download PDF”
+
+On mobile, show a structured report preview rather than a tiny full PDF page.
+
+==================================================
+29. PEOPLE DIRECTORY
+====================
+
+Title:
+“People”
+
+Search:
+
+“Search name, phone, ABHA or village”
+
+Filters:
+
+* Village
+* Follow-up due
+* Maternal health
+* Child health
+* Chronic care
+
+Citizen card:
+
+Sunita Devi, 28
+Kalyanpur
+Maternal-health follow-up
+Next action: Today
+
+Do not show highly sensitive medical information in the list.
+
+Desktop:
+Accessible directory table.
+
+Mobile:
+Stacked cards.
+
+Include duplicate-record warning flow.
+
+==================================================
+30. CITIZEN PROFILE
+===================
+
+Sections:
+
+* Basic information
+* Contact
+* Preferred language
+* ABHA link status
+* Consent history
+* Recent visits
+* Active referrals
+* Follow-ups
+* Scheme assistance
+
+Actions:
+
+* Start visit
+* Call citizen
+* Schedule follow-up
+* View history
+
+Use tabs on desktop.
+
+Use collapsible sections on mobile.
+
+==================================================
+31. HEALTH-SCHEME ASSISTANT
+===========================
+
+Title:
+“Health schemes”
+
+Search/voice action:
+
+“Ask about a health scheme”
+
+Categories:
+
+* Treatment support
+* Pregnancy and mother care
+* Child health
+* Senior citizen health
+* Disability support
+* Health insurance
+
+Scheme card:
+
+Janani Suraksha Yojana
+
+Status:
+“Potentially relevant”
+
+Sections:
+
+* Why it may help
+* Basic eligibility
+* Documents required
+* Application steps
+* Official source
+* Last verified date
+
+Actions:
+
+* Check eligibility
+* Create document checklist
+* Explain to citizen
+* Open official information
+
+Never show “Confirmed eligible” unless official verification succeeded.
+
+==================================================
+32. DOCUMENT CHECKLIST
+======================
+
+Title:
+“Documents needed”
+
+Checklist:
+
+* Identity proof
+* Pregnancy record
+* Bank account information
+* Residence information
+* Eligibility evidence
+
+States:
+
+* Available
+* Missing
+* Verification pending
+* Not required
+
+Primary:
+“Save checklist”
+
+Secondary:
+“Send list to citizen”
+
+Do not encourage unnecessary document uploads.
+
+==================================================
+33. FOLLOW-UP
+=============
+
+Title:
+“Schedule follow-up”
+
+Fields:
+
+* Follow-up type
+* Date
+* Time
+* Contact method
+* Instructions
+* Priority
+
+Follow-up types:
+
+* Confirm PHC visit
+* Pregnancy follow-up
+* Medication-adherence follow-up
+* Vaccination reminder
+* Test-result follow-up
+* Scheme-document follow-up
+
+Primary:
+“Schedule follow-up”
+
+Follow-up card example:
+
+Sunita Devi
+Confirm whether she visited Kalyanpur PHC
+Due today
+
+Actions:
+
+* Call
+* Complete follow-up
+* Reschedule
+
+==================================================
+34. COMPLETE FOLLOW-UP
+======================
+
+Question:
+
+“Did the citizen receive care?”
+
+Choices:
+
+* Visited PHC
+* Visited another facility
+* Visit still pending
+* Could not contact
+* Citizen declined referral
+
+If declined:
+
+* Record reason
+* Add counselling note
+* Escalate if required
+
+Actions:
+
+“Complete follow-up”
+“Schedule another follow-up”
+
+==================================================
+35. NOTIFICATIONS
+=================
+
+Group notifications into:
+
+Urgent
+
+* New high-priority case
+* Referral not acknowledged
+* Urgent follow-up overdue
+
+Tasks
+
+* Visit due
+* Follow-up due
+* Citizen unreachable
+* Missing information
+
+Updates
+
+* Doctor reviewed case
+* Referral accepted
+* Data synchronized
+* Scheme result available
+
+Each notification links to the relevant screen.
+
+Notifications must not reveal sensitive patient information on the device lock screen.
+
+==================================================
+36. OFFLINE MODE
+================
+
+Create complete offline designs.
+
+Offline banner:
+
+“You are offline.”
+
+“You can continue field visits. Information will sync when connectivity returns.”
+
+Available offline:
+
+* Assigned downloaded tasks
+* Cached citizen profiles
+* Field-visit forms
+* Vital-sign entry
+* Safety rules
+* Local risk support
+* Referral drafts
+* Follow-up notes
+
+Unavailable offline:
+
+* Live scheme verification
+* Current hospital verification
+* Government-record synchronization
+* Live clinical information retrieval
+
+Never show:
+
+“Network error”
+
+Use:
+
+“Internet is unavailable. Your information is safe on this device.”
+
+==================================================
+37. OFFLINE SYNC CENTRE
+=======================
+
+Title:
+“Offline data”
+
+Summary:
+
+“3 updates waiting to sync”
+
+Queue cards:
+
+Sunita Devi
+Urgent field visit
+Waiting to sync
+
+Ramesh Patil
+Blood-pressure follow-up
+Synchronized
+
+Meena Jadhav
+Vaccination visit
+Needs attention
+
+Actions:
+
+* Sync now
+* View details
+* Retry
+* Resolve conflict
+
+Sync states:
+
+* Waiting
+* Synchronizing
+* Synchronized
+* Failed safely
+* Conflict detected
+
+Create a data-conflict dialog.
+
+Do not overwrite conflicting health information automatically.
+
+==================================================
+38. EMPTY, LOADING AND ERROR STATES
+===================================
+
+Create states for every major screen.
+
+NO URGENT TASKS:
+
+Title:
+“No urgent cases right now”
+
+Message:
+“Your scheduled visits are shown below.”
+
+NO TASKS:
+
+“No tasks have been assigned today.”
+
+NO SEARCH RESULTS:
+
+“We could not find this citizen.”
+
+Actions:
+“Try another search”
+“Create temporary record”
+
+LOADING:
+
+“Loading your assigned tasks…”
+
+PROCESSING VOICE:
+
+“Preparing a draft summary…”
+
+ERROR:
+
+“We could not complete this action right now.”
+
+“Your information is safe.”
+
+Actions:
+“Try again”
+“Save offline”
+
+SESSION EXPIRED:
+
+“For your security, please sign in again.”
+
+PERMISSION DENIED:
+
+“You do not have permission to view this record.”
+
+==================================================
+39. CASE STATUS TIMELINE
+========================
+
+Create a reusable timeline component for:
+
+* New
+* Acknowledged
+* Citizen contacted
+* Visit scheduled
+* Visit in progress
+* ASHA reviewed
+* Referred to PHC
+* Doctor acknowledged
+* Follow-up required
+* Completed
+
+Use:
+
+* Completed check icon
+* Current step active icon
+* Future step neutral icon
+* Timestamp
+* Responsible role
+
+==================================================
+40. MICROCOPY STYLE
+===================
+
+Use simple, human and actionable language.
+
+BAD:
+“Execute escalation”
+
+GOOD:
+“Refer to PHC”
+
+BAD:
+“AI inference result”
+
+GOOD:
+“AI-assisted summary – please verify”
+
+BAD:
+“API unavailable”
+
+GOOD:
+“Scheme information is temporarily unavailable.”
+
+BAD:
+“Record committed”
+
+GOOD:
+“Visit information saved”
+
+BAD:
+“Confidence 68%”
+
+GOOD:
+“This information needs verification.”
+
+BAD:
+“Network error”
+
+GOOD:
+“You are offline. Your information is safe.”
+
+BAD:
+“Patient is critical”
+
+GOOD:
+“Urgent professional evaluation is recommended.”
+
+==================================================
+41. MOTION
+==========
+
+Use subtle motion only.
+
+* 150–250 ms transitions
+* Smooth card-state change
+* Subtle sync rotation
+* Calm loading animation
+* Clear pressed state
+* No bouncing
+* No particles
+* No flashing red warnings
+* Respect reduced-motion preference
+
+==================================================
+42. PROTOTYPE CONNECTIONS
+=========================
+
+Create a fully connected Figma prototype.
+
+LOGIN FLOW:
+
+Login
+→ Home dashboard
+
+URGENT CASE FLOW:
+
+Home urgent card
+→ Urgent case details
+→ Acknowledge
+→ Call citizen
+→ Call outcome
+→ Plan visit
+→ Start field visit
+
+FIELD VISIT FLOW:
+
+Start visit
+→ Confirm citizen
+→ Consent
+→ Reason
+→ Symptoms
+→ Voice-assisted notes
+→ AI extraction review
+→ Vitals
+→ Urgent warning
+→ ASHA review
+→ Referral
+
+REFERRAL FLOW:
+
+Referral
+→ Select PHC
+→ Confirm referral
+→ Referral success
+→ Report preview
+→ Doctor acknowledgement status
+
+FOLLOW-UP FLOW:
+
+Dashboard follow-up
+→ Follow-up details
+→ Call citizen
+→ Complete follow-up
+→ Schedule another follow-up or complete case
+
+SCHEME FLOW:
+
+Schemes
+→ Scheme search
+→ Potentially relevant scheme
+→ Eligibility questions
+→ Document checklist
+→ Save/send checklist
+
+OFFLINE FLOW:
+
+Connectivity lost
+→ Offline banner
+→ Continue field visit
+→ Save locally
+→ Offline data queue
+→ Internet restored
+→ Sync progress
+→ Sync success
+
+NOTIFICATION FLOW:
+
+Notification
+→ Relevant case/referral/follow-up
+
+==================================================
+43. RESPONSIVE BEHAVIOUR
+========================
+
+For every important screen, show at least:
+
+* Mobile 360 × 800
+* Tablet 768 × 1024
+* Desktop 1440 × 1024
+
+MOBILE:
+
+* One-column cards
+* Bottom navigation
+* Bottom sheets
+* Sticky primary action
+* Full-width buttons
+* No wide tables
+* Compact summary
+* Large touch targets
+
+TABLET:
+
+* Collapsible navigation
+* Two-column forms
+* Two-column dashboard
+* Details and actions may appear side-by-side
+
+DESKTOP:
+
+* Fixed sidebar
+* Four summary cards
+* Table-based task list
+* Case information in main panel
+* Sticky action panel on right
+* Maximum readable content width
+* Avoid excessive unused whitespace
+
+==================================================
+44. DEVELOPER HANDOFF
+=====================
+
+Prepare the design for React implementation.
+
+Use:
+
+* Auto Layout
+* Named colour variables
+* Named spacing variables
+* Named typography styles
+* Reusable components
+* Component properties
+* Variants
+* Boolean properties
+* Instance swapping
+* Responsive constraints
+* Clear layer naming
+* Clear section naming
+* Consistent 8-point spacing
+* Exportable SVG icons
+
+Name components using a structured format:
+
+Button/Primary/Default
+Button/Primary/Loading
+Card/Task/Urgent
+Card/Citizen/Default
+Badge/Priority/Urgent
+Input/Vitals/Default
+Navigation/Mobile/Bottom
+Navigation/Desktop/Sidebar
+Banner/Connectivity/Offline
+Timeline/Case/Default
+
+Include design annotations for:
+
+* Responsive behaviour
+* Keyboard behaviour
+* Validation
+* Offline behaviour
+* Loading states
+* Empty states
+* API-dependent content
+* Sticky elements
+* Accessibility labels
+
+==================================================
+45. FINAL DELIVERABLE
+=====================
+
+Generate:
+
+1. Complete ASHA responsive portal UI
+2. Mobile, tablet and desktop screens
+3. Complete reusable component library
+4. Design tokens
+5. Typography system
+6. Colour system
+7. Grid and spacing system
+8. Authentication flow
+9. ASHA dashboard
+10. Task and urgent-alert flow
+11. Citizen case details
+12. Field-visit wizard
+13. Consent-based voice notes
+14. AI extraction verification
+15. Vitals entry
+16. Safety warnings
+17. PHC referral
+18. Clinical report preview
+19. Follow-up management
+20. Scheme assistance
+21. People directory
+22. Notifications
+23. Offline and synchronization flows
+24. Loading, empty, error and success states
+25. Accessibility annotations
+26. Fully connected clickable prototype
+27. Developer-ready responsive components
+
+The final result must look like a real Indian public-health product that an ASHA worker could use during village field visits.
+
+It must communicate:
+
+* Priority
+* Trust
+* Safety
+* Simplicity
+* Accountability
+* Offline resilience
+* Human verification
+* Government-health integration
+
+The interface should feel like an ASHA worker’s practical daily copilot, not an AI chatbot and not a hospital administration system.
