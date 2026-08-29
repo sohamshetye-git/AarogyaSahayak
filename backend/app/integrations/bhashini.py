@@ -10,27 +10,29 @@ class BhashiniAdapter(BaseIntegrationAdapter):
         super().__init__(mode=settings.BHASHINI_MODE)
 
     def speech_to_text(self, audio_bytes: bytes, source_language: str = "mr") -> Dict[str, Any]:
-        if self.is_mock:
-            # Deterministic mock transcripts based on language
-            sample_transcripts = {
-                "mr": "मला खूप डोकेदुखी होत आहे, डोळ्यांसमोर अंधारी येत आहे आणि पायावर सूज आहे.", # Marathi canonical
-                "hi": "मुझे बहुत तेज सिरदर्द हो रहा है, आंखों के आगे धुंधलापन है और पैरों में सूजन है.", # Hindi canonical
-                "en": "I have severe headache, blurred vision, and swollen feet."
-            }
+        if not audio_bytes or len(audio_bytes) == 0:
             return {
-                "status": "MOCKED",
-                "transcript": sample_transcripts.get(source_language, sample_transcripts["mr"]),
+                "status": "NO_AUDIO",
+                "transcript": "",
                 "detected_language": source_language,
-                "confidence": 0.96,
-                "confirmation_required": True
+                "confidence": 0.0,
+                "provider": "BHASHINI"
+            }
+
+        if self.is_mock:
+            return {
+                "status": "PROVIDER_UNAVAILABLE",
+                "transcript": "",
+                "detected_language": source_language,
+                "confidence": 0.0,
+                "detail": "BHASHINI live credentials not configured"
             }
         
-        # Real BHASHINI API invocation logic here when live keys are provided
         return {
-            "status": "MOCKED",
-            "transcript": "मला खूप डोकेदुखी होत आहे आणि डोळ्यांसमोर अंधारी येत आहे.",
+            "status": "PROVIDER_UNAVAILABLE",
+            "transcript": "",
             "detected_language": source_language,
-            "confidence": 0.94
+            "confidence": 0.0
         }
 
     def text_to_speech(self, text: str, target_language: str = "mr") -> Dict[str, Any]:

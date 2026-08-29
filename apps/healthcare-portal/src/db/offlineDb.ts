@@ -65,18 +65,31 @@ export interface SyncMetadata {
   lastSyncTime: string;
 }
 
+export interface PatientDraft {
+  id: string;
+  clientRegistrationId: string;
+  ownerUserId?: string;
+  ownerRole?: string;
+  deviceId?: string;
+  currentStep: number;
+  data: any;
+  savedAt: string;
+}
+
 export class OfflineDatabase extends Dexie {
   cachedCases!: Table<CachedCase, string>;
   visitDrafts!: Table<VisitDraft, string>;
+  patientDrafts!: Table<PatientDraft, string>;
   pendingActions!: Table<PendingAction, string>;
   conflicts!: Table<ConflictRecord, string>;
   syncMetadata!: Table<SyncMetadata, string>;
 
   constructor() {
     super('AarogyaSahayakDB');
-    this.version(2).stores({
+    this.version(3).stores({
       cachedCases: 'id, status, ownerUserId',
       visitDrafts: 'id, caseId, ownerUserId',
+      patientDrafts: 'id, clientRegistrationId, ownerUserId',
       pendingActions: 'id, type, status, ownerUserId',
       conflicts: 'id, caseId, ownerUserId, resolved',
       syncMetadata: 'id'

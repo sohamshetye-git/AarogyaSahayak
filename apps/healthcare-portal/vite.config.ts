@@ -11,10 +11,20 @@ export default defineConfig({
       "@aarogya/shared-types": path.resolve(__dirname, "../../packages/shared-types"),
       "@aarogya/design-tokens": path.resolve(__dirname, "../../packages/design-tokens"),
       "@aarogya/api-client": path.resolve(__dirname, "../../packages/api-client"),
+      "@aarogya/i18n": path.resolve(__dirname, "../../packages/i18n"),
+      "@aarogya/location": path.resolve(__dirname, "../../packages/location"),
     },
+
   },
   server: {
     port: 3000,
     host: true,
+    proxy: {
+      "/api": {
+        target: "http://127.0.0.1:8000",
+        changeOrigin: true,
+        secure: false,
+      },
+    },
   },
 });

@@ -11,7 +11,7 @@ def test_maternal_preeclampsia_rule():
     )
     assert priority == CasePriorityEnum.URGENT
     assert rule_trig is True
-    assert "Pre-eclampsia" in reason
+    assert "Pregnancy-related warning signs" in reason
     assert "Warning signs were detected" in guidance
 
 def test_critical_chest_pain_rule():

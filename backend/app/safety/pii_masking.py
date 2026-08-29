@@ -55,3 +55,18 @@ class PIIMaskingService:
             masked = name_pattern.sub(placeholder, masked)
 
         return masked, mapping
+
+    @staticmethod
+    def mask_phone(phone: str) -> str:
+        if not phone or len(phone.strip()) < 10:
+            return phone or ""
+        clean = phone.strip()
+        return clean[:2] + "XXXXXX" + clean[-2:]
+
+    @staticmethod
+    def mask_abha(abha: str) -> str:
+        if not abha or len(abha.strip()) < 8:
+            return abha or ""
+        clean = abha.strip()
+        return clean[:2] + "-XXXX-XXXX-" + clean[-4:]
+

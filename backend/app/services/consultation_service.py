@@ -3,7 +3,7 @@ from datetime import datetime, timedelta, timezone
 from sqlalchemy.orm import Session
 from app.models import (
     Case, Consultation, Prescription, PrescriptionItem, TestOrder, FollowUp,
-    User, AuditLog, Notification, CaseStatusEnum, CasePriorityEnum, UserRoleEnum
+    User, AuditLog, Notification, CaseStatusEnum, CasePriorityEnum, UserRoleEnum, Referral
 )
 from app.schemas import DoctorConsultationSubmitRequest
 from app.services.case_service import CaseService
@@ -50,13 +50,27 @@ class ConsultationService:
         db.add(consultation)
         db.flush()
 
+        # Retrieve referral if any
+        referral = None
+        if req.referral_id:
+            referral = db.query(Referral).filter(Referral.id == req.referral_id).first()
+        elif hasattr(case, "referrals") and case.referrals:
+            referral = case.referrals[-1]
+
         # Create Prescription if items provided
         if req.prescription_items:
+            p_ref = f"RX-{datetime.now(timezone.utc).strftime('%Y%m%d')}-{consultation.id[:6].upper()}"
             prescription = Prescription(
+                reference=p_ref,
+                citizen_id=case.citizen_id,
+                case_id=case.id,
+                referral_id=referral.id if referral else None,
                 consultation_id=consultation.id,
+                prescriber_doctor_id=doctor_user.id,
                 doctor_id=doctor_user.id,
+                facility_id=facility_id,
                 status="SIGNED",
-                signature_ref=f"SIG-DR-{doctor_user.name.upper()[:6]}-{int(datetime.now(timezone.utc).timestamp())}"
+                signed_at=datetime.now(timezone.utc)
             )
             db.add(prescription)
             db.flush()
@@ -64,58 +78,94 @@ class ConsultationService:
             for item in req.prescription_items:
                 p_item = PrescriptionItem(
                     prescription_id=prescription.id,
+                    generic_name_snapshot=item.medicine,
                     medicine=item.medicine,
                     strength=item.strength,
-                    form=item.form,
+                    formulation=getattr(item, "form", "Tablet") or "Tablet",
                     dose=item.dose,
                     frequency=item.frequency,
-                    duration=item.duration,
-                    timing=item.timing,
+                    timing=item.timing or "After food",
+                    duration_value=int(item.duration) if str(item.duration).isdigit() else 5,
                     instructions=item.instructions
                 )
                 db.add(p_item)
 
-        # Create Test Orders if any
-        for test in req.investigation_orders:
-            t_order = TestOrder(
-                consultation_id=consultation.id,
-                test_name=test,
-                priority="URGENT" if case.priority == CasePriorityEnum.URGENT else "ROUTINE",
-                reason=req.confirmed_diagnosis,
-                facility_id=facility_id,
-                status="ORDERED"
-            )
-            db.add(t_order)
+        # Create Test Orders if any (detailed or simple)
+        if req.investigation_orders_detailed:
+            for d_test in req.investigation_orders_detailed:
+                t_order = TestOrder(
+                    consultation_id=consultation.id,
+                    test_name=d_test.test_name,
+                    priority=d_test.priority,
+                    reason=d_test.clinical_reason or req.confirmed_diagnosis,
+                    facility_id=facility_id,
+                    status=d_test.status or "ORDERED"
+                )
+                db.add(t_order)
+        elif req.investigation_orders:
+            for test in req.investigation_orders:
+                t_order = TestOrder(
+                    consultation_id=consultation.id,
+                    test_name=test,
+                    priority="URGENT" if case.priority == CasePriorityEnum.URGENT else "ROUTINE",
+                    reason=req.confirmed_diagnosis,
+                    facility_id=facility_id,
+                    status="ORDERED"
+                )
+                db.add(t_order)
 
-        # Create ASHA Follow-up
-        if req.asha_followup_instructions or req.followup_due_days:
-            due_date = datetime.now(timezone.utc) + timedelta(days=req.followup_due_days)
+        # Create ASHA Follow-up Directive
+        if req.asha_followup_directive or req.asha_followup_instructions or req.followup_due_days:
+            directive = req.asha_followup_directive
+            due_days = directive.due_days if directive else req.followup_due_days
+            due_date = datetime.now(timezone.utc) + timedelta(days=due_days)
+            
+            instructions_text = directive.instructions if directive else (req.asha_followup_instructions or f"Check BP and adherence for {req.confirmed_diagnosis}")
+            repeat_vitals = directive.measurements_to_repeat if directive else ["systolic_bp", "diastolic_bp", "pulse"]
+            adherence_flag = directive.adherence_required if directive else True
+            escalation_cond = directive.escalation_conditions if directive else "Report immediately if symptoms worsen or SBP >= 160."
+
             followup = FollowUp(
                 case_id=case.id,
+                citizen_id=case.citizen_id,
+                created_by_id=doctor_user.id,
+                created_by_role="PHC_DOCTOR",
+                source="DOCTOR_ASSIGNED",
                 task_type="POST_CONSULTATION_VITALS_CHECK",
+                reason=f"Doctor directive for {req.confirmed_diagnosis}",
                 assigned_role=UserRoleEnum.ASHA_WORKER,
                 assigned_user_id=case.assigned_asha_id,
-                instructions=req.asha_followup_instructions or f"Check BP and adherence for {req.confirmed_diagnosis}",
-                priority=CasePriorityEnum.HIGH,
+                instructions=instructions_text,
+                measurements_to_repeat=repeat_vitals,
+                adherence_required=adherence_flag,
+                escalation_conditions=escalation_cond,
+                priority=CasePriorityEnum.HIGH if directive and directive.priority == "URGENT" else CasePriorityEnum.HIGH,
                 due_at=due_date,
-                status="PENDING"
+                status="PENDING",
+                sync_status="SYNCED"
             )
             db.add(followup)
 
-            # Notify ASHA of new follow-up
+            # Notify ASHA of new follow-up directive
             if case.assigned_asha_id:
                 notif = Notification(
                     recipient_user_id=case.assigned_asha_id,
                     case_id=case.id,
                     notification_type="FOLLOW_UP_ASSIGNED",
-                    title=f"New Follow-up Task: {case.reference}",
-                    message=f"Dr. {doctor_user.name} assigned follow-up for {case.citizen.display_name}. Due in {req.followup_due_days} days.",
+                    title=f"Doctor Directive Assigned: {case.reference}",
+                    message=f"Dr. {doctor_user.name} assigned follow-up for {case.citizen.display_name if case.citizen else 'Citizen'}. Due in {due_days} days.",
                     priority=CasePriorityEnum.HIGH
                 )
                 db.add(notif)
 
-        # Update Case State to FOLLOW_UP_REQUIRED or COMPLETED
-        new_status = CaseStatusEnum.FOLLOW_UP_REQUIRED if req.asha_followup_instructions else CaseStatusEnum.COMPLETED
+        # Update Case State based on disposition
+        if req.disposition == "HIGHER_REFERRAL" or req.disposition == "EMERGENCY_TRANSFER":
+            new_status = CaseStatusEnum.REFERRED_TO_PHC
+        elif req.asha_followup_directive or req.asha_followup_instructions:
+            new_status = CaseStatusEnum.FOLLOW_UP_REQUIRED
+        else:
+            new_status = CaseStatusEnum.COMPLETED
+
         CaseService.update_status(db, case, new_status)
         case.completed_at = datetime.now(timezone.utc)
 
@@ -139,7 +189,7 @@ class ConsultationService:
             resource_type="Consultation",
             resource_id=consultation.id,
             outcome="SUCCESS",
-            metadata_json={"diagnosis": req.confirmed_diagnosis, "followup_due_days": req.followup_due_days}
+            metadata_json={"diagnosis": req.confirmed_diagnosis, "disposition": req.disposition, "followup_due_days": req.followup_due_days}
         )
         db.add(audit)
         db.commit()

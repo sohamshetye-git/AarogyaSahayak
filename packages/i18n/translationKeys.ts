@@ -1,0 +1,31 @@
+export const TranslationNamespaces = [
+  "common",
+  "navigation",
+  "authentication",
+  "citizen",
+  "chat",
+  "asha",
+  "doctor",
+  "admin",
+  "patient",
+  "case",
+  "referral",
+  "consultation",
+  "investigation",
+  "prescription",
+  "followup",
+  "scheme",
+  "facility",
+  "safety",
+  "status",
+  "priority",
+  "validation",
+  "errors",
+  "loading",
+  "emptyState",
+  "offline",
+  "notifications",
+  "accessibility"
+] as const;
+
+export type TranslationNamespace = typeof TranslationNamespaces[number];

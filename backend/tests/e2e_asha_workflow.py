@@ -34,7 +34,10 @@ def test_asha_end_to_end_workflow(page: Page):
     expect(page.locator("h1:has-text('Dashboard')")).to_be_visible()
     
     # --- 2. Open Urgent Case ---
-    page.click("text=Sunita Devi") # Target the mock case
+    if page.locator("a:has-text('Review Urgent Case')").count() > 0:
+        page.locator("a:has-text('Review Urgent Case')").first.click()
+    else:
+        page.locator("text=Sunita Devi").first.click()
     
     # --- 3. Acknowledge ---
     page.locator("button:has-text('Acknowledge Case')").first.click()

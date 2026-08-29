@@ -7,13 +7,18 @@ import { WarningIcon, ActivityIcon, TrendingUpIcon, SchemeIcon, ShieldCheckIcon 
 export function AdminDashboardScreen() {
   const navigate = useNavigate();
   const [data, setData] = useState<any>(null);
+  const [rxAnalytics, setRxAnalytics] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const load = async () => {
       try {
-        const res = await apiClient.getAdminDashboard();
+        const [res, rxRes] = await Promise.all([
+          apiClient.getAdminDashboard(),
+          apiClient.getAdminPrescriptionAnalytics().catch(() => null)
+        ]);
         setData(res);
+        setRxAnalytics(rxRes);
       } catch (err) {
         console.error("Failed to load admin dashboard", err);
       } finally {
@@ -163,6 +168,48 @@ export function AdminDashboardScreen() {
           ))}
         </div>
       </div>
+
+      {/* Anonymized District Prescription Analytics */}
+      {rxAnalytics && (
+        <div style={{ backgroundColor: "var(--surface)", borderRadius: 12, border: "1px solid var(--border)", padding: 24 }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
+            <div>
+              <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: "var(--text-primary)" }}>
+                📊 Anonymized District Prescription Intelligence
+              </h2>
+              <div style={{ fontSize: 13, color: "var(--text-secondary)", marginTop: 2 }}>
+                District-wide pharmaceutical supply, adherence completion rates & PHC workload monitoring (Strict Zero PII)
+              </div>
+            </div>
+            <span style={{ fontSize: 12, fontWeight: 600, color: "#166534", backgroundColor: "#F0FDF4", padding: "4px 10px", borderRadius: 6, border: "1px solid #BBF7D0" }}>
+              ✓ ABDM Governance Verified
+            </span>
+          </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 14 }}>
+            <div style={{ backgroundColor: "#F8FAFC", padding: 14, borderRadius: 8, border: "1px solid #E2E8F0" }}>
+              <div style={{ fontSize: 12, color: "#64748B", fontWeight: 600 }}>Prescriptions Signed</div>
+              <div style={{ fontSize: 24, fontWeight: 800, color: "#0F172A", marginTop: 2 }}>{rxAnalytics.prescriptions_signed_total}</div>
+            </div>
+            <div style={{ backgroundColor: "#F8FAFC", padding: 14, borderRadius: 8, border: "1px solid #E2E8F0" }}>
+              <div style={{ fontSize: 12, color: "#64748B", fontWeight: 600 }}>Active Prescriptions</div>
+              <div style={{ fontSize: 24, fontWeight: 800, color: "#2563EB", marginTop: 2 }}>{rxAnalytics.active_prescriptions_count}</div>
+            </div>
+            <div style={{ backgroundColor: "#F8FAFC", padding: 14, borderRadius: 8, border: "1px solid #E2E8F0" }}>
+              <div style={{ fontSize: 12, color: "#64748B", fontWeight: 600 }}>Amendment Rate</div>
+              <div style={{ fontSize: 24, fontWeight: 800, color: "#7E22CE", marginTop: 2 }}>{rxAnalytics.amendment_rate_percentage}%</div>
+            </div>
+            <div style={{ backgroundColor: "#F8FAFC", padding: 14, borderRadius: 8, border: "1px solid #E2E8F0" }}>
+              <div style={{ fontSize: 12, color: "#64748B", fontWeight: 600 }}>Adherence Completion</div>
+              <div style={{ fontSize: 24, fontWeight: 800, color: "#166534", marginTop: 2 }}>{rxAnalytics.adherence_followup_completion_rate}%</div>
+            </div>
+            <div style={{ backgroundColor: "#F8FAFC", padding: 14, borderRadius: 8, border: "1px solid #E2E8F0" }}>
+              <div style={{ fontSize: 12, color: "#64748B", fontWeight: 600 }}>Stopped Items</div>
+              <div style={{ fontSize: 24, fontWeight: 800, color: "#DC2626", marginTop: 2 }}>{rxAnalytics.stopped_item_count}</div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

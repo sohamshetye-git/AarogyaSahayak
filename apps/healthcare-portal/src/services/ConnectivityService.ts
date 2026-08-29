@@ -1,4 +1,4 @@
-export type ConnectivityState = 'ONLINE' | 'LIMITED' | 'OFFLINE' | 'CHECKING';
+export type ConnectivityState = 'ONLINE' | 'DEGRADED' | 'OFFLINE' | 'CHECKING' | 'SYNCING' | 'AUTH_REQUIRED';
 
 type Listener = (state: ConnectivityState) => void;
 
@@ -6,11 +6,13 @@ class ConnectivityService {
   private state: ConnectivityState = 'CHECKING';
   private listeners: Set<Listener> = new Set();
   private checkInterval: any = null;
+  private syncInProgress: boolean = false;
 
   constructor() {
     if (typeof window !== 'undefined') {
       window.addEventListener('online', this.checkBackendHealth.bind(this));
       window.addEventListener('offline', () => this.setState('OFFLINE'));
+      window.addEventListener('focus', this.checkBackendHealth.bind(this));
       
       this.state = navigator.onLine ? 'CHECKING' : 'OFFLINE';
       if (this.state === 'CHECKING') {
@@ -23,7 +25,7 @@ class ConnectivityService {
 
   private startPeriodicChecks() {
     this.checkInterval = setInterval(() => {
-      if (navigator.onLine) {
+      if (navigator.onLine && !this.syncInProgress) {
         this.checkBackendHealth();
       }
     }, 15000); // Check every 15s
@@ -35,28 +37,32 @@ class ConnectivityService {
       return;
     }
     
+    // Don't interrupt if we are actively syncing or authenticating
+    if (this.state === 'SYNCING' || this.state === 'AUTH_REQUIRED') {
+      return;
+    }
+    
     try {
-      // Just hit a lightweight health endpoint or the base api url
-      const res = await fetch('http://localhost:8000/api/asha/dashboard', { 
+      const res = await fetch('http://localhost:8000/health', { 
         method: 'GET',
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('aarogya_token') || ''}`
-        },
         signal: AbortSignal.timeout(3000) 
       });
-      if (res.ok || res.status === 401) {
+      
+      if (res.ok) {
         this.setState('ONLINE');
       } else {
-        this.setState('LIMITED');
+        this.setState('DEGRADED');
       }
     } catch (err) {
-      this.setState('LIMITED');
+      this.setState('DEGRADED');
     }
   }
 
-  private setState(newState: ConnectivityState) {
+  public setState(newState: ConnectivityState) {
     if (this.state !== newState) {
       this.state = newState;
+      if (newState === 'SYNCING') this.syncInProgress = true;
+      else if (newState === 'ONLINE' || newState === 'DEGRADED' || newState === 'OFFLINE' || newState === 'AUTH_REQUIRED') this.syncInProgress = false;
       this.notifyListeners();
     }
   }
@@ -66,7 +72,7 @@ class ConnectivityService {
   }
 
   public isOffline(): boolean {
-    return this.state === 'OFFLINE' || this.state === 'LIMITED';
+    return this.state === 'OFFLINE' || this.state === 'DEGRADED';
   }
 
   public subscribe(listener: Listener): () => void {

@@ -1,7 +1,6 @@
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "./AuthContext";
-import { UserRole } from "@aarogya/shared-types";
 import { ShieldCheckIcon, WarningIcon } from "../components/Icons";
 
 export function LoginScreen() {
@@ -10,31 +9,45 @@ export function LoginScreen() {
   const [identifier, setIdentifier] = useState("sita.asha");
   const [password, setPassword] = useState("demo123");
   const [error, setError] = useState<string | null>(null);
+  const [errorCode, setErrorCode] = useState<string | null>(null);
 
   const handleLogin = async (e?: React.FormEvent, customId?: string) => {
     if (e) e.preventDefault();
     setError(null);
+    setErrorCode(null);
     const loginId = customId || identifier;
 
     try {
       const user = await login(loginId, password);
-      if (user.role === UserRole.ASHA_WORKER) {
-        navigate("/asha/dashboard");
-      } else if (user.role === UserRole.PHC_DOCTOR) {
-        navigate("/doctor/dashboard");
-      } else if (user.role === UserRole.DISTRICT_ADMIN) {
-        navigate("/admin/dashboard");
-      } else {
-        navigate("/asha/dashboard");
+      const roleStr = String(user.role).toUpperCase();
+
+      let targetPath = "/asha/dashboard";
+      if (roleStr === "PHC_DOCTOR" || roleStr.includes("DOCTOR")) {
+        targetPath = "/doctor/dashboard";
+      } else if (roleStr === "DISTRICT_ADMIN" || roleStr.includes("ADMIN")) {
+        targetPath = "/admin/dashboard";
       }
+
+      window.location.href = targetPath;
     } catch (err: any) {
-      setError(err.message || "Invalid login credentials");
+      const code = err.code || "UNKNOWN";
+      setErrorCode(code);
+      if (code === "BACKEND_UNREACHABLE") {
+        setError("Backend unreachable. Please verify server status.");
+      } else if (code === "TIMEOUT") {
+        setError("Request timed out. Please check network connection.");
+      } else if (code === "INVALID_CREDENTIALS") {
+        setError("Sign-in details incorrect. Please check identifier and password.");
+      } else if (code === "SERVER_ERROR") {
+        setError("Server error. Please try again in a few moments.");
+      } else {
+        setError(err.message || "Invalid login credentials");
+      }
     }
   };
 
   const selectDemoRole = (roleId: string) => {
     setIdentifier(roleId);
-    handleLogin(undefined, roleId);
   };
 
   return (
@@ -91,6 +104,7 @@ export function LoginScreen() {
             style={{
               display: "flex",
               alignItems: "center",
+              justifyContent: "space-between",
               gap: 10,
               padding: "12px 16px",
               backgroundColor: "var(--urgent-bg)",
@@ -101,8 +115,26 @@ export function LoginScreen() {
               border: "1px solid #F5C6CB",
             }}
           >
-            <WarningIcon size={18} color="var(--urgent)" />
-            <span>{error}</span>
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <WarningIcon size={18} color="var(--urgent)" />
+              <span>{error}</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => handleLogin()}
+              style={{
+                padding: "4px 8px",
+                fontSize: 11,
+                fontWeight: 700,
+                backgroundColor: "var(--surface)",
+                border: "1px solid var(--urgent)",
+                color: "var(--urgent)",
+                borderRadius: 4,
+                cursor: "pointer",
+              }}
+            >
+              Retry
+            </button>
           </div>
         )}
 

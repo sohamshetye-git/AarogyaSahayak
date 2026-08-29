@@ -3,6 +3,7 @@ import { apiClient } from "@aarogya/api-client";
 import { UserRole, type UserSession } from "@aarogya/shared-types";
 import { db } from "../db/offlineDb";
 import { ashaSyncService } from "../services/AshaSyncService";
+import { LocationService } from "@aarogya/location";
 
 interface AuthContextType {
   user: UserSession | null;
@@ -33,8 +34,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
     if (user) {
       ashaSyncService.setUser(user.id, user.role);
+      LocationService.setUserContext(user.id, user.role);
     } else {
       ashaSyncService.setUser(null, null);
+      LocationService.setUserContext(null, null);
     }
   }, [token, user]);
 
@@ -101,6 +104,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setUser(null);
     setToken(null);
     apiClient.setToken(null);
+    LocationService.clearTemporaryLocation();
+    LocationService.setUserContext(null, null);
     localStorage.removeItem("aarogya_token");
     localStorage.removeItem("aarogya_user");
     ashaSyncService.setUser(null, null);

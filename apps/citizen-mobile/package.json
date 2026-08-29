@@ -11,10 +11,14 @@
   "dependencies": {
     "@aarogya/api-client": "*",
     "@aarogya/design-tokens": "*",
+    "@aarogya/i18n": "*",
+    "@aarogya/location": "*",
     "@aarogya/shared-types": "*",
+    "i18next": "^26.4.0",
     "lucide-react": "^0.475.0",
     "react": "^19.0.0",
-    "react-dom": "^19.0.0"
+    "react-dom": "^19.0.0",
+    "react-i18next": "^17.0.12"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.0.0",

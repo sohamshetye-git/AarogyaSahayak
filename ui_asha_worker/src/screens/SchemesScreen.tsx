@@ -199,6 +199,56 @@ function SchemeCard({ scheme, onExpand }: { scheme: typeof SCHEMES[0]; onExpand:
 export default function SchemesScreen() {
   const [search, setSearch] = useState("");
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<"schemes" | "assistance">("assistance");
+  const [assistanceTasks, setAssistanceTasks] = useState<any[]>([]);
+  const [loadingTasks, setLoadingTasks] = useState(false);
+  const [selectedTask, setSelectedTask] = useState<any>(null);
+  const [officialRefInput, setOfficialRefInput] = useState("");
+  const [outcomeNotes, setOutcomeNotes] = useState("");
+  const [actionMessage, setActionMessage] = useState<string | null>(null);
+
+  const fetchAssistanceTasks = async () => {
+    setLoadingTasks(true);
+    try {
+      const res = await fetch("http://localhost:8000/api/asha/scheme-assistance-tasks", {
+        headers: { "Authorization": "Bearer mock-token-asha" }
+      });
+      if (res.ok) {
+        const json = await res.json();
+        setAssistanceTasks(json?.data || []);
+      }
+    } catch (err) {
+      console.error("Failed to load assistance tasks", err);
+    } finally {
+      setLoadingTasks(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchAssistanceTasks();
+  }, []);
+
+  const handleCompleteAssistance = async (taskId: string) => {
+    try {
+      const res = await fetch(`http://localhost:8000/api/asha/scheme-assistance-tasks/${taskId}/outcome`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": "Bearer mock-token-asha" },
+        body: JSON.stringify({
+          status: "COMPLETED",
+          outcome_summary: outcomeNotes || "ASHA assisted citizen with scheme document verification and portal submission.",
+          official_reference_recorded: officialRefInput || "PMMVY-MH-2026-88992"
+        })
+      });
+      if (res.ok) {
+        setActionMessage("शासकीय योजना सहाय्य यशस्वीपणे नोंदवले गेले! (Assistance recorded successfully)");
+        setSelectedTask(null);
+        fetchAssistanceTasks();
+        setTimeout(() => setActionMessage(null), 2500);
+      }
+    } catch (err) {
+      console.error("Failed to update task", err);
+    }
+  };
 
   const filtered = SCHEMES.filter((s) => {
     const q = search.toLowerCase();
@@ -209,113 +259,159 @@ export default function SchemesScreen() {
 
   return (
     <div style={{ padding: "16px 16px 24px" }}>
-      {/* Search with voice */}
-      <div style={{ position: "relative", marginBottom: 16 }}>
-        <SearchIcon
-          size={18}
-          style={{ position: "absolute", left: 14, top: "50%", transform: "translateY(-50%)", color: "var(--text-disabled)" }}
-        />
-        <input
-          type="search"
-          placeholder="Ask about a health scheme"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          style={{
-            width: "100%",
-            height: 48,
-            paddingLeft: 44,
-            paddingRight: 56,
-            border: "1.5px solid var(--border)",
-            borderRadius: 12,
-            fontSize: 15,
-            color: "var(--text-primary)",
-            backgroundColor: "var(--surface)",
-            outline: "none",
-            boxSizing: "border-box",
-          }}
-          aria-label="Search health schemes"
-        />
+      {actionMessage && (
+        <div style={{ backgroundColor: "#166534", color: "#FFFFFF", padding: "12px 16px", borderRadius: 10, marginBottom: 16, fontSize: 13, fontWeight: 700 }}>
+          {actionMessage}
+        </div>
+      )}
+
+      {/* Tabs */}
+      <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
         <button
+          onClick={() => setActiveTab("assistance")}
           style={{
-            position: "absolute",
-            right: 10,
-            top: "50%",
-            transform: "translateY(-50%)",
-            width: 36,
-            height: 36,
-            borderRadius: 8,
+            flex: 1,
+            padding: "10px",
+            borderRadius: 10,
             border: "none",
-            backgroundColor: "var(--primary-light)",
-            color: "var(--primary)",
-            cursor: "pointer",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
+            backgroundColor: activeTab === "assistance" ? "var(--primary)" : "var(--surface)",
+            color: activeTab === "assistance" ? "#FFFFFF" : "var(--text-primary)",
+            fontWeight: 700,
+            fontSize: 13,
+            cursor: "pointer"
           }}
-          aria-label="Voice search"
         >
-          <MicIcon size={18} />
+          नागरिक सहाय्य विनंत्या ({assistanceTasks.length})
+        </button>
+        <button
+          onClick={() => setActiveTab("schemes")}
+          style={{
+            flex: 1,
+            padding: "10px",
+            borderRadius: 10,
+            border: "none",
+            backgroundColor: activeTab === "schemes" ? "var(--primary)" : "var(--surface)",
+            color: activeTab === "schemes" ? "#FFFFFF" : "var(--text-primary)",
+            fontWeight: 700,
+            fontSize: 13,
+            cursor: "pointer"
+          }}
+        >
+          शासकीय योजना मार्गदर्शिका
         </button>
       </div>
 
-      {/* Category filters */}
-      <div style={{ marginBottom: 20 }}>
-        <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text-secondary)", marginBottom: 10, textTransform: "uppercase", letterSpacing: "0.5px" }}>
-          Categories
-        </div>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-          {CATEGORIES.map(({ key, label, count }) => (
-            <button
-              key={key}
-              onClick={() => setActiveCategory(activeCategory === key ? null : key)}
-              style={{
-                padding: "10px 12px",
-                borderRadius: 10,
-                border: `1.5px solid ${activeCategory === key ? "var(--primary)" : "var(--border)"}`,
-                backgroundColor: activeCategory === key ? "var(--primary-light)" : "var(--surface)",
-                color: activeCategory === key ? "var(--primary)" : "var(--text-primary)",
-                cursor: "pointer",
-                textAlign: "left",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-                gap: 8,
-              }}
-            >
-              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                <SchemeIcon size={14} style={{ color: activeCategory === key ? "var(--primary)" : "var(--text-disabled)" }} />
-                <span style={{ fontSize: 12, fontWeight: 600, lineHeight: "16px" }}>{label}</span>
-              </div>
-              <span
+      {activeTab === "assistance" ? (
+        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          {assistanceTasks.length === 0 ? (
+            <div style={{ textAlign: "center", padding: 40, backgroundColor: "var(--surface)", borderRadius: 12, border: "1px solid var(--border)" }}>
+              <div style={{ fontSize: 15, fontWeight: 700, color: "var(--text-primary)" }}>कोणतीही प्रलंबित योजना विनंती नाही</div>
+            </div>
+          ) : (
+            assistanceTasks.map((task, idx) => (
+              <div
+                key={idx}
                 style={{
-                  fontSize: 11,
-                  fontWeight: 700,
-                  color: activeCategory === key ? "var(--primary)" : "var(--text-disabled)",
-                  backgroundColor: activeCategory === key ? "var(--primary)" : "var(--neutral-bg)",
-                  padding: "2px 6px",
-                  borderRadius: 10,
-                  color: activeCategory === key ? "white" : "var(--text-disabled)",
+                  backgroundColor: "var(--surface)",
+                  border: "1px solid var(--border)",
+                  borderRadius: 14,
+                  padding: "16px",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 8
                 }}
               >
-                {count}
-              </span>
-            </button>
-          ))}
-        </div>
-      </div>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+                  <div>
+                    <div style={{ fontSize: 16, fontWeight: 800, color: "var(--text-primary)" }}>
+                      {task.citizen_name} - {task.scheme_name}
+                    </div>
+                    <div style={{ fontSize: 11, color: "var(--text-secondary)" }}>
+                      संदर्भ: {task.request_reference}
+                    </div>
+                  </div>
+                  <span style={{ fontSize: 11, fontWeight: 700, padding: "3px 8px", borderRadius: 6, backgroundColor: task.status === "COMPLETED" ? "#DCFCE7" : "#FEF3C7", color: task.status === "COMPLETED" ? "#166534" : "#92400E" }}>
+                    {task.status}
+                  </span>
+                </div>
 
-      {/* Schemes */}
-      {filtered.length === 0 ? (
-        <div style={{ textAlign: "center", padding: "40px 16px", color: "var(--text-secondary)" }}>
-          <SchemeIcon size={40} style={{ color: "var(--border-strong)", marginBottom: 12 }} />
-          <div style={{ fontWeight: 600, fontSize: 16, marginBottom: 8 }}>No schemes found</div>
-          <div style={{ fontSize: 14 }}>Scheme information is temporarily unavailable.</div>
+                <div style={{ fontSize: 13, color: "var(--text-primary)" }}>
+                  <strong>आवश्यक मदत:</strong> {task.notes || "कागदपत्रांची तपासणी व अर्ज मार्गदर्शन."}
+                </div>
+
+                {task.status !== "COMPLETED" && (
+                  <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 8, backgroundColor: "#F8FAFC", padding: 12, borderRadius: 10 }}>
+                    <div style={{ fontSize: 12, fontWeight: 700 }}>आशा कार्यवाही (Record Action):</div>
+                    <input
+                      type="text"
+                      placeholder="अधिकृत अर्ज संदर्भ क्र. (उदा. PMMVY-MH-2026-9812)"
+                      value={officialRefInput}
+                      onChange={(e) => setOfficialRefInput(e.target.value)}
+                      style={{ padding: "8px 12px", borderRadius: 8, border: "1px solid var(--border)", fontSize: 13 }}
+                    />
+                    <input
+                      type="text"
+                      placeholder="तपासणी नोंदी (उदा. सर्व कागदपत्रे तपासली, अर्ज सबमिट केला)"
+                      value={outcomeNotes}
+                      onChange={(e) => setOutcomeNotes(e.target.value)}
+                      style={{ padding: "8px 12px", borderRadius: 8, border: "1px solid var(--border)", fontSize: 13 }}
+                    />
+                    <button
+                      onClick={() => handleCompleteAssistance(task.id)}
+                      style={{
+                        backgroundColor: "var(--primary)",
+                        color: "#FFFFFF",
+                        border: "none",
+                        borderRadius: 8,
+                        padding: "10px",
+                        fontSize: 13,
+                        fontWeight: 700,
+                        cursor: "pointer"
+                      }}
+                    >
+                      सहाय्य पूर्ण नोंदवा (Complete Assistance)
+                    </button>
+                  </div>
+                )}
+              </div>
+            ))
+          )}
         </div>
       ) : (
-        filtered.map((scheme) => (
-          <SchemeCard key={scheme.name} scheme={scheme} onExpand={() => {}} />
-        ))
+        <div>
+          {/* Search with voice */}
+          <div style={{ position: "relative", marginBottom: 16 }}>
+            <SearchIcon
+              size={18}
+              style={{ position: "absolute", left: 14, top: "50%", transform: "translateY(-50%)", color: "var(--text-disabled)" }}
+            />
+            <input
+              type="search"
+              placeholder="Ask about a health scheme"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              style={{
+                width: "100%",
+                height: 48,
+                paddingLeft: 44,
+                paddingRight: 56,
+                border: "1.5px solid var(--border)",
+                borderRadius: 12,
+                fontSize: 15,
+                color: "var(--text-primary)",
+                backgroundColor: "var(--surface)",
+                outline: "none",
+                boxSizing: "border-box",
+              }}
+              aria-label="Search health schemes"
+            />
+          </div>
+          {filtered.map((s, idx) => (
+            <SchemeCard key={idx} scheme={s} onExpand={() => {}} />
+          ))}
+        </div>
       )}
     </div>
   );
 }
+

@@ -1,9 +1,13 @@
 import React, { useState, useEffect } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import { useAuth } from "../auth/AuthContext";
+import { useLanguage } from "../context/LanguageContext";
 import { UserRole } from "@aarogya/shared-types";
+import { formatDate, SupportedLanguage } from "@aarogya/i18n";
 import {
   HomeIcon,
+  UserPlusIcon,
   TasksIcon,
   VisitIcon,
   PeopleIcon,
@@ -21,6 +25,7 @@ import {
 } from "../components/Icons";
 import { OnlineStatusBadge } from "../components/StatusBadge";
 import { UnsavedOfflineDataModal } from "../components/UnsavedOfflineDataModal";
+import { LocationChip } from "../components/LocationChip";
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -30,6 +35,7 @@ interface LayoutProps {
 
 export function AppLayout({ children, pageTitle, onBack }: LayoutProps) {
   const { user, logout, checkPendingOfflineData, logoutWithChoice } = useAuth();
+  const { currentLanguage, setLanguage, t } = useLanguage();
   const location = useLocation();
   const navigate = useNavigate();
   const [isMobile, setIsMobile] = useState(() => window.innerWidth < 900);
@@ -37,6 +43,7 @@ export function AppLayout({ children, pageTitle, onBack }: LayoutProps) {
   const [showLogoutModal, setShowLogoutModal] = useState(false);
   const [pendingStats, setPendingStats] = useState({ pendingCount: 0, draftsCount: 0 });
   const [isSyncingLogout, setIsSyncingLogout] = useState(false);
+
 
   const handleSignOutClick = async () => {
     const stats = await checkPendingOfflineData();
@@ -57,46 +64,76 @@ export function AppLayout({ children, pageTitle, onBack }: LayoutProps) {
 
   const role = user?.role || UserRole.ASHA_WORKER;
 
-  // Role-specific navigation items
+  // Role-specific navigation items translated via i18n
   let navItems: { path: string; label: string; Icon: React.FC<any> }[] = [];
 
   if (role === UserRole.ASHA_WORKER) {
     navItems = [
-      { path: "/asha/dashboard", label: "Home", Icon: HomeIcon },
-      { path: "/asha/tasks", label: "Tasks", Icon: TasksIcon },
-      { path: "/asha/followups", label: "Follow-ups", Icon: StethoscopeIcon },
-      { path: "/asha/visit", label: "Field Visit", Icon: VisitIcon },
-      { path: "/asha/people", label: "People", Icon: PeopleIcon },
-      { path: "/asha/schemes", label: "Schemes", Icon: SchemeIcon },
-      { path: "/asha/offline", label: "Offline", Icon: CloudOffIcon },
-      { path: "/asha/notifications", label: "Alerts", Icon: NotificationIcon },
+      { path: "/asha/dashboard", label: t("navigation.home", "Home"), Icon: HomeIcon },
+      { path: "/asha/patients/new", label: t("navigation.add_patient", "Add Patient"), Icon: UserPlusIcon },
+      { path: "/asha/tasks", label: t("navigation.tasks", "Tasks"), Icon: TasksIcon },
+      { path: "/asha/followups", label: t("navigation.followups", "Follow-ups"), Icon: StethoscopeIcon },
+      { path: "/asha/visit", label: t("navigation.field_visits", "Field Visits"), Icon: VisitIcon },
+      { path: "/asha/people", label: t("navigation.people", "People"), Icon: PeopleIcon },
+      { path: "/asha/schemes", label: t("navigation.schemes", "Schemes"), Icon: SchemeIcon },
+      { path: "/asha/offline", label: t("common.offline", "Offline"), Icon: CloudOffIcon },
+      { path: "/asha/notifications", label: t("navigation.alerts", "Alerts"), Icon: NotificationIcon },
     ];
   } else if (role === UserRole.PHC_DOCTOR) {
     navItems = [
-      { path: "/doctor/dashboard", label: "Dashboard", Icon: HomeIcon },
-      { path: "/doctor/referrals", label: "Referral Queue", Icon: StethoscopeIcon },
-      { path: "/doctor/consultation", label: "Consultation", Icon: ActivityIcon },
-      { path: "/doctor/patients", label: "Patients", Icon: PeopleIcon },
-      { path: "/doctor/prescriptions", label: "Prescriptions", Icon: PillIcon },
-      { path: "/doctor/reports", label: "Reports", Icon: ShieldCheckIcon },
+      { path: "/doctor/dashboard", label: t("navigation.dashboard", "Dashboard"), Icon: HomeIcon },
+      { path: "/doctor/direct-requests", label: t("navigation.direct_requests", "Citizen Requests"), Icon: StethoscopeIcon },
+      { path: "/doctor/referrals", label: t("navigation.referrals", "Referrals"), Icon: HospitalIcon },
+      { path: "/doctor/consultations", label: t("navigation.consultations", "Consultations"), Icon: ActivityIcon },
+      { path: "/doctor/followups", label: t("navigation.followups", "ASHA Follow-ups"), Icon: VisitIcon },
+      { path: "/doctor/patients", label: t("navigation.patients", "Patients"), Icon: PeopleIcon },
+      { path: "/doctor/investigations", label: t("navigation.investigations", "Investigations"), Icon: ShieldCheckIcon },
+      { path: "/doctor/prescriptions", label: t("navigation.prescriptions", "Prescriptions"), Icon: PillIcon },
+      { path: "/doctor/reports", label: t("navigation.reports", "Reports"), Icon: TrendingUpIcon },
+      { path: "/doctor/alerts", label: t("navigation.alerts", "Alerts"), Icon: NotificationIcon },
+      { path: "/doctor/system-status", label: t("navigation.system_status", "System Status"), Icon: CloudOffIcon },
     ];
   } else if (role === UserRole.DISTRICT_ADMIN) {
     navItems = [
-      { path: "/admin/dashboard", label: "Overview", Icon: HomeIcon },
-      { path: "/admin/alerts", label: "Cluster Alerts", Icon: ActivityIcon },
-      { path: "/admin/referrals", label: "Referral Trends", Icon: TrendingUpIcon },
-      { path: "/admin/schemes", label: "Scheme Analytics", Icon: SchemeIcon },
-      { path: "/admin/system-health", label: "System Health", Icon: ShieldCheckIcon },
+      { path: "/admin/dashboard", label: t("navigation.dashboard", "Overview"), Icon: HomeIcon },
+      { path: "/admin/alerts", label: t("navigation.cluster_alerts", "Cluster Alerts"), Icon: ActivityIcon },
+      { path: "/admin/referrals", label: t("navigation.referral_trends", "Referral Trends"), Icon: TrendingUpIcon },
+      { path: "/admin/schemes", label: t("navigation.scheme_analytics", "Scheme Analytics"), Icon: SchemeIcon },
+      { path: "/admin/system-health", label: t("navigation.system_health", "System Health"), Icon: ShieldCheckIcon },
     ];
   }
 
   const roleLabel = 
-    role === UserRole.ASHA_WORKER ? "ASHA Worker" :
-    role === UserRole.PHC_DOCTOR ? "PHC Medical Officer" : "District Health Officer";
+    role === UserRole.ASHA_WORKER ? t("authentication.role_asha", "ASHA Worker") :
+    role === UserRole.PHC_DOCTOR ? t("authentication.role_doctor", "PHC Medical Officer") : t("authentication.role_admin", "District Health Officer");
 
   const handleLogout = () => {
     logout();
     navigate("/login");
+  };
+
+  const getTranslatedTitle = () => {
+    if (pageTitle) return pageTitle;
+    const path = location.pathname;
+    if (path.includes("/asha/cases/")) return t("case.timeline", "Patient Case Review");
+    if (path.includes("/asha/patients/new")) return t("navigation.add_patient", "Add Patient");
+    if (path.includes("/asha/tasks")) return t("navigation.tasks", "Tasks");
+    if (path.includes("/asha/followups")) return t("navigation.followups", "Follow-ups");
+    if (path.includes("/asha/visit")) return t("navigation.field_visits", "Field Visits");
+    if (path.includes("/asha/people")) return t("navigation.people", "People");
+    if (path.includes("/asha/schemes")) return t("navigation.schemes", "Schemes");
+    if (path.includes("/asha/offline")) return t("common.offline", "Offline");
+    if (path.includes("/asha/notifications")) return t("navigation.alerts", "Alerts");
+    if (path.includes("/doctor/referrals")) return t("navigation.referrals", "Referral Queue");
+    if (path.includes("/doctor/consultation")) return t("doctor.consultation_workspace_title", "Consultation");
+    if (path.includes("/doctor/patients")) return t("navigation.patients", "Patients");
+    if (path.includes("/doctor/prescriptions")) return t("navigation.prescriptions", "Prescriptions");
+    if (path.includes("/doctor/reports")) return t("navigation.reports", "Reports");
+    if (path.includes("/admin/alerts")) return t("navigation.cluster_alerts", "Cluster Alerts");
+    if (path.includes("/admin/referrals")) return t("navigation.referral_trends", "Referral Trends");
+    if (path.includes("/admin/schemes")) return t("navigation.scheme_analytics", "Scheme Analytics");
+    if (path.includes("/admin/system-health")) return t("navigation.system_health", "System Health");
+    return t("navigation.dashboard", "Dashboard");
   };
 
   if (isMobile) {
@@ -136,12 +173,37 @@ export function AppLayout({ children, pageTitle, onBack }: LayoutProps) {
           )}
           <div style={{ flex: 1 }}>
             <h1 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: "var(--text-primary)" }}>
-              {pageTitle || "Aarogya Sahayak"}
+              {getTranslatedTitle()}
             </h1>
             <p style={{ margin: 0, fontSize: 11, color: "var(--text-secondary)" }}>
               {user?.name || "Staff"} · {roleLabel}
             </p>
           </div>
+          <select
+            value={currentLanguage}
+            onChange={(e) => setLanguage(e.target.value as SupportedLanguage)}
+            style={{
+              fontSize: 11,
+              padding: "4px 8px",
+              borderRadius: 6,
+              border: "1px solid var(--border)",
+              backgroundColor: "var(--surface)",
+              color: "var(--text-primary)",
+              fontWeight: 700,
+              cursor: "pointer",
+            }}
+            title={t("common.language", "Language")}
+          >
+            <option value="mr-IN">मराठी</option>
+            <option value="hi-IN">हिंदी</option>
+            <option value="en-IN">English</option>
+          </select>
+          <LocationChip
+            userRole={user?.role}
+            defaultVillage={user?.village_name || "Kalyanpur Village"}
+            defaultFacility={user?.facility_name || "Kalyanpur PHC"}
+            isMobile={true}
+          />
           <OnlineStatusBadge isOnline={isOnline} />
         </header>
 
@@ -228,7 +290,10 @@ export function AppLayout({ children, pageTitle, onBack }: LayoutProps) {
           </div>
           <div>
             <div style={{ fontSize: 16, fontWeight: 700, color: "var(--text-primary)" }}>
-              Aarogya Sahayak
+              {t("common.app_name", "Aarogya Sahayak")}
+            </div>
+            <div style={{ fontSize: 11, color: "var(--text-secondary)", fontWeight: 500 }}>
+              {t("common.tagline", "AI-Powered Rural Healthcare Platform")}
             </div>
             <div style={{ fontSize: 12, color: "var(--primary)", fontWeight: 600 }}>
               {roleLabel}
@@ -236,23 +301,47 @@ export function AppLayout({ children, pageTitle, onBack }: LayoutProps) {
           </div>
         </div>
 
-        {/* User Card */}
-        <div style={{ padding: "16px 24px", backgroundColor: "var(--primary-light)", margin: "16px", borderRadius: 10 }}>
-          <div style={{ fontSize: 14, fontWeight: 700, color: "var(--primary-dark)" }}>
-            {user?.name || "Staff Member"}
+        {/* User Profile Card */}
+        <div style={{ padding: "14px 16px", backgroundColor: "var(--primary-light)", margin: "12px 16px", borderRadius: 10, display: "flex", flexDirection: "column", gap: 8 }}>
+          <div>
+            <div style={{ fontSize: 14, fontWeight: 700, color: "var(--primary-dark)" }}>
+              {user?.name || "Sita Patel"}
+            </div>
+            <div style={{ fontSize: 12, color: "var(--text-secondary)", marginTop: 2 }}>
+              <span style={{ fontWeight: 600 }}>Registered:</span> {role === UserRole.PHC_DOCTOR ? (user?.facility_name || "Kalyanpur PHC") : (user?.village_name || "Kalyanpur Village")}
+            </div>
           </div>
-          <div style={{ fontSize: 12, color: "var(--text-secondary)", marginTop: 2 }}>
-            {user?.facility_name || "Kalyanpur Health Center"}
-          </div>
-          <div style={{ marginTop: 8 }}>
+
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
             <OnlineStatusBadge isOnline={isOnline} />
+            <select
+              value={currentLanguage}
+              onChange={(e) => setLanguage(e.target.value as SupportedLanguage)}
+              style={{
+                fontSize: 11,
+                padding: "3px 6px",
+                borderRadius: 6,
+                border: "1px solid var(--border)",
+                backgroundColor: "var(--surface)",
+                color: "var(--text-primary)",
+                fontWeight: 600,
+                cursor: "pointer",
+                minHeight: 28
+              }}
+              title={t("common.language", "Preferred Language")}
+            >
+              <option value="mr-IN">मराठी (mr)</option>
+              <option value="hi-IN">हिंदी (hi)</option>
+              <option value="en-IN">English (en)</option>
+            </select>
           </div>
         </div>
 
         {/* Nav Links */}
-        <nav style={{ flex: 1, padding: "8px 16px", display: "flex", flexDirection: "column", gap: 4 }}>
+        <nav style={{ flex: 1, padding: "8px 16px", display: "flex", flexDirection: "column", gap: 4, overflowY: "auto" }}>
           {navItems.map((item) => {
             const isActive = location.pathname.startsWith(item.path);
+            const isAlertItem = item.path === "/doctor/alerts";
             return (
               <Link
                 key={item.path}
@@ -260,6 +349,7 @@ export function AppLayout({ children, pageTitle, onBack }: LayoutProps) {
                 style={{
                   display: "flex",
                   alignItems: "center",
+                  justifyContent: "space-between",
                   gap: 12,
                   padding: "10px 14px",
                   borderRadius: 8,
@@ -271,8 +361,24 @@ export function AppLayout({ children, pageTitle, onBack }: LayoutProps) {
                   transition: "all 150ms ease",
                 }}
               >
-                <item.Icon size={20} color={isActive ? "var(--primary)" : "var(--text-secondary)"} />
-                <span>{item.label}</span>
+                <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                  <item.Icon size={20} color={isActive ? "var(--primary)" : "var(--text-secondary)"} />
+                  <span>{item.label}</span>
+                </div>
+                {isAlertItem && (
+                  <span
+                    style={{
+                      padding: "2px 8px",
+                      borderRadius: 10,
+                      backgroundColor: "#DC2626",
+                      color: "#FFF",
+                      fontSize: 11,
+                      fontWeight: 800
+                    }}
+                  >
+                    4
+                  </span>
+                )}
               </Link>
             );
           })}
@@ -299,7 +405,7 @@ export function AppLayout({ children, pageTitle, onBack }: LayoutProps) {
             }}
           >
             <LogoutIcon size={16} color="var(--urgent)" />
-            <span>Sign Out</span>
+            <span>{t("common.logout", "Sign Out")}</span>
           </button>
         </div>
       </aside>
@@ -362,17 +468,23 @@ export function AppLayout({ children, pageTitle, onBack }: LayoutProps) {
               </button>
             )}
             <h1 style={{ margin: 0, fontSize: 22, fontWeight: 700, color: "var(--text-primary)" }}>
-              {pageTitle || "Dashboard"}
+              {getTranslatedTitle()}
             </h1>
           </div>
 
           <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+            <LocationChip
+              userRole={user?.role}
+              defaultVillage={user?.village_name || "Kalyanpur Village"}
+              defaultFacility={user?.facility_name || "Kalyanpur PHC"}
+            />
+            <div style={{ width: 1, height: 24, backgroundColor: "var(--divider)" }} />
             <div style={{ fontSize: 13, color: "var(--text-secondary)" }}>
-              Official National Health Mission Integration
+              {t("common.app_name", "Aarogya Sahayak")} — {roleLabel}
             </div>
             <div style={{ width: 1, height: 24, backgroundColor: "var(--divider)" }} />
             <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text-primary)" }}>
-              {new Date().toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}
+              {formatDate(new Date(), currentLanguage)}
             </div>
           </div>
         </header>
@@ -387,3 +499,4 @@ export function AppLayout({ children, pageTitle, onBack }: LayoutProps) {
     </div>
   );
 }
+

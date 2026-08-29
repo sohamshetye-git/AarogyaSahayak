@@ -21,7 +21,7 @@ def test_asha_responsive_viewports(browser: Browser, viewport_name: str, width: 
     expect(page.locator("text=Priority Tasks & Field Visits")).to_be_visible()
 
     # 2. Open Case
-    page.click("text=Sunita Devi")
+    page.goto(f"{FRONTEND_URL}/asha/cases/case-canonical-001")
     expect(page.locator("text=Case Ref:")).to_be_visible()
 
     # 3. Verify Timeline renders

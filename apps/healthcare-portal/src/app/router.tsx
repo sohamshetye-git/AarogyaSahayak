@@ -1,5 +1,5 @@
-import React from "react";
-import { Routes, Route, Navigate, Outlet } from "react-router-dom";
+import React, { useEffect } from "react";
+import { Routes, Route, Navigate, Outlet, useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 import { UserRole } from "@aarogya/shared-types";
 import { LoginScreen } from "../auth/LoginScreen";
@@ -11,16 +11,55 @@ import { AshaTasksScreen } from "../features/asha/TasksScreen";
 import { AshaFollowupsScreen } from "../features/asha/FollowupsScreen";
 import { AshaCitizenCaseScreen } from "../features/asha/CitizenCaseScreen";
 import { AshaFieldVisitScreen } from "../features/asha/FieldVisitScreen";
+import { AddPatientScreen } from "../features/asha/AddPatientScreen";
+import { FollowUpDetailScreen } from "../features/asha/FollowUpDetailScreen";
+import { AshaCitizenRequestDetailScreen } from "../features/asha/CitizenRequestDetailScreen";
 import { AshaPeopleScreen, AshaSchemesScreen, AshaOfflineScreen, AshaNotificationsScreen } from "../features/asha/SecondaryScreens";
 
 // Doctor Feature Screens
 import { DoctorDashboardScreen } from "../features/doctor/DoctorDashboardScreen";
+import { DirectCitizenRequestsScreen } from "../features/doctor/DirectCitizenRequestsScreen";
 import { DoctorConsultationScreen } from "../features/doctor/DoctorConsultationScreen";
-import { DoctorReferralQueueScreen, DoctorPatientsScreen } from "../features/doctor/SecondaryScreens";
+import { DoctorConsultationWorkspaceScreen } from "../features/doctor/DoctorConsultationWorkspaceScreen";
+import { DoctorReferralQueueScreen } from "../features/doctor/SecondaryScreens";
+import { DoctorPatientsScreen } from "../features/doctor/DoctorPatientsScreen";
+import { DoctorCaseTimelineScreen } from "../features/doctor/DoctorCaseTimelineScreen";
+import { DoctorActivityScreen } from "../features/doctor/DoctorActivityScreen";
+import { DoctorFollowupsScreen } from "../features/doctor/DoctorFollowupsScreen";
+import { DoctorPatientRecordScreen } from "../features/doctor/DoctorPatientRecordScreen";
+import { DoctorFollowUpDetailScreen } from "../features/doctor/DoctorFollowUpDetailScreen";
+import { DoctorInvestigationsScreen } from "../features/doctor/DoctorInvestigationsScreen";
+import { DoctorInvestigationDetailScreen } from "../features/doctor/DoctorInvestigationDetailScreen";
+import { DoctorPrescriptionsScreen } from "../features/doctor/DoctorPrescriptionsScreen";
+import { DoctorPrescriptionDetailScreen } from "../features/doctor/DoctorPrescriptionDetailScreen";
+import { DoctorReportsScreen } from "../features/doctor/DoctorReportsScreen";
+import { DoctorAlertsScreen } from "../features/doctor/DoctorAlertsScreen";
+import { DoctorAlertDetailScreen } from "../features/doctor/DoctorAlertDetailScreen";
 
 // Admin Feature Screens
 import { AdminDashboardScreen } from "../features/admin/AdminDashboardScreen";
 import { AdminReferralAnalyticsScreen, AdminSchemeAnalyticsScreen, AdminSystemHealthScreen } from "../features/admin/SecondaryScreens";
+
+// Login wrapper that automatically redirects if authenticated
+function PublicLoginRoute() {
+  const { isAuthenticated, user } = useAuth();
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    if (isAuthenticated && user) {
+      const uRole = String(user.role).toUpperCase();
+      if (uRole === "PHC_DOCTOR" || uRole.includes("DOCTOR")) {
+        navigate("/doctor/dashboard", { replace: true });
+      } else if (uRole === "DISTRICT_ADMIN" || uRole.includes("ADMIN")) {
+        navigate("/admin/dashboard", { replace: true });
+      } else {
+        navigate("/asha/dashboard", { replace: true });
+      }
+    }
+  }, [isAuthenticated, user, navigate]);
+
+  return <LoginScreen />;
+}
 
 // Role Protected Wrapper
 function ProtectedRoute({ allowedRoles }: { allowedRoles?: UserRole[] }) {
@@ -34,10 +73,11 @@ function ProtectedRoute({ allowedRoles }: { allowedRoles?: UserRole[] }) {
     return <Navigate to="/login" replace />;
   }
 
-  if (allowedRoles && !allowedRoles.includes(user.role as UserRole) && user.role !== UserRole.SYSTEM_ADMIN) {
-    if (user.role === UserRole.ASHA_WORKER) return <Navigate to="/asha/dashboard" replace />;
-    if (user.role === UserRole.PHC_DOCTOR) return <Navigate to="/doctor/dashboard" replace />;
-    if (user.role === UserRole.DISTRICT_ADMIN) return <Navigate to="/admin/dashboard" replace />;
+  const uRole = String(user.role).toUpperCase();
+  if (allowedRoles && !allowedRoles.some(r => String(r).toUpperCase() === uRole) && uRole !== "SYSTEM_ADMIN") {
+    if (uRole === "ASHA_WORKER" || uRole.includes("ASHA")) return <Navigate to="/asha/dashboard" replace />;
+    if (uRole === "PHC_DOCTOR" || uRole.includes("DOCTOR")) return <Navigate to="/doctor/dashboard" replace />;
+    if (uRole === "DISTRICT_ADMIN" || uRole.includes("ADMIN")) return <Navigate to="/admin/dashboard" replace />;
   }
 
   return (
@@ -52,22 +92,28 @@ export function AppRouter() {
 
   const getDefaultRedirect = () => {
     if (!isAuthenticated || !user) return "/login";
-    if (user.role === UserRole.PHC_DOCTOR) return "/doctor/dashboard";
-    if (user.role === UserRole.DISTRICT_ADMIN) return "/admin/dashboard";
+    const uRole = String(user.role).toUpperCase();
+    if (uRole === "PHC_DOCTOR" || uRole.includes("DOCTOR")) return "/doctor/dashboard";
+    if (uRole === "DISTRICT_ADMIN" || uRole.includes("ADMIN")) return "/admin/dashboard";
     return "/asha/dashboard";
   };
 
   return (
     <Routes>
-      <Route path="/login" element={<LoginScreen />} />
+      <Route path="/login" element={<PublicLoginRoute />} />
 
       {/* ASHA Routes */}
       <Route element={<ProtectedRoute allowedRoles={[UserRole.ASHA_WORKER]} />}>
         <Route path="/asha/dashboard" element={<AshaDashboardScreen />} />
+        <Route path="/asha/patients/new" element={<AddPatientScreen />} />
+        <Route path="/asha/add-patient" element={<AddPatientScreen />} />
         <Route path="/asha/tasks" element={<AshaTasksScreen />} />
         <Route path="/asha/followups" element={<AshaFollowupsScreen />} />
+        <Route path="/asha/followups/:id" element={<FollowUpDetailScreen />} />
+        <Route path="/asha/citizen-requests/:requestId" element={<AshaCitizenRequestDetailScreen />} />
         <Route path="/asha/cases/:caseId" element={<AshaCitizenCaseScreen />} />
         <Route path="/asha/visit" element={<AshaFieldVisitScreen />} />
+        <Route path="/asha/visits" element={<AshaFieldVisitScreen />} />
         <Route path="/asha/people" element={<AshaPeopleScreen />} />
         <Route path="/asha/schemes" element={<AshaSchemesScreen />} />
         <Route path="/asha/offline" element={<AshaOfflineScreen />} />
@@ -77,11 +123,28 @@ export function AppRouter() {
       {/* Doctor Routes */}
       <Route element={<ProtectedRoute allowedRoles={[UserRole.PHC_DOCTOR]} />}>
         <Route path="/doctor/dashboard" element={<DoctorDashboardScreen />} />
+        <Route path="/doctor/direct-requests" element={<DirectCitizenRequestsScreen />} />
         <Route path="/doctor/referrals" element={<DoctorReferralQueueScreen />} />
-        <Route path="/doctor/consultation" element={<DoctorConsultationScreen />} />
+        <Route path="/doctor/consultation" element={<DoctorConsultationWorkspaceScreen />} />
+        <Route path="/doctor/consultations" element={<DoctorConsultationWorkspaceScreen />} />
+        <Route path="/doctor/consultations/:consultationId" element={<DoctorConsultationScreen />} />
+        <Route path="/doctor/referrals/:referralId" element={<DoctorConsultationScreen />} />
+        <Route path="/doctor/cases/:caseId/timeline" element={<DoctorCaseTimelineScreen />} />
+        <Route path="/doctor/followups" element={<DoctorFollowupsScreen />} />
+        <Route path="/doctor/followups/:followUpId" element={<DoctorFollowUpDetailScreen />} />
         <Route path="/doctor/patients" element={<DoctorPatientsScreen />} />
-        <Route path="/doctor/prescriptions" element={<DoctorReferralQueueScreen />} />
-        <Route path="/doctor/reports" element={<DoctorPatientsScreen />} />
+        <Route path="/doctor/patients/:citizenId" element={<DoctorPatientRecordScreen />} />
+        <Route path="/doctor/patients/:patientProfileId" element={<DoctorPatientRecordScreen />} />
+        <Route path="/doctor/investigations" element={<DoctorInvestigationsScreen />} />
+        <Route path="/doctor/investigations/:investigationId" element={<DoctorInvestigationDetailScreen />} />
+        <Route path="/doctor/prescriptions" element={<DoctorPrescriptionsScreen />} />
+        <Route path="/doctor/prescriptions/:prescriptionId" element={<DoctorPrescriptionDetailScreen />} />
+        <Route path="/doctor/reports" element={<DoctorReportsScreen />} />
+        <Route path="/doctor/reports/:reportType" element={<DoctorReportsScreen />} />
+        <Route path="/doctor/alerts" element={<DoctorAlertsScreen />} />
+        <Route path="/doctor/alerts/:alertId" element={<DoctorAlertDetailScreen />} />
+        <Route path="/doctor/system-status" element={<DoctorPatientsScreen />} />
+        <Route path="/doctor/activity" element={<DoctorActivityScreen />} />
       </Route>
 
       {/* District Admin Routes */}

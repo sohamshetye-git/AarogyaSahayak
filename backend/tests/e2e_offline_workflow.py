@@ -14,15 +14,37 @@ def reset_case_state():
     
     # Reset the canonical case to NEW and clean up its visits/referrals before each test
     db = SessionLocal()
-    case = db.query(Case).filter(Case.id == "case-canonical-001").first()
-    if case:
-        case.status = CaseStatusEnum.NEW
-        # Delete old visits and referrals to avoid UniqueViolation
-        db.query(AshaVisit).filter(AshaVisit.case_id == case.id).delete()
-        db.query(Referral).filter(Referral.case_id == case.id).delete()
-        db.query(IdempotencyRecord).delete()
-        db.commit()
-    db.close()
+    try:
+        case = db.query(Case).filter(Case.id == "case-canonical-001").first()
+        if case:
+            case.status = CaseStatusEnum.NEW
+            # Delete old visits and referrals to avoid UniqueViolation
+            db.query(AshaVisit).filter(AshaVisit.case_id == case.id).delete()
+            db.query(Referral).filter(Referral.case_id == case.id).delete()
+            db.query(IdempotencyRecord).delete()
+            db.commit()
+        
+        # Clean up test patients
+        from app.models import CitizenProfile, FollowUp, SymptomObservation, VitalRecord, AuditLog
+        citizen = db.query(CitizenProfile).filter(CitizenProfile.display_name == "Anandi Bai Deshmukh").first()
+        if citizen:
+            citizen_id = citizen.id
+            db.query(FollowUp).filter(FollowUp.citizen_id == citizen_id).delete()
+            case_ids = [c.id for c in db.query(Case).filter(Case.citizen_id == citizen_id).all()]
+            if case_ids:
+                db.query(SymptomObservation).filter(SymptomObservation.case_id.in_(case_ids)).delete()
+                db.query(VitalRecord).filter(VitalRecord.case_id.in_(case_ids)).delete()
+                db.query(Referral).filter(Referral.case_id.in_(case_ids)).delete()
+                db.query(AshaVisit).filter(AshaVisit.case_id.in_(case_ids)).delete()
+                db.query(Case).filter(Case.citizen_id == citizen_id).delete()
+            db.query(AuditLog).filter(AuditLog.resource_id == citizen_id).delete()
+            db.query(CitizenProfile).filter(CitizenProfile.id == citizen_id).delete()
+            db.commit()
+    except Exception as e:
+        print(f"E2E fixture cleanup failed: {e}")
+        db.rollback()
+    finally:
+        db.close()
 
 def test_asha_offline_workflow_run_twice(page: Page):
     # ==================== RUN 1 ====================
@@ -32,7 +54,10 @@ def test_asha_offline_workflow_run_twice(page: Page):
     expect(page.locator("h1:has-text('Dashboard')")).to_be_visible()
     
     # --- 2. Open Urgent Case ---
-    page.click("text=Sunita Devi")
+    if page.locator("a:has-text('Review Urgent Case')").count() > 0:
+        page.locator("a:has-text('Review Urgent Case')").first.click()
+    else:
+        page.locator("text=Sunita Devi").first.click()
     expect(page.locator("button:has-text('Start Field Visit')")).to_be_visible()
     
     # --- 3. Acknowledge Case (Online) ---

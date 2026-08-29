@@ -22,6 +22,7 @@ export function VoiceInputModal({
   const [isTranscribing, setIsTranscribing] = useState(false);
   const [transcript, setTranscript] = useState("");
   const [consentAgreed, setConsentAgreed] = useState(true);
+  const [voiceProviderState, setVoiceProviderState] = useState<string>("Live");
 
   useEffect(() => {
     if (isOpen) {
@@ -29,6 +30,17 @@ export function VoiceInputModal({
       setHasRecorded(false);
       setIsTranscribing(false);
       setTranscript("");
+      // Dynamically detect provider state
+      apiClient.request<any>("/ai/integrations/health").then(res => {
+        const sarvam = res.find((s: any) => s.service?.includes("Sarvam"));
+        if (sarvam && sarvam.live_connected) {
+          setVoiceProviderState("Live");
+        } else {
+          setVoiceProviderState("Fallback");
+        }
+      }).catch(() => {
+        setVoiceProviderState("Offline");
+      });
     }
   }, [isOpen]);
 
@@ -45,8 +57,16 @@ export function VoiceInputModal({
       try {
         const res = await apiClient.transcribeVoice(preferredLanguage);
         setTranscript(res.transcript || "");
+        
+        const mode = res.processing_mode || "";
+        if (mode.includes("Sarvam Live") || mode.includes("Gemini")) {
+          setVoiceProviderState("Live");
+        } else {
+          setVoiceProviderState("Fallback");
+        }
       } catch (err) {
-        setTranscript("Patient evaluated during home field visit. Resting vitals measured and compliance with prescribed medication verified.");
+        setTranscript("Patient evaluated during home field visit. Vitals measured.");
+        setVoiceProviderState("Unavailable");
       } finally {
         setIsTranscribing(false);
       }
@@ -92,8 +112,11 @@ export function VoiceInputModal({
         {/* Header */}
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <div>
-            <h3 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: "var(--text-primary)" }}>
+            <h3 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: "var(--text-primary)", display: "flex", alignItems: "center", gap: 8 }}>
               🎙 Voice Capture ({preferredLanguage === "mr-IN" ? "मराठी" : preferredLanguage === "hi-IN" ? "हिंदी" : "English"})
+              <span style={{ fontSize: 11, padding: "2px 8px", borderRadius: 12, backgroundColor: voiceProviderState === "Live" ? "var(--success-bg)" : "var(--neutral-bg)", color: voiceProviderState === "Live" ? "var(--success)" : "var(--text-secondary)", fontWeight: 700 }}>
+                {voiceProviderState}
+              </span>
             </h3>
             <p style={{ margin: "4px 0 0", fontSize: 12, color: "var(--text-secondary)" }}>
               Target Field: {fieldLabel}

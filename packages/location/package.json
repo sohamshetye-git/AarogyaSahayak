@@ -1,0 +1,12 @@
+{
+  "name": "@aarogya/location",
+  "version": "1.0.0",
+  "main": "index.ts",
+  "types": "index.ts",
+  "dependencies": {
+    "@aarogya/shared-types": "^1.0.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.3"
+  }
+}

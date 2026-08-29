@@ -1,0 +1,62 @@
+# Environment files
+.env
+.env.*
+!.env.example
+*.env
+*.env.local
+
+# Credentials & secrets
+*neo4j*.txt
+*milvus*.txt
+*secret*.txt
+*credential*.txt
+aurabd_*.txt
+
+# Dependencies
+node_modules/
+.venv/
+venv/
+env/
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Build & Test outputs
+dist/
+build/
+*.egg-info/
+.pytest_cache/
+coverage/
+.nyc_output/
+.coverage
+htmlcov/
+
+# Playwright & Browser testing artifacts
+test-results/
+playwright-report/
+blob-report/
+playwright/.cache/
+tests/screenshots/
+*.png
+*.jpg
+*.jpeg
+*.webp
+*.mp4
+
+# Databases & dumps
+*.db
+*.db-journal
+*.sqlite
+*.sqlite3
+*.sql
+*.dump
+*.tar.gz
+
+# Logs & scratch
+*.log
+logs/
+scratch/
+.system_generated/
+*.tmp
+.DS_Store
+Thumbs.db

@@ -11,7 +11,8 @@ class EmergencyRuleEvaluator:
     CRITICAL_SYMPTOMS = {
         "chest pain", "severe breathlessness", "unconscious", "unconsciousness",
         "convulsions", "seizure", "heavy bleeding", "severe bleeding",
-        "coughing blood", "self harm", "suicide"
+        "coughing blood", "self harm", "suicide", "breathing difficulty",
+        "difficulty breathing", "shortness of breath", "breathlessness"
     }
 
     MATERNAL_RED_FLAGS = {
@@ -47,7 +48,7 @@ class EmergencyRuleEvaluator:
             return (
                 CasePriorityEnum.URGENT,
                 True,
-                "Pregnancy-related warning signs with elevated blood pressure (Possible Pre-eclampsia)",
+                "Pregnancy-related warning signs were recorded, including elevated blood pressure. Urgent PHC evaluation is recommended.",
                 "Warning signs were detected for pregnancy health. We have alerted your assigned ASHA worker immediately. Please rest in a calm position while assistance is coordinated."
             )
 

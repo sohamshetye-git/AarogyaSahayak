@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models import User, WorkerProfile, CitizenProfile
-from app.schemas import LoginRequest, StandardResponse, AuthResponseData, UserSessionDTO
+from app.schemas import LoginRequest, StandardResponse, AuthResponseData, UserSessionDTO, UserPreferencesUpdateRequest
 from app.auth.security import verify_password, create_access_token, create_refresh_token
 from app.dependencies import get_current_user
 
@@ -81,6 +81,42 @@ def get_current_user_profile(current_user: User = Depends(get_current_user)):
         name=current_user.name,
         role=current_user.role.value,
         preferred_language=current_user.preferred_language or "mr-IN",
+        facility_id=facility_id,
+        facility_name=facility_name,
+        village_ids=village_ids,
+        district_id=district_id
+    )
+    return StandardResponse(data=user_dto.model_dump())
+
+@router.patch("/me/preferences", response_model=StandardResponse)
+def update_user_preferences(
+    req: UserPreferencesUpdateRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    current_user.preferred_language = req.preferred_language
+    if current_user.citizen_profile:
+        current_user.citizen_profile.preferred_language = req.preferred_language
+    db.commit()
+    db.refresh(current_user)
+
+    facility_id = None
+    facility_name = None
+    village_ids = None
+    district_id = None
+
+    if current_user.worker_profile:
+        facility_id = current_user.worker_profile.facility_id
+        facility_name = current_user.worker_profile.facility_name
+        village_ids = current_user.worker_profile.village_ids
+        district_id = current_user.worker_profile.district_id
+
+    user_dto = UserSessionDTO(
+        id=current_user.id,
+        identifier=current_user.identifier,
+        name=current_user.name,
+        role=current_user.role.value,
+        preferred_language=current_user.preferred_language,
         facility_id=facility_id,
         facility_name=facility_name,
         village_ids=village_ids,

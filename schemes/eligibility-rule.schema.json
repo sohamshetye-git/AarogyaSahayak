@@ -1,0 +1,129 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://aarogyasahayak.example/schemas/eligibility-rule.schema.json",
+  "title": "AarogyaSahayak Eligibility Rule Set",
+  "type": "object",
+  "required": ["rule_set_id", "scheme_version_id", "result_ceiling", "expression"],
+  "properties": {
+    "rule_set_id": {"type": "string", "minLength": 1},
+    "scheme_version_id": {"type": "string", "minLength": 1},
+    "name": {"type": "string"},
+    "result_ceiling": {
+      "enum": ["SERVICE_AVAILABLE", "POTENTIALLY_ELIGIBLE", "LIKELY_ELIGIBLE", "OFFICIAL_VERIFICATION_REQUIRED"]
+    },
+    "official_verification_required": {"type": "boolean", "default": true},
+    "effective_from": {"type": ["string", "null"], "format": "date"},
+    "effective_until": {"type": ["string", "null"], "format": "date"},
+    "expression": {"$ref": "#/$defs/expression"}
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "operator": {
+      "enum": [
+        "equals", "not_equals", "in", "not_in", "lt", "lte", "gt", "gte",
+        "between", "contains", "exists", "date_before", "date_after"
+      ]
+    },
+    "commonMetadata": {
+      "type": "object",
+      "properties": {
+        "rule_id": {"type": "string"},
+        "label": {"type": "string"},
+        "source_assertion_id": {"type": "string", "minLength": 1},
+        "missing_policy": {"enum": ["UNKNOWN"], "default": "UNKNOWN"},
+        "effective_from": {"type": ["string", "null"], "format": "date"},
+        "effective_until": {"type": ["string", "null"], "format": "date"},
+        "official_verification_required": {"type": "boolean", "default": true}
+      }
+    },
+    "atom": {
+      "type": "object",
+      "required": ["field", "operator", "value", "source_assertion_id", "missing_policy"],
+      "properties": {
+        "rule_id": {"type": "string"},
+        "label": {"type": "string"},
+        "field": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_]*)*$"
+        },
+        "operator": {"$ref": "#/$defs/operator"},
+        "value": {},
+        "unit": {"type": ["string", "null"]},
+        "source_assertion_id": {"type": "string", "minLength": 1},
+        "missing_policy": {"enum": ["UNKNOWN"]},
+        "effective_from": {"type": ["string", "null"], "format": "date"},
+        "effective_until": {"type": ["string", "null"], "format": "date"},
+        "official_verification_required": {"type": "boolean", "default": true},
+        "normalization": {
+          "type": "object",
+          "properties": {
+            "trim": {"type": "boolean"},
+            "casefold": {"type": "boolean"},
+            "date_basis": {"type": "string"}
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "allGroup": {
+      "type": "object",
+      "required": ["all"],
+      "properties": {
+        "rule_id": {"type": "string"},
+        "label": {"type": "string"},
+        "all": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"$ref": "#/$defs/expression"}
+        }
+      },
+      "additionalProperties": false
+    },
+    "anyGroup": {
+      "type": "object",
+      "required": ["any"],
+      "properties": {
+        "rule_id": {"type": "string"},
+        "label": {"type": "string"},
+        "any": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"$ref": "#/$defs/expression"}
+        }
+      },
+      "additionalProperties": false
+    },
+    "notGroup": {
+      "type": "object",
+      "required": ["not"],
+      "properties": {
+        "rule_id": {"type": "string"},
+        "label": {"type": "string"},
+        "not": {"$ref": "#/$defs/expression"}
+      },
+      "additionalProperties": false
+    },
+    "conditional": {
+      "type": "object",
+      "required": ["if", "then"],
+      "properties": {
+        "rule_id": {"type": "string"},
+        "label": {"type": "string"},
+        "if": {"$ref": "#/$defs/expression"},
+        "then": {"$ref": "#/$defs/expression"},
+        "else": {"$ref": "#/$defs/expression"}
+      },
+      "additionalProperties": false
+    },
+    "expression": {
+      "oneOf": [
+        {"$ref": "#/$defs/atom"},
+        {"$ref": "#/$defs/allGroup"},
+        {"$ref": "#/$defs/anyGroup"},
+        {"$ref": "#/$defs/notGroup"},
+        {"$ref": "#/$defs/conditional"}
+      ]
+    }
+  }
+}

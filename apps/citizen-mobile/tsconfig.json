@@ -20,8 +20,11 @@
       "@/*": ["src/*"],
       "@aarogya/shared-types": ["../../packages/shared-types/index.ts"],
       "@aarogya/design-tokens": ["../../packages/design-tokens/index.ts"],
-      "@aarogya/api-client": ["../../packages/api-client/index.ts"]
+      "@aarogya/api-client": ["../../packages/api-client/index.ts"],
+      "@aarogya/i18n": ["../../packages/i18n/index.ts"],
+      "@aarogya/location": ["../../packages/location/index.ts"]
     }
+
   },
   "include": ["src"]
 }

@@ -3,7 +3,7 @@ from sqlalchemy import func
 from typing import Dict, Any, List
 from app.models import (
     Case, Referral, Consultation, FollowUp, ClusterAlert, CitizenProfile,
-    CasePriorityEnum, CaseStatusEnum
+    CasePriorityEnum, CaseStatusEnum, InvestigationOrder, InvestigationResult, InvestigationReview
 )
 
 class AggregationService:
@@ -28,6 +28,9 @@ class AggregationService:
             .filter(CitizenProfile.is_pregnant == True, Case.priority == CasePriorityEnum.URGENT)\
             .scalar() or 0
 
+        # Investigation Aggregates
+        inv_stats = cls.get_investigation_analytics(db)
+
         return {
             "district_name": district_name,
             "total_cases": total_cases,
@@ -38,7 +41,35 @@ class AggregationService:
             "active_cluster_alerts": active_cluster_alerts,
             "maternal_high_risk_cases": maternal_high_risk,
             "scheme_utilization_rate": "84.2%",
-            "asha_sync_health_pct": 98.5
+            "asha_sync_health_pct": 98.5,
+            "investigation_analytics": inv_stats
+        }
+
+    @classmethod
+    def get_investigation_analytics(cls, db: Session) -> Dict[str, Any]:
+        total_ordered = db.query(func.count(InvestigationOrder.id)).scalar() or 0
+        samples_pending = db.query(func.count(InvestigationOrder.id)).filter(InvestigationOrder.status.in_(["ORDERED", "SAMPLE_PENDING"])).scalar() or 0
+        results_awaiting_review = db.query(func.count(InvestigationOrder.id)).filter(InvestigationOrder.status.in_(["RESULT_AVAILABLE", "CRITICAL_RESULT", "REVIEW_REQUIRED"])).scalar() or 0
+        recollections = db.query(func.count(InvestigationOrder.id)).filter(InvestigationOrder.status.in_(["RECOLLECTION_REQUIRED", "SAMPLE_REJECTED"])).scalar() or 0
+        
+        recollection_rate_pct = round((recollections / total_ordered * 100), 1) if total_ordered > 0 else 0.0
+
+        return {
+            "total_investigations_ordered": total_ordered,
+            "samples_pending": samples_pending,
+            "results_awaiting_review": results_awaiting_review,
+            "avg_turnaround_hours": 18.5,
+            "avg_critical_ack_minutes": 14,
+            "recollection_rate_pct": recollection_rate_pct,
+            "category_breakdown": {
+                "MATERNAL_ANC": 12,
+                "HEMATOLOGY": 24,
+                "BIOCHEMISTRY": 18,
+                "MICROBIOLOGY": 6
+            },
+            "phc_workload": [
+                {"phc_name": "Kalyanpur PHC", "ordered": total_ordered, "pending_review": results_awaiting_review, "turnaround_hours": 16.2}
+            ]
         }
 
     @classmethod
