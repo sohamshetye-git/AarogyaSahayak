@@ -1213,9 +1213,11 @@ def get_citizen_scheme_categories(db: Session = Depends(get_db)):
         try:
             from app.schemes.import_kb import import_knowledge_base
             import_knowledge_base(db_session=db)
+            db.commit()
             schemes = db.query(SchemeModel).all()
         except Exception as e:
-            pass
+            import logging
+            logging.getLogger("aarogya-backend").error(f"Error auto-importing schemes: {e}")
     categories_data = []
 
     for cat in CATEGORY_DEFINITIONS:
