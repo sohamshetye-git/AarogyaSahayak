@@ -54,6 +54,22 @@ async def lifespan(app: FastAPI):
     
     # Seed database if empty
     seed_database()
+
+    # Explicitly ensure Government Schemes Knowledge Base is populated
+    try:
+        from app.models import SchemeModel
+        from app.schemes.import_kb import import_knowledge_base
+        from app.database import SessionLocal
+        with SessionLocal() as db_sess:
+            count = db_sess.query(SchemeModel).count()
+            if count == 0:
+                logger.info("Scheme catalog is empty. Importing knowledge base...")
+                import_knowledge_base(db_session=db_sess)
+                logger.info(f"Imported schemes knowledge base successfully. Total schemes now: {db_sess.query(SchemeModel).count()}")
+            else:
+                logger.info(f"Scheme catalog already populated with {count} schemes.")
+    except Exception as e:
+        logger.error(f"Failed to populate schemes knowledge base in lifespan: {e}")
     
     # Ingest clinical guidelines into Milvus RAG
     try:

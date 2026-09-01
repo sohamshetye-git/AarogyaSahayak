@@ -1209,6 +1209,13 @@ def get_citizen_scheme_categories(db: Session = Depends(get_db)):
     12 rural-friendly category cards with database-derived active scheme counts.
     """
     schemes = db.query(SchemeModel).all()
+    if len(schemes) == 0:
+        try:
+            from app.schemes.import_kb import import_knowledge_base
+            import_knowledge_base(db_session=db)
+            schemes = db.query(SchemeModel).all()
+        except Exception as e:
+            pass
     categories_data = []
 
     for cat in CATEGORY_DEFINITIONS:
@@ -1257,6 +1264,13 @@ def get_all_schemes(
     Authoritative list of schemes imported from PostgreSQL/SQLite with category filtering & envelope.
     """
     schemes = db.query(SchemeModel).all()
+    if len(schemes) == 0:
+        try:
+            from app.schemes.import_kb import import_knowledge_base
+            import_knowledge_base(db_session=db)
+            schemes = db.query(SchemeModel).all()
+        except Exception as e:
+            pass
     results = []
 
     filter_cat_id = category_id or category
