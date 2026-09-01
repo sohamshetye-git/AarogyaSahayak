@@ -94,6 +94,7 @@ class Settings(BaseSettings):
 
     # Citizen OTP & Guest Access
     OTP_MODE: str = "MOCK" # 'MOCK', 'BHASHINI', 'SARVAM', 'TWILIO', 'MSG91'
+    DEMO_OTP_CODE: str = "123456"
     OTP_TEST_CODE: str = "123456"
     OTP_EXPIRY_SECONDS: int = 300
     OTP_MAX_ATTEMPTS: int = 5
@@ -102,14 +103,48 @@ class Settings(BaseSettings):
     OTP_SMS_PROVIDER_API_KEY: Optional[str] = None
     OTP_SMS_SENDER_ID: Optional[str] = None
 
+    # Twilio SMS / Verify
+    TWILIO_ACCOUNT_SID: Optional[str] = None
+    TWILIO_AUTH_TOKEN: Optional[str] = None
+    TWILIO_FROM_NUMBER: Optional[str] = None
+
+    # MSG91 SMS / Flow
+    MSG91_AUTH_KEY: Optional[str] = None
+    MSG91_TEMPLATE_ID: Optional[str] = None
+    MSG91_SENDER_ID: Optional[str] = None
+
     model_config = SettingsConfigDict(env_file=".env", case_sensitive=True, extra="allow")
 
 settings = Settings()
 
 def validate_production_settings():
     env = (settings.ENVIRONMENT or "").lower()
-    if env in ["production", "prod"] and (settings.OTP_MODE or "").upper() == "MOCK":
-        raise RuntimeError("CRITICAL SECURITY ERROR: OTP_MODE=MOCK is strictly forbidden in production environments!")
+    otp_mode = (settings.OTP_MODE or "").upper()
+    integration_mode = (settings.INTEGRATION_MODE or "").lower()
+    gemini_mode = (settings.GEMINI_MODE or "").lower()
+    sarvam_mode = (settings.SARVAM_MODE or "").lower()
+    tavily_mode = (settings.TAVILY_MODE or "").lower()
+
+    if env in ["production", "prod"] and otp_mode == "MOCK":
+        raise RuntimeError("CRITICAL CONFIGURATION ERROR: OTP_MODE=MOCK is strictly forbidden in production environments!")
+
+    # Live Mode Validations (fail safely at startup if live mode selected without required credentials)
+    if gemini_mode == "live" and not settings.GEMINI_API_KEY:
+        raise RuntimeError("CRITICAL CONFIGURATION ERROR: GEMINI_MODE=live requires GEMINI_API_KEY to be set.")
+
+    if sarvam_mode == "live" and not settings.SARVAM_API_KEY:
+        raise RuntimeError("CRITICAL CONFIGURATION ERROR: SARVAM_MODE=live requires SARVAM_API_KEY to be set.")
+
+    if tavily_mode == "live" and not settings.TAVILY_API_KEY:
+        raise RuntimeError("CRITICAL CONFIGURATION ERROR: TAVILY_MODE=live requires TAVILY_API_KEY to be set.")
+
+    if otp_mode == "TWILIO":
+        if not settings.TWILIO_ACCOUNT_SID or not settings.TWILIO_AUTH_TOKEN or not settings.TWILIO_FROM_NUMBER:
+            raise RuntimeError("CRITICAL CONFIGURATION ERROR: OTP_MODE=TWILIO requires TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, and TWILIO_FROM_NUMBER.")
+
+    if otp_mode == "MSG91":
+        if not settings.MSG91_AUTH_KEY and not settings.OTP_SMS_PROVIDER_API_KEY:
+            raise RuntimeError("CRITICAL CONFIGURATION ERROR: OTP_MODE=MSG91 requires MSG91_AUTH_KEY or OTP_SMS_PROVIDER_API_KEY.")
 
 validate_production_settings()
 

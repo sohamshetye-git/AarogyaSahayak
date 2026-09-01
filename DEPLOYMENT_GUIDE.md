@@ -65,23 +65,40 @@ Render Dashboard
 * `JWT_SECRET`: Auto-generated 64-character secret (`generateValue: true`).
 * `JWT_REFRESH_SECRET`: Auto-generated 64-character secret (`generateValue: true`).
 
-#### Staging vs. Production Variables:
+#### Live-Integration Hackathon Demo vs. Staging vs. Production Variables:
 
-| Variable | Staging Value | Production Value | Purpose |
+| Variable | Free Mock Staging | Live-Integration Demo | Production | Purpose |
+| :--- | :--- | :--- | :--- | :--- |
+| `ENVIRONMENT` | `staging` | `staging` | `production` | Controls environment behavior & security guards |
+| `INTEGRATION_MODE` | `mock` | `live` | `live` | Master integration toggle |
+| `OTP_MODE` | `MOCK` | `TWILIO` (or `MSG91`) | `TWILIO` / `MSG91` | Real SMS OTP delivery adapter |
+| `GEMINI_MODE` | `mock` | `live` | `live` | Google Gemini reasoning engine |
+| `SARVAM_MODE` | `mock` | `live` | `live` | Sarvam Indic TTS & Voice engine |
+| `TAVILY_MODE` | `mock` | `live` | `live` | Tavily official government search |
+| `NEO4J_MODE` | `mock` | `mock` | `live` | Knowledge graph (mocked unless Neo4j URI provided) |
+| `MILVUS_MODE` | `mock` | `mock` | `live` | Vector search (in-memory/mocked unless Milvus URI provided) |
+
+### 2.1 Private Credential Checklist for Render Dashboard
+
+When setting up a **Live-Integration Hackathon Demo**, configure these secret environment variables directly in your private Render Dashboard (`sync: false` in `render.yaml` ensures credentials are never stored in git):
+
+| Environment Variable | Provider / Purpose | Where to Obtain | Required in Live Mode? |
 | :--- | :--- | :--- | :--- |
-| `ENVIRONMENT` | `staging` | `production` | Controls security and validation guards |
-| `OTP_MODE` | `MOCK` | `TWILIO` / `MSG91` | OTP delivery mechanism (see Section 4) |
-| `INTEGRATION_MODE` | `mock` | `live` | AI & external services integration mode |
-| `GEMINI_MODE` | `mock` or `live` | `live` | Gemini reasoning engine mode |
-| `SARVAM_MODE` | `mock` or `live` | `live` | Sarvam Indic TTS engine mode |
-| `TAVILY_MODE` | `mock` or `live` | `live` | Tavily web search mode |
+| `GEMINI_API_KEY` | Google Gemini AI Reasoning | [Google AI Studio](https://aistudio.google.com/) | **Yes** (when `GEMINI_MODE=live`) |
+| `SARVAM_API_KEY` | Sarvam AI Indic Speech/TTS | [Sarvam AI Dashboard](https://www.sarvam.ai/) | **Yes** (when `SARVAM_MODE=live`) |
+| `TAVILY_API_KEY` | Tavily Web Search Verification | [Tavily AI](https://tavily.com/) | **Yes** (when `TAVILY_MODE=live`) |
+| `GOOGLE_MAPS_SERVER_KEY` | Google Maps Places & Geocoding | [Google Cloud Console](https://console.cloud.google.com/) | **Recommended** for live facility lookups |
+| `TWILIO_ACCOUNT_SID` | Twilio SMS OTP | [Twilio Console](https://console.twilio.com/) | **Yes** (when `OTP_MODE=TWILIO`) |
+| `TWILIO_AUTH_TOKEN` | Twilio Auth Token | [Twilio Console](https://console.twilio.com/) | **Yes** (when `OTP_MODE=TWILIO`) |
+| `TWILIO_FROM_NUMBER` | Twilio Outbound Number | [Twilio Phone Numbers](https://console.twilio.com/) | **Yes** (when `OTP_MODE=TWILIO`) |
+| `MSG91_AUTH_KEY` | MSG91 Indian SMS Gateway | [MSG91 Dashboard](https://msg91.com/) | **Yes** (when `OTP_MODE=MSG91`) |
 
-#### Optional Secret API Keys (Enter manually in Render Dashboard if using live modes):
-* `GEMINI_API_KEY`: API key from Google AI Studio.
-* `SARVAM_API_KEY`: API key from Sarvam AI for TTS/speech synthesis.
-* `TAVILY_API_KEY`: API key from Tavily for search.
-* `GOOGLE_MAPS_SERVER_KEY`: Server key for geocoding & distance calculation.
-* `OTP_SMS_PROVIDER_API_KEY`: SMS gateway API key (required in production).
+> [!NOTE]
+> **Architecture & Boundary Distinctions:**
+> * **Infrastructure:** 100% Free tier on Render (FastAPI + PostgreSQL 16) and Vercel.
+> * **Application Integrations:** Live API calls to Google Gemini, Sarvam AI, Tavily, and Twilio/MSG91.
+> * **Database & Healthcare Data:** Synthetic seeded demo patients, doctors, facilities, and cases. No real patient health information (PHI) is ever used.
+> * **Graph & Vector Stores:** Milvus and Neo4j remain safely mocked/in-memory unless managed cloud instances are provisioned.
 
 ---
 
@@ -129,19 +146,38 @@ The repository is a monorepo using npm workspaces with shared packages under `pa
 
 ---
 
-## 4. Staging Authentication & Safe Demo OTP Mechanism
+## 4. Authentication Modes & OTP Providers
 
-### Staging Configuration:
-* `ENVIRONMENT=staging`
-* `OTP_MODE=MOCK`
-* **Demo OTP Behavior:** In `staging`, `development`, and `test` environments with `OTP_MODE=MOCK`, OTP generation returns deterministic code `123456` and supplies `mock_code` in the OTP challenge response to allow end-to-end testing without external SMS credits.
+### Active Staging Deployment Settings:
+```text
+Environment: STAGING
+Citizen OTP Mode: CONTROLLED DEMO
+Demo OTP: 123456
+Data: SYNTHETIC/DEMO ONLY
+Twilio: CODE INTEGRATED BUT DISABLED FOR THIS DEPLOYMENT
+```
 
-### Production Guardrails:
-* If `ENVIRONMENT=production` and `OTP_MODE=MOCK`, the backend startup validation (`validate_production_settings()`) raises a fatal `RuntimeError`, strictly preventing production deployment with mock authentication.
-* In production, real SMS dispatch adapters (e.g. Twilio, MSG91) are used via `OTP_SMS_PROVIDER_API_KEY`.
-* *Note:* Sarvam AI is an Indic TTS/Speech provider, not an SMS gateway; `OTP_MODE=SARVAM` is not used.
+> [!NOTE]
+> This is intentionally a controlled hackathon demo / staging authentication flow. It is not real SMS delivery or production authentication.
+>
+> **Twilio Integration Status:**
+> Twilio code remains fully implemented and tested in the backend (`TwilioOtpProvider`). To enable live SMS delivery after validating phone numbers and SMS sender routes, set `OTP_MODE=TWILIO` in Render / `.env` and provide `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, and `TWILIO_FROM_NUMBER`.
 
----
+### Supported OTP Modes:
+1. **`OTP_MODE=MOCK` (Controlled Hackathon Demo / Staging / Dev):**
+   * Configurable via `DEMO_OTP_CODE` (default: `123456`).
+   * No third-party network dispatch or SMS charges incurred.
+   * Challenge verification limits (5 attempts), 60-second cooldown, and 5-minute expiry remain strictly active.
+   * Strictly blocked when `ENVIRONMENT=production` during startup.
+2. **`OTP_MODE=TWILIO` (Live Global SMS):**
+   * Dispatches real SMS through Twilio REST API without requiring external SDK installation.
+   * Requires `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, and `TWILIO_FROM_NUMBER`.
+3. **`OTP_MODE=MSG91` (Live Indian Telecom DLT):**
+   * Dispatches real SMS through MSG91 OTP/Flow API for Indian carrier delivery.
+   * Requires `MSG91_AUTH_KEY` (and optional `MSG91_TEMPLATE_ID`, `MSG91_SENDER_ID`).
+
+> [!WARNING]
+> Sarvam AI is an Indic TTS/Speech provider, **not** an SMS gateway. Do not use `OTP_MODE=SARVAM`.
 
 ## 5. WebSocket URL & Realtime Configuration
 

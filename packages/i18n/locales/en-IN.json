@@ -227,6 +227,8 @@
     "change_number": "Change Number",
     "invalid_phone": "Please enter a valid 10-digit Indian mobile number starting with 6, 7, 8, or 9.",
     "invalid_otp_format": "Please enter all 6 digits of the OTP.",
+    "demo_otp_notice_title": "Hackathon Demo",
+    "demo_otp_notice": "For this hackathon demonstration, enter 123456 to continue.",
     "onboarding_title": "Complete Citizen Registration",
     "onboarding_desc": "Please provide your basic information to set up your rural healthcare profile.",
     "full_name_label": "Full Name",

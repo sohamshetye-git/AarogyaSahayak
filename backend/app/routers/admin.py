@@ -81,14 +81,43 @@ def get_system_health():
             integration_mode=settings.INTEGRATION_MODE,
             services={
                 "BHASHINI": settings.BHASHINI_MODE,
+                "Sarvam_Voice": settings.SARVAM_MODE,
+                "Gemini_Reasoning": settings.GEMINI_MODE,
                 "Lyzr_Agents": settings.LYZR_MODE,
                 "Milvus_Clinical_RAG": settings.MILVUS_MODE,
                 "Neo4j_Scheme_Graph": settings.NEO4J_MODE,
                 "Tavily_Search": settings.TAVILY_MODE,
                 "n8n_Automation": settings.N8N_MODE,
-                "ABDM_Sandbox": settings.ABDM_MODE
+                "ABDM_Sandbox": settings.ABDM_MODE,
+                "OTP_Provider": settings.OTP_MODE
             }
         ).model_dump()
+    )
+
+@router.get("/integrations-status", response_model=StandardResponse)
+def get_integrations_status(current_user: User = Depends(require_staff)):
+    """
+    Safe diagnostic for staff/admins returning configured status without secrets or tokens.
+    """
+    otp_mode = (settings.OTP_MODE or "MOCK").upper()
+    otp_configured = False
+    if otp_mode == "MOCK":
+        otp_configured = True
+    elif otp_mode == "TWILIO":
+        otp_configured = bool(settings.TWILIO_ACCOUNT_SID and settings.TWILIO_AUTH_TOKEN and settings.TWILIO_FROM_NUMBER)
+    elif otp_mode == "MSG91":
+        otp_configured = bool(settings.MSG91_AUTH_KEY or settings.OTP_SMS_PROVIDER_API_KEY)
+    else:
+        otp_configured = bool(settings.OTP_SMS_PROVIDER_API_KEY)
+
+    return StandardResponse(
+        data={
+            "Gemini": "configured" if bool(settings.GEMINI_API_KEY) else "unconfigured",
+            "Sarvam": "configured" if bool(settings.SARVAM_API_KEY) else "unconfigured",
+            "Tavily": "configured" if bool(settings.TAVILY_API_KEY) else "unconfigured",
+            "OTP provider": f"{otp_mode} ({'configured' if otp_configured else 'unconfigured'})",
+            "Google Maps": "configured" if bool(settings.GOOGLE_MAPS_SERVER_KEY) else "unconfigured"
+        }
     )
 
 @router.get("/ai-metrics", response_model=StandardResponse)

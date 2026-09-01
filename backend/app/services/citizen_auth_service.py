@@ -98,6 +98,102 @@ class MockOtpProvider(BaseOtpProvider):
             "phone_masked": mask_phone_number(phone_normalized)
         }
 
+class TwilioOtpProvider(BaseOtpProvider):
+    """
+    Twilio SMS / Verify OTP Provider using standard HTTP request without third-party SDK.
+    """
+    def __init__(self):
+        self.account_sid = getattr(settings, "TWILIO_ACCOUNT_SID", None)
+        self.auth_token = getattr(settings, "TWILIO_AUTH_TOKEN", None)
+        self.from_number = getattr(settings, "TWILIO_FROM_NUMBER", None)
+
+    def send_otp(self, phone_normalized: str, otp_code: str) -> Dict[str, Any]:
+        if not self.account_sid or not self.auth_token or not self.from_number:
+            raise RuntimeError("Twilio credentials not configured (requires TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_FROM_NUMBER)")
+        
+        import requests
+        url = f"https://api.twilio.com/2010-04-01/Accounts/{self.account_sid}/Messages.json"
+        body_text = f"Your Aarogya Sahayak verification code is {otp_code}. Valid for 5 minutes."
+        
+        try:
+            resp = requests.post(
+                url,
+                data={
+                    "From": self.from_number,
+                    "To": phone_normalized,
+                    "Body": body_text
+                },
+                auth=(self.account_sid, self.auth_token),
+                timeout=10
+            )
+            if resp.status_code in [200, 201]:
+                return {
+                    "provider": "TWILIO",
+                    "status": "SENT",
+                    "delivered": True,
+                    "phone_masked": mask_phone_number(phone_normalized)
+                }
+            else:
+                return {
+                    "provider": "TWILIO",
+                    "status": f"ERROR_{resp.status_code}",
+                    "phone_masked": mask_phone_number(phone_normalized)
+                }
+        except Exception as e:
+            raise RuntimeError(f"Twilio SMS dispatch failed: {str(e)}")
+
+class Msg91OtpProvider(BaseOtpProvider):
+    """
+    MSG91 Flow / SMS OTP Provider for Indian Telecom (DLT compliant).
+    """
+    def __init__(self):
+        self.auth_key = getattr(settings, "MSG91_AUTH_KEY", None) or getattr(settings, "OTP_SMS_PROVIDER_API_KEY", None)
+        self.template_id = getattr(settings, "MSG91_TEMPLATE_ID", None)
+        self.sender_id = getattr(settings, "MSG91_SENDER_ID", None) or getattr(settings, "OTP_SMS_SENDER_ID", "AAROGY")
+
+    def send_otp(self, phone_normalized: str, otp_code: str) -> Dict[str, Any]:
+        if not self.auth_key:
+            raise RuntimeError("MSG91 auth key not configured (requires MSG91_AUTH_KEY or OTP_SMS_PROVIDER_API_KEY)")
+        
+        import requests
+        clean_phone = phone_normalized.replace("+", "")
+        
+        if self.template_id:
+            # Flow API
+            url = "https://control.msg91.com/api/v5/flow/"
+            headers = {
+                "authkey": self.auth_key,
+                "Content-Type": "application/json"
+            }
+            payload = {
+                "template_id": self.template_id,
+                "sender": self.sender_id,
+                "short_url": "0",
+                "mobiles": clean_phone,
+                "otp": otp_code
+            }
+            try:
+                resp = requests.post(url, json=payload, headers=headers, timeout=10)
+                return {
+                    "provider": "MSG91",
+                    "status": "SENT" if resp.status_code == 200 else f"ERROR_{resp.status_code}",
+                    "phone_masked": mask_phone_number(phone_normalized)
+                }
+            except Exception as e:
+                raise RuntimeError(f"MSG91 Flow SMS dispatch failed: {str(e)}")
+        else:
+            # Standard OTP API
+            url = f"https://control.msg91.com/api/v5/otp?template_id={self.template_id or ''}&mobile={clean_phone}&authkey={self.auth_key}&otp={otp_code}"
+            try:
+                resp = requests.post(url, timeout=10)
+                return {
+                    "provider": "MSG91",
+                    "status": "SENT" if resp.status_code == 200 else f"ERROR_{resp.status_code}",
+                    "phone_masked": mask_phone_number(phone_normalized)
+                }
+            except Exception as e:
+                raise RuntimeError(f"MSG91 OTP dispatch failed: {str(e)}")
+
 class LiveSmsOtpProvider(BaseOtpProvider):
     def __init__(self, api_key: Optional[str] = None, sender_id: Optional[str] = None):
         self.api_key = api_key or settings.OTP_SMS_PROVIDER_API_KEY
@@ -106,8 +202,7 @@ class LiveSmsOtpProvider(BaseOtpProvider):
     def send_otp(self, phone_normalized: str, otp_code: str) -> Dict[str, Any]:
         if not self.api_key:
             raise RuntimeError("SMS provider API key not configured")
-        # Live dispatch adapter (e.g. Bhashini / Sarvam / Twilio / MSG91)
-        # Never logs the raw otp_code
+        # Generic HTTP SMS Gateway Dispatch
         return {
             "provider": "LIVE_SMS",
             "status": "QUEUED",
@@ -118,6 +213,10 @@ def get_otp_provider() -> BaseOtpProvider:
     mode = (settings.OTP_MODE or "MOCK").upper()
     if mode == "MOCK":
         return MockOtpProvider()
+    elif mode == "TWILIO":
+        return TwilioOtpProvider()
+    elif mode == "MSG91":
+        return Msg91OtpProvider()
     return LiveSmsOtpProvider()
 
 
@@ -181,7 +280,7 @@ class CitizenAuthService:
         otp_mode = (settings.OTP_MODE or "MOCK").upper()
         env = (settings.ENVIRONMENT or "").lower()
         if otp_mode == "MOCK" and env in ["development", "test", "staging"]:
-            otp_code = settings.OTP_TEST_CODE or "123456"
+            otp_code = settings.DEMO_OTP_CODE or settings.OTP_TEST_CODE or "123456"
         else:
             # Cryptographically secure 6-digit random number
             otp_code = f"{secrets.randbelow(900000) + 100000}"

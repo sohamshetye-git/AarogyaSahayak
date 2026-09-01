@@ -400,7 +400,35 @@ export const CitizenPhoneOtpScreen: React.FC<CitizenPhoneOtpScreenProps> = ({
                 {t("citizen.otp_sent_to", { phone: maskedPhone })}
               </p>
 
-              {mockHint && (
+              {/* Hackathon Demo Notice (Visible in staging/dev mode, absent in production) */}
+              {((import.meta as any).env?.VITE_APP_ENV !== "production" &&
+                (import.meta as any).env?.MODE !== "production") && (
+                <div
+                  id="notice-staging-demo-otp"
+                  style={{
+                    margin: "12px 0 16px",
+                    padding: "10px 14px",
+                    backgroundColor: "#EFF6FF",
+                    border: "1px solid #BFDBFE",
+                    borderRadius: 12,
+                    display: "flex",
+                    alignItems: "flex-start",
+                    gap: 10
+                  }}
+                >
+                  <ShieldCheck size={18} style={{ color: "#2563EB", flexShrink: 0, marginTop: 2 }} />
+                  <div>
+                    <div style={{ fontSize: 12, fontWeight: 800, color: "#1E40AF", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 2 }}>
+                      {t("citizen.demo_otp_notice_title", "Hackathon Demo")}
+                    </div>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: "#1E3A8A", lineHeight: 1.4 }}>
+                      {t("citizen.demo_otp_notice", "For this hackathon demonstration, enter 123456 to continue.")}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {mockHint && !((import.meta as any).env?.VITE_APP_ENV !== "production") && (
                 <div
                   style={{
                     padding: "6px 12px",

@@ -21,15 +21,17 @@ services:
       - key: JWT_REFRESH_SECRET
         generateValue: true
       - key: INTEGRATION_MODE
-        value: mock
+        value: live
       - key: OTP_MODE
         value: MOCK
+      - key: DEMO_OTP_CODE
+        value: "123456"
       - key: GEMINI_MODE
-        value: mock
+        value: live
       - key: SARVAM_MODE
-        value: mock
+        value: live
       - key: TAVILY_MODE
-        value: mock
+        value: live
       - key: NEO4J_MODE
         value: mock
       - key: MILVUS_MODE
