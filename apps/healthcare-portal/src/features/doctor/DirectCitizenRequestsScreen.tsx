@@ -4,10 +4,19 @@ import { apiClient } from "@aarogya/api-client";
 import { PriorityBadge } from "../../components/StatusBadge";
 import {
   Phone, Video, MessageSquare, Clock, CheckCircle, AlertTriangle,
-  User, Check, X, ArrowRight, Play, RefreshCw, Filter, FileText
+  User, Check, X, ArrowRight, Play, RefreshCw, Filter, FileText, Plus, Trash2, Send, Building
 } from "lucide-react";
 import { useRealtime } from "../../hooks/useRealtime";
 import { useLanguage } from "../../context/LanguageContext";
+
+interface RxItem {
+  medicine_name: string;
+  formulation: string;
+  dosage: string;
+  frequency: string;
+  duration_days: number;
+  instructions: string;
+}
 
 export function DirectCitizenRequestsScreen() {
   const { t } = useLanguage();
@@ -16,55 +25,174 @@ export function DirectCitizenRequestsScreen() {
   const [requests, setRequests] = useState<any[]>([]);
   const [summary, setSummary] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [activeFilter, setActiveFilter] = useState<string>("ALL");
   const [isProcessing, setIsProcessing] = useState<string | null>(null);
 
   // Complete Consultation Modal State
   const [selectedReq, setSelectedReq] = useState<any>(null);
   const [showCompleteModal, setShowCompleteModal] = useState(false);
-  const [diagnosis, setDiagnosis] = useState("");
-  const [guidance, setGuidance] = useState("");
+  const [diagnosis, setDiagnosis] = useState("Acute Upper Respiratory Infection");
+  const [guidance, setGuidance] = useState("Take adequate rest, maintain hydration, and complete prescribed course.");
+  const [prescriptions, setPrescriptions] = useState<RxItem[]>([
+    {
+      medicine_name: "Paracetamol 500mg",
+      formulation: "Tablet",
+      dosage: "1 tablet",
+      frequency: "1-0-1",
+      duration_days: 3,
+      instructions: "Take after food"
+    }
+  ]);
+  const [labOrders, setLabOrders] = useState<string[]>([]);
   const [assignAsha, setAssignAsha] = useState(false);
-  const [ashaInstructions, setAshaInstructions] = useState("");
+  const [ashaInstructions, setAshaInstructions] = useState("Visit home on Day 3, check temperature and recovery.");
+
+  // Live Chat Drawer State for CHAT channel
+  const [activeChatReq, setActiveChatReq] = useState<any>(null);
+  const [chatMessage, setChatMessage] = useState("");
+  const [sendingMsg, setSendingMsg] = useState(false);
+  const chatDrawerScrollRef = React.useRef<HTMLDivElement>(null);
 
   const fetchRequests = async () => {
     try {
+      setError(null);
       const res = await apiClient.getDoctorDirectRequests({ status: activeFilter });
-      setRequests(res?.data || res || []);
-      const sum = await apiClient.getDoctorDirectRequestsSummary();
-      setSummary(sum?.data || sum);
-    } catch (err) {
+      const rawData = res?.data || res;
+      const items = Array.isArray(rawData?.items) ? rawData.items : (Array.isArray(rawData) ? rawData : []);
+      setRequests(items);
+
+      if (rawData?.counts) {
+        setSummary({
+          total: rawData.total ?? items.length,
+          waiting: rawData.counts.waiting ?? 0,
+          urgent: rawData.counts.urgent ?? 0,
+          accepted: rawData.counts.accepted ?? 0,
+          in_consultation: rawData.counts.in_consultation ?? 0,
+          completed: rawData.counts.completed ?? 0
+        });
+      } else {
+        const sum = await apiClient.getDoctorDirectRequestsSummary();
+        const sumData = sum?.data || sum;
+        if (sumData) {
+          setSummary({
+            total: sumData.total ?? 0,
+            waiting: sumData.waiting ?? sumData.new ?? 0,
+            urgent: sumData.urgent ?? 0,
+            accepted: sumData.accepted ?? 0,
+            in_consultation: sumData.in_consultation ?? 0,
+            completed: sumData.completed ?? 0
+          });
+        }
+      }
+
+      // If active chat req is open, refresh its detail
+      if (activeChatReq) {
+        const updated = items.find((r: any) => r.id === activeChatReq.id || r.service_request_id === activeChatReq.id);
+        if (updated) {
+          setActiveChatReq((prev: any) => ({ ...prev, ...updated }));
+        }
+      }
+    } catch (err: any) {
       console.error("Failed to load direct requests", err);
+      setError(err?.message || "Failed to load requests from server. Please retry.");
     } finally {
       setLoading(false);
     }
   };
 
-  useRealtime((event) => {
+  const fetchChatConversation = async (reqId: string) => {
+    try {
+      let detail: any = null;
+      try {
+        const res = await apiClient.getDoctorDirectRequestDetail(reqId);
+        detail = res?.data || res;
+      } catch (_) {
+        const res = await apiClient.getDoctorChatThread(reqId);
+        const threadData = res?.data || res;
+        if (threadData?.thread) {
+          detail = {
+            ...threadData.request_details,
+            ...threadData.thread,
+            messages: threadData.messages || threadData.thread.messages || []
+          };
+        } else if (threadData) {
+          detail = threadData;
+        }
+      }
+      if (detail) {
+        setActiveChatReq(detail);
+      }
+    } catch (err) {
+      console.error("Failed to load chat details", err);
+    }
+  };
+
+  useRealtime((event, data) => {
     if (
       [
         "DOCTOR_REQUEST_CREATED",
         "DOCTOR_REQUEST_ACCEPTED",
         "CONSULTATION_STARTED",
-        "CONSULTATION_COMPLETED"
+        "CONSULTATION_COMPLETED",
+        "CARE_HANDOFF_UPDATED",
+        "CITIZEN_DOCTOR_REQUEST_SUBMITTED",
+        "DOCTOR_DIRECT_REQUEST_STATUS_UPDATED"
       ].includes(event)
     ) {
       fetchRequests();
     }
+
+    if (
+      [
+        "doctor_chat.message_created",
+        "CHAT_MESSAGE_CREATED",
+        "DOCTOR_REQUEST_MESSAGE_SENT",
+        "doctor_chat.message_read",
+        "CHAT_MESSAGE_READ"
+      ].includes(event)
+    ) {
+      fetchRequests();
+      if (activeChatReq) {
+        const convId = data?.conversation_id || data?.request_id;
+        const srvId = data?.service_request_id;
+        if (
+          convId === activeChatReq.id ||
+          convId === activeChatReq.conversation_id ||
+          srvId === activeChatReq.id ||
+          srvId === activeChatReq.service_request_id
+        ) {
+          fetchChatConversation(activeChatReq.id || activeChatReq.conversation_id);
+        }
+      }
+    }
   });
+
+  // Auto-scroll doctor chat drawer when messages change
+  React.useEffect(() => {
+    if (chatDrawerScrollRef.current) {
+      chatDrawerScrollRef.current.scrollTop = chatDrawerScrollRef.current.scrollHeight;
+    }
+  }, [activeChatReq?.messages]);
 
   useEffect(() => {
     fetchRequests();
-    const interval = setInterval(fetchRequests, 10000);
+    const interval = setInterval(fetchRequests, 5000);
     return () => clearInterval(interval);
   }, [activeFilter]);
 
-  const handleAccept = async (e: React.MouseEvent, reqId: string) => {
+  const handleAccept = async (e: React.MouseEvent, req: any) => {
     e.stopPropagation();
-    setIsProcessing(reqId);
+    setIsProcessing(req.id);
     try {
-      await apiClient.acceptDoctorDirectRequest(reqId);
+      if ((req.requested_channel || req.mode) === "CHAT") {
+        setActiveChatReq(req);
+      }
+      await apiClient.acceptDoctorDirectRequest(req.id);
       await fetchRequests();
+      if ((req.requested_channel || req.mode) === "CHAT") {
+        await fetchChatConversation(req.id);
+      }
     } catch (err) {
       console.error("Failed to accept request", err);
     } finally {
@@ -72,14 +200,39 @@ export function DirectCitizenRequestsScreen() {
     }
   };
 
-  const handleStart = async (e: React.MouseEvent, reqId: string) => {
+  const handleStart = async (e: React.MouseEvent, req: any) => {
+    e.stopPropagation();
+    setIsProcessing(req.id);
+    try {
+      if ((req.requested_channel || req.mode) === "CHAT") {
+        setActiveChatReq(req);
+      }
+      await apiClient.startDoctorDirectConsultation(req.id);
+      await fetchRequests();
+      if ((req.requested_channel || req.mode) === "CHAT") {
+        await fetchChatConversation(req.id);
+      }
+    } catch (err) {
+      console.error("Failed to start consultation", err);
+    } finally {
+      setIsProcessing(null);
+    }
+  };
+
+  const handleOpenChat = async (e: React.MouseEvent, req: any) => {
+    e.stopPropagation();
+    setActiveChatReq(req);
+    await fetchChatConversation(req.id);
+  };
+
+  const handleMarkArrived = async (e: React.MouseEvent, reqId: string) => {
     e.stopPropagation();
     setIsProcessing(reqId);
     try {
-      await apiClient.startDoctorDirectConsultation(reqId);
+      await apiClient.patchDoctorDirectRequestStatus(reqId, { action: "START_CONSULTATION" });
       await fetchRequests();
     } catch (err) {
-      console.error("Failed to start consultation", err);
+      console.error("Failed to update status", err);
     } finally {
       setIsProcessing(null);
     }
@@ -88,8 +241,57 @@ export function DirectCitizenRequestsScreen() {
   const handleOpenCompleteModal = (e: React.MouseEvent, req: any) => {
     e.stopPropagation();
     setSelectedReq(req);
+    setDiagnosis(req.chief_complaint || "Clinical Assessment Complete");
     setShowCompleteModal(true);
   };
+
+  const handleAddRxItem = () => {
+    setPrescriptions([
+      ...prescriptions,
+      {
+        medicine_name: "",
+        formulation: "Tablet",
+        dosage: "1",
+        frequency: "1-0-1",
+        duration_days: 3,
+        instructions: "Take after meals"
+      }
+    ]);
+  };
+
+  const handleRemoveRxItem = (index: number) => {
+    setPrescriptions(prescriptions.filter((_, i) => i !== index));
+  };
+
+  const handleUpdateRxItem = (index: number, field: keyof RxItem, value: any) => {
+    const next = [...prescriptions];
+    next[index] = { ...next[index], [field]: value };
+    setPrescriptions(next);
+  };
+
+  const handleSendDoctorMessage = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!chatMessage.trim() || sendingMsg || !activeChatReq) return;
+    setSendingMsg(true);
+    const textToSend = chatMessage.trim();
+    const reqId = activeChatReq.id || activeChatReq.conversation_id || activeChatReq.service_request_id;
+    const clientMsgId = `dmsg-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+    try {
+      try {
+        await apiClient.sendDoctorChatMessage(reqId, textToSend, clientMsgId);
+      } catch (_) {
+        await apiClient.sendDoctorReplyMessage(reqId, textToSend, clientMsgId);
+      }
+      setChatMessage("");
+      await fetchChatConversation(reqId);
+      await fetchRequests();
+    } catch (err) {
+      console.error("Failed to send doctor message", err);
+    } finally {
+      setSendingMsg(false);
+    }
+  };
+
 
   const handleSubmitComplete = async () => {
     if (!selectedReq) return;
@@ -97,35 +299,25 @@ export function DirectCitizenRequestsScreen() {
     try {
       await apiClient.completeDoctorDirectConsultation(selectedReq.id, {
         provisional_diagnosis: diagnosis,
-        clinical_summary: `${diagnosis} diagnosed during teleconsultation.`,
+        clinical_summary: `${diagnosis}. Consultation completed with Dr. Medical Officer.`,
         patient_guidance: guidance,
         disposition: assignAsha ? "FOLLOW_UP_REQUIRED" : "COMPLETED",
-        prescriptions: [
-          {
-            medicine_name: "Paracetamol 500mg",
-            formulation: "Tablet",
-            dosage: "1 tablet",
-            frequency: "1-0-1",
-            duration_days: 3,
-            instructions: "Take after meals"
-          },
-          {
-            medicine_name: "Cetirizine 10mg",
-            formulation: "Tablet",
-            dosage: "1 tablet",
-            frequency: "0-0-1",
-            duration_days: 3,
-            instructions: "Take at bedtime"
-          }
-        ],
-        investigation_orders: [],
+        prescriptions: prescriptions.filter(p => p.medicine_name.trim().length > 0),
+        investigation_orders: labOrders.map(test => ({
+          test_name: test,
+          category: "PATHOLOGY",
+          urgency: "ROUTINE"
+        })),
         assign_asha_followup: assignAsha,
         asha_task_type: "POST_CONSULTATION_CHECK",
         asha_due_days: 3,
         asha_instructions: ashaInstructions,
-        asha_escalation_conditions: "Escalate if high fever or breathing difficulty occurs."
+        asha_escalation_conditions: "Escalate if symptoms worsen or red flags emerge."
       });
       setShowCompleteModal(false);
+      if (activeChatReq?.id === selectedReq.id) {
+        setActiveChatReq(null);
+      }
       await fetchRequests();
     } catch (err) {
       console.error("Failed to complete consultation", err);
@@ -159,15 +351,34 @@ export function DirectCitizenRequestsScreen() {
         </button>
       </div>
 
+      {/* Error State Banner */}
+      {error && (
+        <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-2xl flex items-center justify-between gap-3 text-red-800">
+          <div className="flex items-center gap-3">
+            <AlertTriangle className="text-red-600 flex-shrink-0" size={20} />
+            <div>
+              <div className="text-sm font-bold">Failed to load requests</div>
+              <div className="text-xs text-red-600">{error}</div>
+            </div>
+          </div>
+          <button
+            onClick={fetchRequests}
+            className="px-3 py-1.5 bg-red-600 text-white text-xs font-bold rounded-xl hover:bg-red-700 transition-colors shadow-sm"
+          >
+            Retry
+          </button>
+        </div>
+      )}
+
       {/* Metric Summary Cards */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-6">
         {[
-          { id: "ALL", label: "Total Requests", count: summary?.total || 0, color: "text-slate-900", bg: "bg-white" },
-          { id: "NEW", label: "New / Waiting", count: summary?.new || 0, color: "text-blue-600", bg: "bg-blue-50/50" },
-          { id: "URGENT", label: "Urgent Triage", count: summary?.urgent || 0, color: "text-red-600", bg: "bg-red-50/50" },
-          { id: "ACCEPTED", label: "Accepted", count: summary?.accepted || 0, color: "text-emerald-600", bg: "bg-emerald-50/50" },
-          { id: "IN_CONSULTATION", label: "In Consultation", count: summary?.in_consultation || 0, color: "text-purple-600", bg: "bg-purple-50/50" },
-          { id: "COMPLETED", label: "Completed", count: summary?.completed || 0, color: "text-slate-600", bg: "bg-slate-100/50" },
+          { id: "ALL", label: "Total Requests", count: summary?.total ?? 0, color: "text-slate-900", bg: "bg-white" },
+          { id: "NEW", label: "New / Waiting", count: summary?.waiting ?? summary?.new ?? 0, color: "text-blue-600", bg: "bg-blue-50/50" },
+          { id: "URGENT", label: "Urgent Triage", count: summary?.urgent ?? 0, color: "text-red-600", bg: "bg-red-50/50" },
+          { id: "ACCEPTED", label: "Accepted", count: summary?.accepted ?? 0, color: "text-emerald-600", bg: "bg-emerald-50/50" },
+          { id: "IN_CONSULTATION", label: "In Consultation", count: summary?.in_consultation ?? 0, color: "text-purple-600", bg: "bg-purple-50/50" },
+          { id: "COMPLETED", label: "Completed", count: summary?.completed ?? 0, color: "text-slate-600", bg: "bg-slate-100/50" },
         ].map((m) => (
           <button
             key={m.id}
@@ -192,7 +403,20 @@ export function DirectCitizenRequestsScreen() {
           </div>
         </div>
 
-        {requests.length === 0 ? (
+        {loading && requests.length === 0 ? (
+          <div className="p-6 space-y-4">
+            {[1, 2, 3].map((i) => (
+              <div key={i} className="animate-pulse flex flex-col md:flex-row items-start md:items-center justify-between p-4 bg-slate-50 rounded-2xl gap-4">
+                <div className="space-y-2 flex-1">
+                  <div className="h-4 bg-slate-200 rounded w-1/4"></div>
+                  <div className="h-5 bg-slate-200 rounded w-1/2"></div>
+                  <div className="h-3 bg-slate-200 rounded w-3/4"></div>
+                </div>
+                <div className="h-8 bg-slate-200 rounded w-28"></div>
+              </div>
+            ))}
+          </div>
+        ) : requests.length === 0 ? (
           <div className="p-12 text-center text-slate-400">
             <User size={48} className="mx-auto mb-3 opacity-40" />
             <div className="text-base font-bold text-slate-600">No requests in this queue</div>
@@ -201,7 +425,11 @@ export function DirectCitizenRequestsScreen() {
         ) : (
           <div className="divide-y divide-slate-100">
             {requests.map((req) => {
-              const isUrgent = req.priority === "EMERGENCY" || req.priority === "URGENT";
+              const reqChannel = req.requested_channel || req.mode || "CALLBACK";
+              const isCallback = reqChannel === "CALLBACK";
+              const isChat = reqChannel === "CHAT";
+              const isPhcVisit = reqChannel === "IN_PERSON_PHC";
+
               return (
                 <div
                   key={req.id}
@@ -218,21 +446,24 @@ export function DirectCitizenRequestsScreen() {
                         req.priority === "HIGH" || req.priority === "URGENT" ? "bg-orange-100 text-orange-800" :
                         "bg-blue-100 text-blue-800"
                       }`}>
-                        {req.priority}
+                        {t(`priority.${req.priority}`, req.priority)}
                       </span>
-                      <span className="text-xs font-bold px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-700">
-                        {req.requested_channel || req.mode || "CALLBACK"}
+                      <span className="text-xs font-bold px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-700 flex items-center gap-1">
+                        {isCallback && <Phone size={12} />}
+                        {isChat && <MessageSquare size={12} />}
+                        {isPhcVisit && <Building size={12} />}
+                        <span>{t(`consultation.channel.${reqChannel}`, reqChannel)}</span>
                       </span>
                       <span className="text-xs font-semibold text-slate-400">
-                        Village: {req.village_name || "Kalyanpur"}
+                        {t("common.village", "Village")}: {req.village_name || "Kalyanpur"}
                       </span>
                     </div>
 
-                    <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-3 flex-wrap">
                       <div className="text-base font-extrabold text-slate-900">
-                        {req.beneficiary_name || req.citizen_name || req.patient?.name}
+                        {(req.beneficiary_name && req.beneficiary_name.trim().toLowerCase() !== "self" && req.beneficiary_name.trim().toLowerCase() !== "myself") ? req.beneficiary_name : (req.citizen_name || req.patient?.name || "Patient")}
                         <span className="text-sm font-normal text-slate-500 ml-1.5">
-                          ({req.beneficiary_relationship || req.patient?.relationship || "Self"} • {req.village_name || "Kalyanpur"})
+                          ({t(`beneficiary.relationship.${req.beneficiary_relationship || req.patient?.relationship || "SELF"}`, req.beneficiary_relationship || req.patient?.relationship || "Self")} • {req.village_name || "Kalyanpur"})
                         </span>
                       </div>
 
@@ -250,7 +481,7 @@ export function DirectCitizenRequestsScreen() {
                           className="text-xs font-medium text-slate-400 inline-flex items-center gap-1 bg-slate-100 px-2 py-1 rounded-lg cursor-not-allowed"
                           title="Patient profile relationship unavailable"
                         >
-                          <span>Record unavailable</span>
+                          <span>{t("common.value.UNKNOWN", "Record unavailable")}</span>
                         </span>
                       )}
                     </div>
@@ -266,51 +497,84 @@ export function DirectCitizenRequestsScreen() {
                     )}
                   </div>
 
-                  {/* Status & Actions */}
+                  {/* Channel-Specific Status & Action Buttons */}
                   <div className="flex items-center gap-2 flex-wrap self-end md:self-center">
-                    {req.citizen_phone && (
-                      <a
-                        href={`tel:${req.citizen_phone}`}
-                        className="px-3 py-1.5 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 rounded-xl text-xs font-bold flex items-center gap-1 border border-emerald-200"
-                      >
-                        <Phone size={13} />
-                        <span>Call ({req.citizen_phone})</span>
-                      </a>
-                    )}
-
+                    {/* Status Badge */}
                     <span className="text-xs font-bold px-3 py-1 rounded-full bg-slate-100 text-slate-700">
-                      Status: {req.status}
+                      {t("common.status", "Status")}: {t(`status.${req.status}`, req.status)}
                     </span>
 
+                    {/* NEW / WAITING */}
                     {(req.status === "WAITING_FOR_DOCTOR" || req.status === "SUBMITTED" || req.status === "NEW") && (
                       <button
-                        onClick={(e) => handleAccept(e, req.id)}
+                        onClick={(e) => handleAccept(e, req)}
                         disabled={isProcessing === req.id}
                         className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-sm"
                       >
-                        <Check size={14} /> Accept Request
+                        <Check size={14} />
+                        <span>
+                          {isCallback ? "Accept & Call" : (isChat ? "Accept & Open Chat" : "Accept OPD Appointment")}
+                        </span>
                       </button>
                     )}
 
+                    {/* ACCEPTED */}
                     {req.status === "DOCTOR_ACCEPTED" && (
-                      <button
-                        onClick={(e) => handleStart(e, req.id)}
-                        disabled={isProcessing === req.id}
-                        className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-sm"
-                      >
-                        <Phone size={14} /> Start Consultation
-                      </button>
+                      <div className="flex items-center gap-2">
+                        {isCallback && req.citizen_phone && (
+                          <a
+                            href={`tel:${req.citizen_phone}`}
+                            onClick={(e) => handleStart(e, req)}
+                            className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-sm"
+                          >
+                            <Phone size={13} />
+                            <span>Call ({req.citizen_phone})</span>
+                          </a>
+                        )}
+
+                        {isChat && (
+                          <button
+                            onClick={() => setActiveChatReq(req)}
+                            className="px-3.5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-sm"
+                          >
+                            <MessageSquare size={13} />
+                            <span>Open Chat</span>
+                          </button>
+                        )}
+
+                        <button
+                          onClick={(e) => handleStart(e, req)}
+                          disabled={isProcessing === req.id}
+                          className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-sm"
+                        >
+                          <Play size={14} />
+                          <span>{isPhcVisit ? "Mark Arrived & Start" : t("doctor.start_consultation", "Start Consultation")}</span>
+                        </button>
+                      </div>
                     )}
 
+                    {/* IN_CONSULTATION */}
                     {req.status === "IN_CONSULTATION" && (
-                      <button
-                        onClick={(e) => handleOpenCompleteModal(e, req)}
-                        className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-sm"
-                      >
-                        <FileText size={14} /> Complete & Prescribe
-                      </button>
+                      <div className="flex items-center gap-2">
+                        {isChat && (
+                          <button
+                            onClick={() => setActiveChatReq(req)}
+                            className="px-3.5 py-2 bg-blue-50 text-blue-700 border border-blue-200 hover:bg-blue-100 rounded-xl text-xs font-bold flex items-center gap-1.5"
+                          >
+                            <MessageSquare size={13} />
+                            <span>Live Chat</span>
+                          </button>
+                        )}
+                        <button
+                          onClick={(e) => handleOpenCompleteModal(e, req)}
+                          className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-sm"
+                        >
+                          <FileText size={14} /> Complete & Prescribe
+                        </button>
+                      </div>
                     )}
 
+                    {/* COMPLETED */}
                     {req.status === "COMPLETED" && (
                       <span className="text-xs font-bold text-emerald-700 bg-emerald-50 px-3 py-1 rounded-full border border-emerald-200 flex items-center gap-1">
                         <CheckCircle size={14} /> Completed
@@ -324,39 +588,246 @@ export function DirectCitizenRequestsScreen() {
         )}
       </div>
 
-      {/* Complete Consultation Modal */}
-      {showCompleteModal && selectedReq && (
-        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl border border-slate-100">
-            <div className="flex justify-between items-center mb-4">
+      {/* Live Chat Drawer for CHAT channel */}
+      {activeChatReq && (
+        <div className="fixed inset-y-0 right-0 max-w-lg w-full bg-white shadow-2xl z-50 border-l border-slate-200 flex flex-col sm:rounded-l-2xl">
+          <div className="p-4 bg-gradient-to-r from-blue-600 to-indigo-700 text-white flex items-center justify-between shadow-md">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center font-bold">
+                <MessageSquare size={20} />
+              </div>
               <div>
-                <h3 className="text-lg font-black text-slate-900">Complete Consultation</h3>
-                <p className="text-xs text-slate-500">Patient: {selectedReq.patient?.name} ({selectedReq.public_reference})</p>
+                <div className="text-sm font-black flex items-center gap-2">
+                  {(activeChatReq.beneficiary_name && activeChatReq.beneficiary_name.trim().toLowerCase() !== "self" && activeChatReq.beneficiary_name.trim().toLowerCase() !== "myself") ? activeChatReq.beneficiary_name : (activeChatReq.citizen_name || "Patient Consultation")}
+                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-500/40 border border-white/20 uppercase">
+                    {activeChatReq.status || "ACTIVE"}
+                  </span>
+                </div>
+                <div className="text-[11px] opacity-85 font-mono">
+                  {activeChatReq.request_reference || activeChatReq.public_reference || activeChatReq.id}
+                </div>
+              </div>
+            </div>
+            <button
+              id="btn-close-doctor-chat-drawer"
+              onClick={() => setActiveChatReq(null)}
+              className="p-1.5 hover:bg-white/20 rounded-xl transition-colors text-white"
+            >
+              <X size={20} />
+            </button>
+          </div>
+
+          {/* Patient Complaint Header */}
+          <div className="bg-blue-50/70 px-4 py-2.5 border-b border-blue-100/60 flex items-center justify-between text-xs">
+            <div className="truncate text-slate-700">
+              <span className="font-bold text-blue-900">Chief Complaint:</span> {activeChatReq.chief_complaint || activeChatReq.chief_concern || "General consultation requested"}
+            </div>
+            {activeChatReq.status !== "COMPLETED" && (
+              <button
+                onClick={(e) => handleOpenCompleteModal(e, activeChatReq)}
+                className="shrink-0 px-2.5 py-1 bg-emerald-600 text-white rounded-lg font-bold text-[11px] hover:bg-emerald-700 shadow-sm"
+              >
+                Sign & Complete
+              </button>
+            )}
+          </div>
+
+          <div ref={chatDrawerScrollRef} className="flex-1 p-4 overflow-y-auto space-y-3 bg-slate-50">
+            {(!activeChatReq.messages || activeChatReq.messages.length === 0) ? (
+              <div className="text-xs text-slate-400 text-center py-16">
+                <MessageSquare size={32} className="mx-auto mb-2 opacity-40 text-slate-400" />
+                <div className="font-semibold">No chat messages exchanged yet.</div>
+                <div className="text-[11px] text-slate-400 mt-1">Send clinical advice or ask follow-up questions below.</div>
+              </div>
+            ) : (
+              activeChatReq.messages.map((m: any) => {
+                const isDoc = m.sender_type === "DOCTOR" || m.sender_role === "PHC_DOCTOR";
+                return (
+                  <div
+                    key={m.id || m.client_message_id || Math.random()}
+                    className={`p-3.5 rounded-2xl max-w-[85%] text-xs shadow-sm ${
+                      isDoc
+                        ? "ml-auto bg-blue-600 text-white rounded-br-sm"
+                        : "mr-auto bg-white text-slate-800 border border-slate-200 rounded-bl-sm"
+                    }`}
+                  >
+                    <div className="text-[10px] font-bold opacity-80 mb-1 flex justify-between gap-4">
+                      <span>{m.sender_name || (isDoc ? "Dr. Medical Officer" : "Patient")}</span>
+                      <span>{m.created_at ? new Date(m.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : ""}</span>
+                    </div>
+                    <div className="text-xs leading-relaxed break-words">{m.body || m.message_text}</div>
+                    {isDoc && (
+                      <div className="text-[9px] opacity-75 text-right mt-1">
+                        {m.status || "DELIVERED"}
+                      </div>
+                    )}
+                  </div>
+                );
+              })
+            )}
+          </div>
+
+          {activeChatReq.status === "COMPLETED" ? (
+            <div className="p-3 bg-slate-100 text-center text-xs text-slate-500 font-semibold border-t border-slate-200">
+              This consultation is completed and archived.
+            </div>
+          ) : (
+            <form onSubmit={handleSendDoctorMessage} className="p-3 bg-white border-t border-slate-200 flex gap-2">
+              <input
+                type="text"
+                id="input-doctor-chat-reply"
+                value={chatMessage}
+                onChange={(e) => setChatMessage(e.target.value)}
+                placeholder="Type medical guidance / instructions..."
+                className="flex-1 px-3.5 py-2.5 border border-slate-200 rounded-xl text-xs outline-none focus:ring-2 focus:ring-blue-500"
+              />
+              <button
+                type="submit"
+                id="btn-doctor-send-reply"
+                disabled={sendingMsg || !chatMessage.trim()}
+                className="px-4 py-2.5 bg-blue-600 text-white rounded-xl text-xs font-bold flex items-center gap-1 hover:bg-blue-700 disabled:opacity-50 transition-colors shadow-sm"
+              >
+                <Send size={14} /> Send
+              </button>
+            </form>
+          )}
+        </div>
+      )}
+
+      {/* Comprehensive Consultation Completion & Prescribing Modal */}
+      {showCompleteModal && selectedReq && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-white rounded-3xl max-w-2xl w-full p-6 shadow-2xl border border-slate-100 my-8">
+            <div className="flex justify-between items-center mb-4 pb-3 border-b border-slate-100">
+              <div>
+                <h3 className="text-lg font-black text-slate-900">Sign & Complete Consultation</h3>
+                <p className="text-xs text-slate-500">
+                  Patient: <span className="font-bold text-slate-700">{selectedReq.beneficiary_name || selectedReq.citizen_name}</span> ({selectedReq.request_reference || selectedReq.id})
+                </p>
               </div>
               <button onClick={() => setShowCompleteModal(false)} className="p-1 hover:bg-slate-100 rounded-lg">
                 <X size={20} className="text-slate-400" />
               </button>
             </div>
 
-            <div className="space-y-4">
+            <div className="space-y-4 max-h-[70vh] overflow-y-auto pr-1">
+              {/* Diagnosis */}
               <div>
-                <label className="text-xs font-bold text-slate-700">Provisional Diagnosis</label>
+                <label className="text-xs font-bold text-slate-700">Provisional Diagnosis *</label>
                 <input
                   type="text"
                   value={diagnosis}
                   onChange={(e) => setDiagnosis(e.target.value)}
-                  className="w-full mt-1 p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="e.g. Viral URI, Acute Gastritis, Tension Headache"
+                  className="w-full mt-1 p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
 
+              {/* Patient Care Plan */}
               <div>
-                <label className="text-xs font-bold text-slate-700">Patient Guidance / Care Plan</label>
+                <label className="text-xs font-bold text-slate-700">Patient Guidance / Care Plan *</label>
                 <textarea
-                  rows={3}
+                  rows={2}
                   value={guidance}
                   onChange={(e) => setGuidance(e.target.value)}
-                  className="w-full mt-1 p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="Precautions, dietary advice, warning red flags..."
+                  className="w-full mt-1 p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs outline-none focus:ring-2 focus:ring-blue-500"
                 />
+              </div>
+
+              {/* Dynamic Prescriptions List */}
+              <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200">
+                <div className="flex items-center justify-between mb-3">
+                  <span className="text-xs font-extrabold text-slate-800">Prescription Medicines</span>
+                  <button
+                    type="button"
+                    onClick={handleAddRxItem}
+                    className="px-2.5 py-1 bg-blue-600 text-white rounded-lg text-xs font-bold flex items-center gap-1 hover:bg-blue-700"
+                  >
+                    <Plus size={13} /> Add Medicine
+                  </button>
+                </div>
+
+                <div className="space-y-2">
+                  {prescriptions.map((rx, idx) => (
+                    <div key={idx} className="p-3 bg-white rounded-xl border border-slate-200 grid grid-cols-1 sm:grid-cols-6 gap-2 items-center">
+                      <div className="sm:col-span-2">
+                        <input
+                          type="text"
+                          value={rx.medicine_name}
+                          onChange={(e) => handleUpdateRxItem(idx, "medicine_name", e.target.value)}
+                          placeholder="Medicine Name (e.g. Paracetamol 500mg)"
+                          className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold outline-none"
+                        />
+                      </div>
+                      <div>
+                        <input
+                          type="text"
+                          value={rx.dosage}
+                          onChange={(e) => handleUpdateRxItem(idx, "dosage", e.target.value)}
+                          placeholder="Dose (1 tab)"
+                          className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs outline-none"
+                        />
+                      </div>
+                      <div>
+                        <select
+                          value={rx.frequency}
+                          onChange={(e) => handleUpdateRxItem(idx, "frequency", e.target.value)}
+                          className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold outline-none"
+                        >
+                          <option value="1-0-1">1-0-1 (BD)</option>
+                          <option value="1-1-1">1-1-1 (TDS)</option>
+                          <option value="1-0-0">1-0-0 (OD Morn)</option>
+                          <option value="0-0-1">0-0-1 (OD Night)</option>
+                          <option value="SOS">SOS (When needed)</option>
+                        </select>
+                      </div>
+                      <div>
+                        <input
+                          type="number"
+                          value={rx.duration_days}
+                          onChange={(e) => handleUpdateRxItem(idx, "duration_days", parseInt(e.target.value) || 1)}
+                          placeholder="Days"
+                          className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs outline-none"
+                        />
+                      </div>
+                      <div className="flex items-center justify-end">
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveRxItem(idx)}
+                          className="p-1.5 text-red-500 hover:bg-red-50 rounded-lg"
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Lab / Investigation Orders */}
+              <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200">
+                <span className="text-xs font-extrabold text-slate-800 mb-2 block">Diagnostic Investigation Orders</span>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                  {["Complete Blood Count (CBC)", "Blood Glucose (RBS)", "Malaria Smear / RDT", "Urine Routine", "Serum Electrolytes"].map((test) => {
+                    const isSelected = labOrders.includes(test);
+                    return (
+                      <button
+                        key={test}
+                        type="button"
+                        onClick={() => {
+                          if (isSelected) setLabOrders(labOrders.filter(t => t !== test));
+                          else setLabOrders([...labOrders, test]);
+                        }}
+                        className={`p-2 rounded-xl text-xs font-bold text-left border transition-all ${
+                          isSelected ? "bg-blue-600 text-white border-blue-600" : "bg-white text-slate-700 border-slate-200 hover:bg-slate-100"
+                        }`}
+                      >
+                        {test}
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
 
               {/* ASHA Follow-up Assignment Directive */}
@@ -385,7 +856,7 @@ export function DirectCitizenRequestsScreen() {
               </div>
             </div>
 
-            <div className="mt-6 flex justify-end gap-3">
+            <div className="mt-6 pt-3 border-t border-slate-100 flex justify-end gap-3">
               <button
                 onClick={() => setShowCompleteModal(false)}
                 className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs"
@@ -394,8 +865,8 @@ export function DirectCitizenRequestsScreen() {
               </button>
               <button
                 onClick={handleSubmitComplete}
-                disabled={isProcessing === selectedReq.id}
-                className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl text-xs shadow-lg shadow-blue-500/20 flex items-center gap-2"
+                disabled={isProcessing === selectedReq.id || !diagnosis.trim()}
+                className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl text-xs shadow-lg shadow-blue-500/20 flex items-center gap-2 disabled:opacity-50"
               >
                 <Check size={16} /> Sign & Complete Consultation
               </button>
@@ -406,3 +877,4 @@ export function DirectCitizenRequestsScreen() {
     </div>
   );
 }
+

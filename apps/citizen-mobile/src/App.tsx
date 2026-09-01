@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from "react";
-import { Home, HeartPulse, Pill, Award, User, AlertTriangle, Globe, Loader2, LogOut, UserCheck } from "lucide-react";
-import { LanguageProvider, useLanguage } from "@aarogya/i18n";
+import React, { useState, useEffect, useCallback } from "react";
+import { Home, HeartPulse, Pill, Award, User, AlertTriangle, Globe, Loader2, LogOut, UserCheck, CheckCircle2 } from "lucide-react";
+import { LanguageProvider, useLanguage, getLanguageBadgeLabel } from "@aarogya/i18n";
 import { CitizenAuthProvider, useCitizenAuth } from "./context/CitizenAuthContext";
 import { LanguageSelectionScreen } from "./components/LanguageSelectionScreen";
 import { CitizenEntryScreen } from "./components/auth/CitizenEntryScreen";
@@ -25,6 +25,53 @@ import { DoctorConsultationSummaryScreen } from "./components/DoctorConsultation
 import { ServiceRequestDetailScreen } from "./components/ServiceRequestDetailScreen";
 import { LanguageService, LanguageCode } from "./services/languageService";
 
+type CitizenTab =
+  | "home"
+  | "care"
+  | "medicines"
+  | "schemes"
+  | "profile"
+  | "assistant"
+  | "doctor"
+  | "asha"
+  | "facilities"
+  | "doctor_request"
+  | "doctor_waiting"
+  | "doctor_session"
+  | "doctor_summary"
+  | "service_request_detail";
+
+const ALLOWED_TABS: Record<string, CitizenTab> = {
+  "/citizen/home": "home",
+  "/citizen/care": "care",
+  "/citizen/medicines": "medicines",
+  "/citizen/schemes": "schemes",
+  "/citizen/facilities": "facilities",
+  "/citizen/profile": "profile",
+  "/citizen/asha": "asha",
+  "/citizen/doctor": "doctor",
+  "/citizen/assistant": "assistant",
+  "home": "home",
+  "care": "care",
+  "medicines": "medicines",
+  "schemes": "schemes",
+  "facilities": "facilities",
+  "profile": "profile",
+  "asha": "asha",
+  "doctor": "doctor",
+  "assistant": "assistant"
+};
+
+function sanitizeReturnRoute(returnTo?: string | null): CitizenTab {
+  if (!returnTo) return "home";
+  const clean = returnTo.trim();
+  if (ALLOWED_TABS[clean]) return ALLOWED_TABS[clean];
+  for (const [routeKey, tab] of Object.entries(ALLOWED_TABS)) {
+    if (clean.startsWith(routeKey)) return tab;
+  }
+  return "home";
+}
+
 function CitizenAppInner() {
   const { t, locale, setLocale } = useLanguage();
   const {
@@ -42,22 +89,7 @@ function CitizenAppInner() {
     logout
   } = useCitizenAuth();
 
-  const [activeTab, setActiveTab] = useState<
-    | "home"
-    | "care"
-    | "medicines"
-    | "schemes"
-    | "profile"
-    | "assistant"
-    | "doctor"
-    | "asha"
-    | "facilities"
-    | "doctor_request"
-    | "doctor_waiting"
-    | "doctor_session"
-    | "doctor_summary"
-    | "service_request_detail"
-  >(() => {
+  const [activeTab, setActiveTab] = useState<CitizenTab>(() => {
     const path = window.location.pathname;
     if (path.includes("/schemes")) return "schemes";
     if (path.includes("/facilities")) return "facilities";
@@ -73,6 +105,17 @@ function CitizenAppInner() {
   const [selectedServiceRequestId, setSelectedServiceRequestId] = useState<string | null>(null);
   const [showEmergencyModal, setShowEmergencyModal] = useState(false);
 
+  // In-App Language Change State (Independent of Auth State)
+  const [isChangingLanguage, setIsChangingLanguage] = useState<boolean>(() => {
+    const params = new URLSearchParams(window.location.search);
+    return params.get("mode") === "change" || window.location.pathname === "/language";
+  });
+  const [languageReturnTab, setLanguageReturnTab] = useState<CitizenTab>(() => {
+    const params = new URLSearchParams(window.location.search);
+    return sanitizeReturnRoute(params.get("returnTo"));
+  });
+  const [successToast, setSuccessToast] = useState<string | null>(null);
+
   useEffect(() => {
     // Flush pending offline language sync queue on mount
     LanguageService.flushPendingSyncQueue();
@@ -85,7 +128,57 @@ function CitizenAppInner() {
     return () => window.removeEventListener("online", handleOnline);
   }, []);
 
-  const handleLanguageSelected = async (langCode: LanguageCode) => {
+  // Listen for browser URL changes / popstate for query param support
+  useEffect(() => {
+    const handleUrlCheck = () => {
+      const params = new URLSearchParams(window.location.search);
+      const isChange = params.get("mode") === "change" || (window.location.pathname === "/language" && (isAuthenticated || isGuest));
+      if (isChange) {
+        setIsChangingLanguage(true);
+        const safeTab = sanitizeReturnRoute(params.get("returnTo") || activeTab);
+        setLanguageReturnTab(safeTab);
+      }
+    };
+
+    window.addEventListener("popstate", handleUrlCheck);
+    return () => window.removeEventListener("popstate", handleUrlCheck);
+  }, [activeTab, isAuthenticated, isGuest]);
+
+  // Open in-app change language view safely
+  const openChangeLanguage = useCallback((returnTab?: CitizenTab) => {
+    const destination = returnTab || activeTab;
+    setLanguageReturnTab(destination);
+    setIsChangingLanguage(true);
+    // Push or replace safe state in browser history
+    const targetUrl = `/language?mode=change&returnTo=/citizen/${destination}`;
+    window.history.pushState({ mode: "change", returnTo: `/citizen/${destination}` }, "", targetUrl);
+  }, [activeTab]);
+
+  // Close in-app change language and return to previous page
+  const closeChangeLanguage = useCallback(() => {
+    setIsChangingLanguage(false);
+    setActiveTab(languageReturnTab);
+    const safePath = `/citizen/${languageReturnTab}`;
+    window.history.replaceState({}, "", safePath);
+  }, [languageReturnTab]);
+
+  // Save in-app language without altering session or auth state
+  const handleSaveInAppLanguage = async (newLocale: LanguageCode) => {
+    setIsChangingLanguage(false);
+    setActiveTab(languageReturnTab);
+    const safePath = `/citizen/${languageReturnTab}`;
+    window.history.replaceState({}, "", safePath);
+
+    // Show localized success toast
+    const msg = t("citizen.language_changed_success", "Language changed successfully");
+    setSuccessToast(msg);
+    setTimeout(() => {
+      setSuccessToast(null);
+    }, 3500);
+  };
+
+  // Fresh Launch / Onboarding Language Selection
+  const handleOnboardingLanguageSelected = async (langCode: LanguageCode) => {
     await setLocale(langCode);
     LanguageService.saveLocalPreference(langCode);
     setAuthMode("ENTRY_SELECT");
@@ -176,11 +269,12 @@ function CitizenAppInner() {
     );
   }
 
-  // 1. Language Selection Flow
+  // 1. Initial Fresh App Launch Language Selection Flow (Step 1 of 3)
   if (authMode === "LANGUAGE_SELECT") {
     return (
       <LanguageSelectionScreen
-        onLanguageSelected={handleLanguageSelected}
+        mode="onboarding"
+        onLanguageSelected={handleOnboardingLanguageSelected}
         isFirstLaunch={!LanguageService.hasConfirmedPreference()}
       />
     );
@@ -235,6 +329,17 @@ function CitizenAppInner() {
     );
   }
 
+  // In-App Language Change Screen (Shown inside active session when opened from Header/Profile)
+  if (isChangingLanguage) {
+    return (
+      <LanguageSelectionScreen
+        mode="change"
+        onBack={closeChangeLanguage}
+        onSave={handleSaveInAppLanguage}
+      />
+    );
+  }
+
   // 6. Citizen Home & Protected Feature Workspace
   const navTabs = [
     { id: "home", label: t("navigation.home"), icon: <Home size={22} /> },
@@ -245,21 +350,20 @@ function CitizenAppInner() {
   ];
 
   return (
-    <div style={{ minHeight: "100vh", backgroundColor: "#F4F7FB", fontFamily: "'Noto Sans', 'Noto Sans Devanagari', sans-serif", display: "flex", justifyContent: "center", padding: "12px 8px" }}>
+    <div
+      className="w-full flex-1 flex justify-center select-none"
+      style={{
+        minHeight: "100dvh",
+        backgroundColor: "#F4F7FB",
+        fontFamily: "'Noto Sans', 'Noto Sans Devanagari', sans-serif",
+        paddingTop: "max(0px, var(--safe-area-top))",
+        paddingBottom: "max(0px, var(--safe-area-bottom))",
+        paddingLeft: "max(0px, var(--safe-area-left))",
+        paddingRight: "max(0px, var(--safe-area-right))"
+      }}
+    >
       <div
-        style={{
-          width: "100%",
-          maxWidth: 480,
-          backgroundColor: "#FFFFFF",
-          borderRadius: 24,
-          boxShadow: "0 12px 40px rgba(0, 0, 0, 0.1)",
-          border: "1px solid #E2E8F0",
-          display: "flex",
-          flexDirection: "column",
-          overflow: "hidden",
-          minHeight: 760,
-          position: "relative"
-        }}
+        className="w-full sm:max-w-[430px] bg-white sm:rounded-3xl sm:shadow-xl sm:border sm:border-slate-200 overflow-hidden flex flex-col flex-1 sm:my-3 min-h-[100dvh] relative"
       >
         {/* App Top Header Bar */}
         <header
@@ -295,6 +399,7 @@ function CitizenAppInner() {
                 <span>{t("common.app_name", "आरोग्य सहायक")}</span>
                 {isGuest && (
                   <span
+                    id="badge-citizen-guest-mode"
                     style={{
                       fontSize: 10,
                       backgroundColor: "rgba(255,255,255,0.25)",
@@ -308,7 +413,7 @@ function CitizenAppInner() {
                 )}
               </div>
               <div style={{ fontSize: 11, opacity: 0.9, fontWeight: 600 }}>
-                {activeBeneficiary?.displayName || t("common.tagline", "AI-Powered Rural Healthcare")}
+                {activeBeneficiary ? (activeBeneficiary.relationship === "SELF" ? `${activeBeneficiary.displayName.replace(/\s*\(.*?\)\s*/g, "")} (${t("common.self", "Self")})` : `${activeBeneficiary.displayName.replace(/\s*\(.*?\)\s*/g, "")} (${t(`beneficiary.relationship.${activeBeneficiary.relationship || "OTHER"}`, activeBeneficiary.relationship)})`) : t("common.tagline", "AI-Powered Rural Healthcare")}
               </div>
             </div>
           </div>
@@ -316,7 +421,7 @@ function CitizenAppInner() {
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             {/* Quick Change Language Icon Button */}
             <button
-              onClick={() => setAuthMode("LANGUAGE_SELECT")}
+              onClick={() => openChangeLanguage(activeTab)}
               id="btn-citizen-change-language"
               title={t("common.change_language", "Change Language")}
               style={{
@@ -324,7 +429,7 @@ function CitizenAppInner() {
                 backgroundColor: "rgba(255,255,255,0.2)",
                 color: "#FFFFFF",
                 borderRadius: 20,
-                fontSize: 11,
+                fontSize: 12,
                 fontWeight: 700,
                 border: "none",
                 cursor: "pointer",
@@ -334,14 +439,14 @@ function CitizenAppInner() {
               }}
             >
               <Globe size={14} />
-              <span>{locale ? locale.substring(0, 2).toUpperCase() : "MR"}</span>
+              <span>{getLanguageBadgeLabel(locale)}</span>
             </button>
 
             {/* Logout / Switch Profile if Authenticated */}
             {isAuthenticated && (
               <button
                 onClick={logout}
-                id="btn-citizen-sign-out"
+                id="btn-citizen-logout"
                 title={t("common.logout", "Sign Out")}
                 style={{
                   padding: "6px 8px",
@@ -383,6 +488,18 @@ function CitizenAppInner() {
             </button>
           </div>
         </header>
+
+        {/* Localized Toast Notification */}
+        {successToast && (
+          <div
+            role="status"
+            aria-live="polite"
+            className="p-3 bg-emerald-600 text-white text-xs font-bold text-center flex items-center justify-center gap-2 shadow-md animate-in fade-in duration-200"
+          >
+            <CheckCircle2 size={16} />
+            <span>{successToast}</span>
+          </div>
+        )}
 
         {/* Identity & Beneficiary Context Bar */}
         {isAuthenticated && user && (
@@ -501,9 +618,9 @@ function CitizenAppInner() {
             />
           )}
 
-          {activeTab === "doctor_waiting" && activeRequestId && (
+          {activeTab === "doctor_waiting" && (
             <DoctorWaitingRoomScreen
-              requestId={activeRequestId}
+              requestId={activeRequestId || ""}
               onJoinConsultation={() => setActiveTab("doctor_session")}
               onViewSummary={() => setActiveTab("doctor_summary")}
               onBackToHome={() => setActiveTab("home")}
@@ -547,7 +664,7 @@ function CitizenAppInner() {
 
           {activeTab === "profile" && (
             <ProfileScreen
-              onSelectLanguage={() => setAuthMode("LANGUAGE_SELECT")}
+              onSelectLanguage={() => openChangeLanguage("profile")}
               onNavigateToTab={(tab: string) => handleNavigateTab(tab)}
             />
           )}

@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { apiClient } from "@aarogya/api-client";
+import { useLanguage } from "../../context/LanguageContext";
 import { PriorityBadge, StatusBadge } from "../../components/StatusBadge";
 import {
   WarningIcon,
@@ -17,6 +18,7 @@ import { db } from "../../db/offlineDb";
 
 export function AshaDashboardScreen() {
   const navigate = useNavigate();
+  const { t } = useLanguage();
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [pendingSyncCount, setPendingSyncCount] = useState(0);
@@ -133,10 +135,23 @@ export function AshaDashboardScreen() {
               style={{ cursor: "pointer" }}
             >
               <div style={{ fontSize: 16, fontWeight: 700, color: "var(--urgent)" }}>
-                {urgentTasks.length} Urgent Unacknowledged Case: {urgentTasks[0].citizen_name}
+                {urgentTasks.length}{" "}
+                {t(
+                  urgentTasks.length === 1 ? "asha.urgent_unack_case_single" : "asha.urgent_unack_case_plural",
+                  urgentTasks.length === 1 ? "Urgent Unacknowledged Case" : "Urgent Unacknowledged Cases"
+                )}
+                {": "}
+                {urgentTasks.length > 1 ? (
+                  <span>
+                    <span style={{ fontWeight: 600, color: "var(--urgent)" }}>{t("common.latest", "Latest")}: </span>
+                    {urgentTasks[0].citizen_name || t("common.unnamed_citizen", "Citizen")}
+                  </span>
+                ) : (
+                  <span>{urgentTasks[0].citizen_name || t("common.unnamed_citizen", "Citizen")}</span>
+                )}
               </div>
               <div style={{ fontSize: 13, color: "var(--text-primary)", marginTop: 2 }}>
-                {urgentTasks[0].village_name} · {urgentTasks[0].primary_concern}
+                {urgentTasks[0].village_name || t("common.catchment_village", "Village")} · {urgentTasks[0].primary_concern || t("common.urgent_clinical_attention", "Urgent Clinical Attention Needed")}
               </div>
             </div>
           </div>
@@ -161,7 +176,7 @@ export function AshaDashboardScreen() {
                 minHeight: 44,
               }}
             >
-              📞 Call Citizen
+              📞 {t("asha.call_citizen", "Call Citizen")}
             </button>
             <button
               onClick={(e) => handleAcknowledgeUrgent(urgentTasks[0].case_id, e)}
@@ -178,7 +193,7 @@ export function AshaDashboardScreen() {
                 minHeight: 44,
               }}
             >
-              {isAcknowledging ? "Saving..." : "✓ Acknowledge"}
+              {isAcknowledging ? t("common.saved", "Saving...") : `✓ ${t("common.confirm", "Acknowledge")}`}
             </button>
             <Link
               to={`/asha/cases/${urgentTasks[0].case_id}`}
@@ -196,7 +211,7 @@ export function AshaDashboardScreen() {
                 minHeight: 44,
               }}
             >
-              Review Urgent Case
+              {t("asha.review_urgent_case", "Review Urgent Case")}
             </Link>
           </div>
         </div>
@@ -223,13 +238,13 @@ export function AshaDashboardScreen() {
           }}
         >
           <div style={{ fontSize: 13, color: "var(--urgent)", fontWeight: 600 }}>
-            🚨 Urgent Red Flags
+            🚨 {t("asha.urgent_red_flags", "Urgent Red Flags")}
           </div>
           <div style={{ fontSize: 26, fontWeight: 700, color: "var(--urgent)", marginTop: 4 }}>
             {data?.urgent_count || 0}
           </div>
           <div style={{ fontSize: 11, color: "var(--text-secondary)", marginTop: 4 }}>
-            Tap to view urgent triage
+            {t("asha.tap_to_view_urgent", "Tap to view urgent triage")}
           </div>
         </div>
 
@@ -245,13 +260,13 @@ export function AshaDashboardScreen() {
           }}
         >
           <div style={{ fontSize: 13, color: "var(--text-secondary)", fontWeight: 500 }}>
-            📅 Today's Visits
+            📅 {t("asha.todays_visits", "Today's Visits")}
           </div>
           <div style={{ fontSize: 26, fontWeight: 700, color: "var(--primary)", marginTop: 4 }}>
             {data?.pending_visits || 0}
           </div>
           <div style={{ fontSize: 11, color: "var(--text-secondary)", marginTop: 4 }}>
-            Scheduled home visits
+            {t("asha.tap_to_view_schedule", "Tap to view today's schedule")}
           </div>
         </div>
 

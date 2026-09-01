@@ -16,6 +16,7 @@
     "test:backend": "cd backend && python -m pytest tests/ -v"
   },
   "devDependencies": {
+    "@playwright/test": "^1.62.1",
     "typescript": "^5.7.3"
   }
 }

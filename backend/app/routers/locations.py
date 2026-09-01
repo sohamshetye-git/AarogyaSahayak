@@ -33,27 +33,34 @@ def reverse_geocode_location(
     """
     Reverse geocode real current device coordinates into structured hierarchy.
     """
+    resolved_time = utc_now().isoformat()
     res = google_maps_adapter.reverse_geocode_coordinates(
         lat=req.latitude,
         lng=req.longitude,
-        language=req.language or "en"
+        language=req.language or "mr-IN"
     )
     if not res:
         # Honest fallback without hardcoded fake village
         return StandardResponse(data={
-            "formatted_address": f"Coordinates ({req.latitude:.4f}, {req.longitude:.4f})",
+            "formatted_address": f"GPS ({req.latitude:.4f}, {req.longitude:.4f})",
             "village": None,
-            "pincode": None,
+            "locality": None,
             "block": None,
             "district": None,
             "state": "Maharashtra",
+            "postal_code": None,
+            "pincode": None,
             "latitude": req.latitude,
             "longitude": req.longitude,
-            "place_id": None,
-            "source": "FALLBACK_COORDINATES"
+            "accuracy_m": req.accuracy_m,
+            "provider": "FALLBACK_COORDINATES",
+            "resolved_at": resolved_time,
+            "place_id": None
         })
     res_dict = dict(res)
-    res_dict["source"] = "GOOGLE_GEOCODING"
+    res_dict["accuracy_m"] = req.accuracy_m
+    res_dict["provider"] = "GOOGLE"
+    res_dict["resolved_at"] = resolved_time
     return StandardResponse(data=res_dict)
 
 

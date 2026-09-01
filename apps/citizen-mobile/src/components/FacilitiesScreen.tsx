@@ -42,9 +42,10 @@ export const FacilitiesScreen: React.FC<FacilitiesScreenProps> = ({
 
 
   // 10 Stable Healthcare-Category Cards with verified capabilities & localized explanations
+  // 10 Stable Healthcare-Category Cards with verified capabilities & localized explanations
   const CATEGORIES = [
     {
-      code: "EMERGENCY" as FacilityServiceCode,
+      code: "EMERGENCY_CARE" as FacilityServiceCode,
       icon: Activity,
       bg: "#FEE2E2",
       color: "#991B1B",
@@ -57,7 +58,7 @@ export const FacilitiesScreen: React.FC<FacilitiesScreenProps> = ({
       isEmergency: true
     },
     {
-      code: "GENERAL_OPD" as FacilityServiceCode,
+      code: "GENERAL_DOCTOR_PHC" as FacilityServiceCode,
       icon: Stethoscope,
       bg: "#EFF6FF",
       color: "#1E40AF",
@@ -69,7 +70,7 @@ export const FacilitiesScreen: React.FC<FacilitiesScreenProps> = ({
       descEn: "Outpatient primary screening, fever, common ailments, and medical officer consults"
     },
     {
-      code: "MATERNITY" as FacilityServiceCode,
+      code: "PREGNANCY_DELIVERY" as FacilityServiceCode,
       icon: HeartPulse,
       bg: "#FCE7F3",
       color: "#9D174D",
@@ -81,7 +82,7 @@ export const FacilitiesScreen: React.FC<FacilitiesScreenProps> = ({
       descEn: "Antenatal care (ANC), 24x7 labor room, institutional delivery, and obstetric care"
     },
     {
-      code: "CHILD_HEALTH" as FacilityServiceCode,
+      code: "CHILD_HEALTH_VACCINATION" as FacilityServiceCode,
       icon: Baby,
       bg: "#FEF3C7",
       color: "#92400E",
@@ -93,7 +94,7 @@ export const FacilitiesScreen: React.FC<FacilitiesScreenProps> = ({
       descEn: "Universal child immunization, pediatric checkups, RBSK, and nutrition center"
     },
     {
-      code: "DIAGNOSTICS" as FacilityServiceCode,
+      code: "TESTS_DIAGNOSTICS" as FacilityServiceCode,
       icon: FlaskConical,
       bg: "#F3E8FF",
       color: "#6B21A8",
@@ -105,7 +106,7 @@ export const FacilitiesScreen: React.FC<FacilitiesScreenProps> = ({
       descEn: "Clinical laboratory, specimen collection, pathology, and digital X-ray diagnostics"
     },
     {
-      code: "PHARMACY" as FacilityServiceCode,
+      code: "MEDICINES_PHARMACY" as FacilityServiceCode,
       icon: Pill,
       bg: "#ECFDF5",
       color: "#065F46",
@@ -117,7 +118,7 @@ export const FacilitiesScreen: React.FC<FacilitiesScreenProps> = ({
       descEn: "Government pharmacy dispensary, PM Jan Aushadhi Kendra, and essential medicines"
     },
     {
-      code: "TB_DOTS" as FacilityServiceCode,
+      code: "TB_SERVICES" as FacilityServiceCode,
       icon: Activity,
       bg: "#FEF2F2",
       color: "#B91C1C",
@@ -129,7 +130,7 @@ export const FacilitiesScreen: React.FC<FacilitiesScreenProps> = ({
       descEn: "NTEP designated microscopy, sputum testing, free DOTS regimen, and Nikshay desk"
     },
     {
-      code: "NCD" as FacilityServiceCode,
+      code: "DIABETES_BP_SERVICES" as FacilityServiceCode,
       icon: HeartPulse,
       bg: "#F0FDF4",
       color: "#166534",
@@ -141,7 +142,7 @@ export const FacilitiesScreen: React.FC<FacilitiesScreenProps> = ({
       descEn: "Hypertension screening, blood glucose monitoring, and non-communicable disease care"
     },
     {
-      code: "SCHEME_HELP" as FacilityServiceCode,
+      code: "GOVERNMENT_SCHEME_DESK" as FacilityServiceCode,
       icon: Building2,
       bg: "#E0F2FE",
       color: "#0369A1",
@@ -153,7 +154,7 @@ export const FacilitiesScreen: React.FC<FacilitiesScreenProps> = ({
       descEn: "Ayushman Bharat PM-JAY desk, e-KYC, JSY registration, and CSC government scheme portal"
     },
     {
-      code: "SURGERY" as FacilityServiceCode,
+      code: "DISTRICT_HOSPITAL_SURGERY" as FacilityServiceCode,
       icon: Building2,
       bg: "#F1F5F9",
       color: "#334155",
@@ -166,21 +167,69 @@ export const FacilitiesScreen: React.FC<FacilitiesScreenProps> = ({
     }
   ];
 
-  const getCategoryObject = (code: FacilityServiceCode) => {
-    return CATEGORIES.find((c) => c.code === code) || CATEGORIES[1];
+  const getCategoryObject = (code: FacilityServiceCode | string) => {
+    // Normalization mapping from legacy or canonical strings
+    const mapping: Record<string, string> = {
+      "EMERGENCY": "EMERGENCY_CARE",
+      "EMERGENCY_CARE": "EMERGENCY_CARE",
+      "GENERAL_OPD": "GENERAL_DOCTOR_PHC",
+      "GENERAL_DOCTOR_PHC": "GENERAL_DOCTOR_PHC",
+      "MATERNITY": "PREGNANCY_DELIVERY",
+      "PREGNANCY_DELIVERY": "PREGNANCY_DELIVERY",
+      "CHILD_HEALTH": "CHILD_HEALTH_VACCINATION",
+      "CHILD_HEALTH_VACCINATION": "CHILD_HEALTH_VACCINATION",
+      "DIAGNOSTICS": "TESTS_DIAGNOSTICS",
+      "TESTS_DIAGNOSTICS": "TESTS_DIAGNOSTICS",
+      "PHARMACY": "MEDICINES_PHARMACY",
+      "MEDICINES_PHARMACY": "MEDICINES_PHARMACY",
+      "TB_DOTS": "TB_SERVICES",
+      "TB_SERVICES": "TB_SERVICES",
+      "NCD": "DIABETES_BP_SERVICES",
+      "DIABETES_BP_SERVICES": "DIABETES_BP_SERVICES",
+      "SCHEME_HELP": "GOVERNMENT_SCHEME_DESK",
+      "GOVERNMENT_SCHEME_DESK": "GOVERNMENT_SCHEME_DESK",
+      "SURGERY": "DISTRICT_HOSPITAL_SURGERY",
+      "DISTRICT_HOSPITAL_SURGERY": "DISTRICT_HOSPITAL_SURGERY"
+    };
+    const normCode = mapping[code] || code;
+    return CATEGORIES.find((c) => c.code === normCode) || CATEGORIES[1];
   };
 
-  const initialCat = getCategoryObject(initialService || "GENERAL_OPD");
+  const initialCat = getCategoryObject(initialService || "GENERAL_DOCTOR_PHC");
 
-  // Canonical Form State (No hardcoded demo coordinates)
-  const [form, setForm] = useState<FacilitySearchForm>({
-    beneficiaryId: "self",
-    location: null,
-    healthcareNeed: {
-      code: initialCat.code,
-      title: initialCat.titleEn,
-      description: initialCat.descEn
+  // Canonical Form State with honest location tracking
+  const [form, setForm] = useState<FacilitySearchForm>(() => {
+    const existingLoc = LocationService.getState().currentLocation;
+    let initialLocationState: FacilityLocationState | null = null;
+    if (existingLoc) {
+      if (existingLoc.source === "DEVICE_GPS" && existingLoc.latitude != null && existingLoc.longitude != null) {
+        initialLocationState = {
+          source: "GPS",
+          latitude: existingLoc.latitude,
+          longitude: existingLoc.longitude,
+          accuracyMeters: existingLoc.accuracy_meters || undefined
+        };
+      } else {
+        initialLocationState = {
+          source: "MANUAL",
+          village: existingLoc.village || "Kalyanpur",
+          pincode: existingLoc.pincode || "415001",
+          block: existingLoc.block || undefined,
+          district: existingLoc.district || undefined,
+          state: existingLoc.state || undefined
+        };
+      }
     }
+
+    return {
+      beneficiaryId: "self",
+      location: initialLocationState,
+      healthcareNeed: {
+        code: initialCat.code,
+        title: initialCat.titleEn,
+        description: initialCat.descEn
+      }
+    };
   });
 
   // Location Service Subscription
@@ -190,25 +239,29 @@ export const FacilitiesScreen: React.FC<FacilitiesScreenProps> = ({
     const unsub = LocationService.subscribeToLocationState((s: any) => {
       setLocationState(s);
       if (s.currentLocation) {
+        const isGps = s.currentLocation?.source === "DEVICE_GPS" && s.currentLocation?.latitude != null && s.currentLocation?.longitude != null;
         setForm((prev) => ({
           ...prev,
-          location: {
-            source: s.currentLocation?.source === "DEVICE_GPS" ? "GPS" : "MANUAL",
-            latitude: s.currentLocation?.latitude || 0,
-            longitude: s.currentLocation?.longitude || 0,
-            accuracyMeters: s.currentLocation?.accuracy_meters || undefined,
-            village: s.currentLocation?.village || undefined,
-            pincode: s.currentLocation?.pincode || undefined,
-            block: s.currentLocation?.block || undefined,
-            district: s.currentLocation?.district || undefined,
-            state: s.currentLocation?.state || undefined
-          }
+          location: isGps
+            ? {
+                source: "GPS",
+                latitude: s.currentLocation.latitude,
+                longitude: s.currentLocation.longitude,
+                accuracyMeters: s.currentLocation.accuracy_meters || undefined
+              }
+            : {
+                source: "MANUAL",
+                village: s.currentLocation.village || "Kalyanpur",
+                pincode: s.currentLocation.pincode || "415001",
+                block: s.currentLocation.block || undefined,
+                district: s.currentLocation.district || undefined,
+                state: s.currentLocation.state || undefined
+              }
         }));
       }
     });
 
-
-    // Auto-request location on initial view if no location is present
+    // Request GPS location on initial view
     if (!LocationService.getState().currentLocation) {
       LocationService.getCurrentLocation();
     }
@@ -236,6 +289,7 @@ export const FacilitiesScreen: React.FC<FacilitiesScreenProps> = ({
   // Geolocation & Manual Modal states
   const [showLocationModal, setShowLocationModal] = useState(false);
   const [showPermissionPrompt, setShowPermissionPrompt] = useState(false);
+  const [showEmergencyConfirmModal, setShowEmergencyConfirmModal] = useState(false);
   const [manualVillageInput, setManualVillageInput] = useState("");
   const [manualPincodeInput, setManualPincodeInput] = useState("");
   const [manualBlockInput, setManualBlockInput] = useState("");
@@ -244,9 +298,18 @@ export const FacilitiesScreen: React.FC<FacilitiesScreenProps> = ({
   const [isGeocoding, setIsGeocoding] = useState(false);
   const [geocodedCandidates, setGeocodedCandidates] = useState<any[]>([]);
 
-
-  const [gpsStatus, setGpsStatus] = useState<"IDLE" | "LOCATING" | "SUCCESS" | "DENIED" | "TIMEOUT" | "ERROR">("SUCCESS");
-  const [gpsMessage, setGpsMessage] = useState<string | null>("GPS Location Detected");
+  const [gpsStatus, setGpsStatus] = useState<"IDLE" | "LOCATING" | "SUCCESS" | "DENIED" | "TIMEOUT" | "ERROR">(() => {
+    const s = LocationService.getState();
+    if (s.currentLocation) return "SUCCESS";
+    if (s.reactiveState === "PERMISSION_DENIED") return "DENIED";
+    if (s.reactiveState === "TIMEOUT") return "TIMEOUT";
+    if (s.reactiveState === "ERROR") return "ERROR";
+    return "IDLE";
+  });
+  const [gpsMessage, setGpsMessage] = useState<string | null>(() => {
+    const s = LocationService.getState();
+    return s.currentLocation ? "GPS Location Detected" : null;
+  });
 
   // Search Results, Detail & Execution states
   const [searchResults, setSearchResults] = useState<FacilitySearchResultItem[]>([]);
@@ -274,7 +337,7 @@ export const FacilitiesScreen: React.FC<FacilitiesScreenProps> = ({
   const [appointmentSlot, setAppointmentSlot] = useState("Tomorrow 09:00 AM - 11:00 AM");
 
   // Sync localized category text when language or selected category changes
-  const activeCatDef = getCategoryObject(form.healthcareNeed?.code || "GENERAL_OPD");
+  const activeCatDef = getCategoryObject(form.healthcareNeed?.code || "GENERAL_DOCTOR_PHC");
   const activeTitle = currentLang === "mr-IN" ? activeCatDef.titleMr : currentLang === "hi-IN" ? activeCatDef.titleHi : activeCatDef.titleEn;
   const activeDesc = currentLang === "mr-IN" ? activeCatDef.descMr : currentLang === "hi-IN" ? activeCatDef.descHi : activeCatDef.descEn;
 
@@ -303,10 +366,17 @@ export const FacilitiesScreen: React.FC<FacilitiesScreenProps> = ({
           }
         }
         const membersRes = await apiClient.getHouseholdMembers();
-        const membersList = membersRes?.data || membersRes || [];
+        const membersList = Array.isArray(membersRes)
+          ? membersRes
+          : Array.isArray(membersRes?.data)
+          ? membersRes.data
+          : Array.isArray(membersRes?.items)
+          ? membersRes.items
+          : [];
         setHouseholdMembers(membersList);
       } catch (err) {
         console.warn("Could not load dynamic citizen members:", err);
+        setHouseholdMembers([]);
       }
     };
     fetchCitizenData();
@@ -502,13 +572,36 @@ export const FacilitiesScreen: React.FC<FacilitiesScreenProps> = ({
   // Check if Search Button should be enabled
   const isSearchButtonEnabled =
     Boolean(form.beneficiaryId) &&
-    Boolean(form.location) &&
     Boolean(form.healthcareNeed?.code) &&
     !loading;
 
   // Primary Action: Execute Facility Search
   const handleFindSuitableHealthCentres = async (customRadiusKm?: number) => {
     if (!isSearchButtonEnabled || loading) return;
+
+    let activeLocState = form.location;
+    if (!activeLocState) {
+      const loc = await LocationService.refreshCurrentLocation();
+      if (!loc) {
+        setShowLocationModal(true);
+        setLoading(false);
+        return;
+      }
+      activeLocState = loc.source === "DEVICE_GPS" && loc.latitude != null && loc.longitude != null ? {
+        source: "GPS",
+        latitude: loc.latitude,
+        longitude: loc.longitude,
+        accuracyMeters: loc.accuracy_meters || undefined
+      } : {
+        source: "MANUAL",
+        village: loc.village || "Kalyanpur",
+        pincode: loc.pincode || "415001",
+        district: loc.district || undefined,
+        block: loc.block || undefined,
+        state: loc.state || undefined
+      };
+      setForm((prev) => ({ ...prev, location: activeLocState }));
+    }
 
     setSearchError(null);
     setLoading(true);
@@ -524,7 +617,7 @@ export const FacilitiesScreen: React.FC<FacilitiesScreenProps> = ({
     }, 15000);
 
     const currentNeed = form.healthcareNeed!;
-    const isEmergency = currentNeed.code === "EMERGENCY";
+    const isEmergency = currentNeed.code === "EMERGENCY_CARE" || currentNeed.code === "EMERGENCY";
     const radiusToUse = customRadiusKm || selectedRadiusKm;
 
     const requestSnapshot = {
@@ -535,25 +628,27 @@ export const FacilitiesScreen: React.FC<FacilitiesScreenProps> = ({
       patient_category: selectedBeneficiaryMeta.category || "GENERAL",
       active_case_id: activeCaseId ?? undefined,
       max_distance_km: radiusToUse,
-      location: form.location?.source === "GPS" ? {
+      radius_km: radiusToUse,
+      location: activeLocState?.source === "GPS" ? {
         source: "GPS",
-        latitude: form.location.latitude,
-        longitude: form.location.longitude,
-        accuracyMeters: form.location.accuracyMeters
+        latitude: activeLocState.latitude,
+        longitude: activeLocState.longitude,
+        accuracyMeters: activeLocState.accuracyMeters
       } : {
         source: "MANUAL",
-        village: form.location?.village || "Kalyanpur",
-        pincode: form.location?.pincode || "415001",
-        district: form.location?.district || "District 04",
-        taluka: form.location?.block || "Kalyanpur Block",
-        state: form.location?.state || "Maharashtra"
+        village: activeLocState?.village || undefined,
+        pincode: activeLocState?.pincode || undefined,
+        district: activeLocState?.district || undefined,
+        taluka: activeLocState?.block || undefined,
+        state: activeLocState?.state || undefined
       },
-      latitude: form.location?.source === "GPS" ? form.location.latitude : undefined,
-      longitude: form.location?.source === "GPS" ? form.location.longitude : undefined,
-      village_name: form.location?.source === "MANUAL" ? form.location.village : undefined,
-      pincode: form.location?.source === "MANUAL" ? form.location.pincode : undefined,
-      location_method: form.location?.source || "GPS",
+      latitude: activeLocState?.source === "GPS" ? activeLocState.latitude : undefined,
+      longitude: activeLocState?.source === "GPS" ? activeLocState.longitude : undefined,
+      village_name: activeLocState?.source === "MANUAL" ? activeLocState.village : undefined,
+      pincode: activeLocState?.source === "MANUAL" ? activeLocState.pincode : undefined,
+      location_method: activeLocState?.source || "GPS",
       preferred_language: currentLang,
+      locale: currentLang,
       idempotency_key: `SCH-${Date.now()}`
     };
 
@@ -574,20 +669,24 @@ export const FacilitiesScreen: React.FC<FacilitiesScreenProps> = ({
       setCurrentView("SEARCH_RESULTS");
     } catch (err: any) {
       clearTimeout(timeoutId);
-      if (err.name === "AbortError") {
-        setSearchError("Search took too long. Try again.");
+      if (err.name === "AbortError" || err.code === "TIMEOUT") {
+        setSearchError("Search request timed out. Your selections are saved.");
         return;
       }
       console.error("Facility search error:", err);
       const status = err.status || err.statusCode;
       if (status === 401) {
-        setSearchError("Please sign in again.");
+        setSearchError("Your session has expired. Please sign in again.");
       } else if (status === 403) {
-        setSearchError(err.message?.includes("household") ? "You cannot search for this household member." : "Map service configuration is not authorized.");
+        setSearchError(err.message?.includes("household") ? "You cannot search for this household member." : "Unauthorized access to health facility service.");
       } else if (status === 429) {
         setSearchError("Search limit reached. Please try again shortly.");
+      } else if (status === 422) {
+        setSearchError(err.message || "Invalid search location or radius parameters.");
+      } else if (err.code === "BACKEND_UNREACHABLE" || !navigator.onLine) {
+        setSearchError("We could not connect to the health-centre service. Your selections are saved.");
       } else {
-        setSearchError("Health-centre search is temporarily unavailable. Your selection has not been lost.");
+        setSearchError(err.message || "We could not complete your search. Your selections are saved.");
       }
     } finally {
       setLoading(false);
@@ -721,6 +820,39 @@ export const FacilitiesScreen: React.FC<FacilitiesScreenProps> = ({
     window.open(mapsUrl, "_blank");
   };
 
+  // Share Facility Handler (Web Share API with Clipboard Fallback)
+  const handleShareFacility = async (fac: any) => {
+    const lat = fac.latitude;
+    const lng = fac.longitude;
+    const shareTitle = `${fac.display_name} - Arogya Sahayak`;
+    const shareText = `${fac.display_name}\nAddress: ${fac.address || `${fac.village || ""}, ${fac.pincode || ""}`}\nPhone: ${fac.phone || "N/A"}\nStatus: ${fac.operating_status_label || "Open"}`;
+    const shareUrl = `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`;
+
+    if (typeof navigator !== "undefined" && navigator.share) {
+      try {
+        await navigator.share({
+          title: shareTitle,
+          text: shareText,
+          url: shareUrl
+        });
+        return;
+      } catch (err: any) {
+        if (err.name === "AbortError") return;
+      }
+    }
+
+    // Fallback: Copy to clipboard
+    try {
+      if (navigator.clipboard) {
+        await navigator.clipboard.writeText(`${shareTitle}\n${shareText}\nMaps: ${shareUrl}`);
+        setMutationSuccessMsg(currentLang === "mr-IN" ? "आरोग्य केंद्राची माहिती कॉपी झाली!" : "Facility details copied to clipboard!");
+        setTimeout(() => setMutationSuccessMsg(null), 2500);
+      }
+    } catch (e) {
+      console.warn("Clipboard copy failed:", e);
+    }
+  };
+
   // Select Facility for Active Case
   const handleSelectFacilityForCase = async (facilityId: string) => {
     setIsSubmitting(true);
@@ -818,7 +950,8 @@ export const FacilitiesScreen: React.FC<FacilitiesScreenProps> = ({
           </button>
 
           <button
-            onClick={() => window.open("tel:108", "_self")}
+            id="btn-emergency-108-header"
+            onClick={() => setShowEmergencyConfirmModal(true)}
             style={{
               padding: "6px 14px",
               borderRadius: 20,
@@ -855,19 +988,28 @@ export const FacilitiesScreen: React.FC<FacilitiesScreenProps> = ({
         </div>
       )}
 
-      {/* Search / Validation Error Banner */}
+      {/* Search / Validation Error Banner with Retry */}
       {searchError && (
         <div style={{ margin: "12px 16px 0", padding: "12px 14px", backgroundColor: "#FEF2F2", color: "#991B1B", borderRadius: 14, border: "1.5px solid #FECACA", fontSize: 13, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <AlertTriangle size={18} color="#DC2626" />
             <span>{searchError}</span>
           </div>
-          <button
-            onClick={() => setSearchError(null)}
-            style={{ border: "none", background: "none", color: "#991B1B", fontWeight: 800, cursor: "pointer", fontSize: 14 }}
-          >
-            ✕
-          </button>
+          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <button
+              id="btn-retry-facility-search"
+              onClick={() => handleFindSuitableHealthCentres()}
+              style={{ padding: "4px 10px", borderRadius: 8, backgroundColor: "#DC2626", color: "#FFFFFF", border: "none", fontSize: 11, fontWeight: 800, cursor: "pointer" }}
+            >
+              🔄 {t("common.retry", "Retry")}
+            </button>
+            <button
+              onClick={() => setSearchError(null)}
+              style={{ border: "none", background: "none", color: "#991B1B", fontWeight: 800, cursor: "pointer", fontSize: 14 }}
+            >
+              ✕
+            </button>
+          </div>
         </div>
       )}
 
@@ -1016,6 +1158,7 @@ export const FacilitiesScreen: React.FC<FacilitiesScreenProps> = ({
                 return (
                   <button
                     key={cat.code}
+                    id={`category-card-${cat.code}`}
                     onClick={() => handleSelectCategory(cat.code)}
                     style={{
                       padding: 12,
@@ -1037,6 +1180,9 @@ export const FacilitiesScreen: React.FC<FacilitiesScreenProps> = ({
                     <div>
                       <div style={{ fontSize: 13, fontWeight: 800, color: isSelected ? cat.color : "#1E293B", lineHeight: 1.3 }}>
                         {title}
+                      </div>
+                      <div style={{ fontSize: 10, color: "#64748B", marginTop: 2 }}>
+                        {cat.titleEn}
                       </div>
                     </div>
                   </button>
@@ -1068,7 +1214,8 @@ export const FacilitiesScreen: React.FC<FacilitiesScreenProps> = ({
                 </div>
               </div>
               <button
-                onClick={() => window.open("tel:108", "_self")}
+                id="btn-emergency-108-banner"
+                onClick={() => setShowEmergencyConfirmModal(true)}
                 style={{ padding: "8px 16px", backgroundColor: "#FFFFFF", color: "#DC2626", borderRadius: 10, border: "none", fontSize: 13, fontWeight: 800, cursor: "pointer", minHeight: 40 }}
               >
                 Call 108
@@ -1078,6 +1225,7 @@ export const FacilitiesScreen: React.FC<FacilitiesScreenProps> = ({
 
           {/* Primary Action Button: "Find Suitable Health Centres" */}
           <button
+            id="btn-find-suitable-facilities"
             onClick={() => handleFindSuitableHealthCentres()}
             disabled={!isSearchButtonEnabled}
             style={{
@@ -1230,19 +1378,31 @@ export const FacilitiesScreen: React.FC<FacilitiesScreenProps> = ({
               </div>
               <div style={{ display: "flex", gap: 8, justifyContent: "center", marginTop: 14, flexWrap: "wrap" }}>
                 <button
-                  onClick={() => setCurrentView("CATEGORIES")}
+                  id="btn-increase-search-radius"
+                  onClick={() => {
+                    const nextRadius = selectedRadiusKm < 25 ? 25 : selectedRadiusKm < 50 ? 50 : 100;
+                    setSelectedRadiusKm(nextRadius);
+                    handleFindSuitableHealthCentres(nextRadius);
+                  }}
                   style={{ padding: "8px 16px", backgroundColor: "#2563EB", color: "#FFFFFF", borderRadius: 10, border: "none", fontSize: 12, fontWeight: 700, cursor: "pointer" }}
                 >
-                  Change Service
+                  🔍 Increase Search Area ({selectedRadiusKm < 25 ? "25 km" : "50 km"})
                 </button>
                 <button
+                  id="btn-empty-change-location"
                   onClick={() => {
-                    setCurrentView("CATEGORIES");
                     setShowLocationModal(true);
                   }}
                   style={{ padding: "8px 16px", backgroundColor: "#EFF6FF", color: "#1E40AF", border: "1px solid #BFDBFE", borderRadius: 10, fontSize: 12, fontWeight: 700, cursor: "pointer" }}
                 >
-                  Change Location
+                  📍 Change Location
+                </button>
+                <button
+                  id="btn-empty-change-service"
+                  onClick={() => setCurrentView("CATEGORIES")}
+                  style={{ padding: "8px 16px", backgroundColor: "#F8FAFC", color: "#334155", border: "1px solid #CBD5E1", borderRadius: 10, fontSize: 12, fontWeight: 700, cursor: "pointer" }}
+                >
+                  Change Service
                 </button>
               </div>
             </div>
@@ -1345,9 +1505,10 @@ export const FacilitiesScreen: React.FC<FacilitiesScreenProps> = ({
                         </span>
                       </div>
 
-                      {/* Action Buttons: Directions, Call, Details */}
+                      {/* Action Buttons: Directions, Call, Share, Details */}
                       <div style={{ display: "flex", gap: 8, marginTop: 4, flexWrap: "wrap" }}>
                         <button
+                          id={`btn-directions-${fac.id || idx}`}
                           onClick={(e) => {
                             e.stopPropagation();
                             handleOpenDirections(fac);
@@ -1375,6 +1536,7 @@ export const FacilitiesScreen: React.FC<FacilitiesScreenProps> = ({
 
                         {fac.phone && (
                           <button
+                            id={`btn-call-${fac.id || idx}`}
                             onClick={(e) => {
                               e.stopPropagation();
                               if (fac.phone) handleCallFacility(fac.phone, fac.id);
@@ -1402,6 +1564,33 @@ export const FacilitiesScreen: React.FC<FacilitiesScreenProps> = ({
                         )}
 
                         <button
+                          id={`btn-share-${fac.id || idx}`}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleShareFacility(fac);
+                          }}
+                          style={{
+                            padding: "10px 12px",
+                            borderRadius: 12,
+                            backgroundColor: "#F8FAFC",
+                            color: "#334155",
+                            border: "1px solid #CBD5E1",
+                            fontSize: 12,
+                            fontWeight: 700,
+                            cursor: "pointer",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            gap: 4,
+                            minHeight: 44
+                          }}
+                          title="Share Facility"
+                        >
+                          <Share2 size={15} />
+                        </button>
+
+                        <button
+                          id={`btn-details-${fac.id || idx}`}
                           onClick={(e) => {
                             e.stopPropagation();
                             handleOpenDetail(fac);
@@ -1424,6 +1613,36 @@ export const FacilitiesScreen: React.FC<FacilitiesScreenProps> = ({
                           Details <ChevronRight size={14} />
                         </button>
                       </div>
+
+                      {/* Direct OPD Booking Action for PHC / CHC / Dispensary */}
+                      <button
+                        id={`btn-schedule-opd-${fac.id || idx}`}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedFacility(fac);
+                          setFacilityDetail(fac);
+                          setCurrentView("APPOINTMENT_REQUEST");
+                        }}
+                        style={{
+                          width: "100%",
+                          padding: "10px",
+                          borderRadius: 12,
+                          backgroundColor: "#EFF6FF",
+                          color: "#1D4ED8",
+                          border: "1.5px solid #BFDBFE",
+                          fontSize: 12,
+                          fontWeight: 800,
+                          cursor: "pointer",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          gap: 6,
+                          minHeight: 42
+                        }}
+                      >
+                        <Calendar size={15} color="#2563EB" />
+                        <span>{fac.facility_type === "PHC" ? "Schedule PHC OPD Visit" : "Schedule OPD Visit"}</span>
+                      </button>
 
                       {/* Active Case Select Action */}
                       {activeCaseId && (
@@ -1506,8 +1725,9 @@ export const FacilitiesScreen: React.FC<FacilitiesScreenProps> = ({
 
             {/* Action Buttons: Directions, Call, Ask ASHA */}
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+              <div style={{ display: "grid", gridTemplateColumns: fac.phone ? "1fr 1fr 1fr" : "1fr 1fr", gap: 8 }}>
                 <button
+                  id="btn-detail-directions"
                   onClick={() => handleOpenDirections(fac)}
                   style={{
                     padding: "12px",
@@ -1530,6 +1750,7 @@ export const FacilitiesScreen: React.FC<FacilitiesScreenProps> = ({
 
                 {fac.phone && (
                   <button
+                    id="btn-detail-call"
                     onClick={() => handleCallFacility(fac.phone, fac.id)}
                     style={{
                       padding: "12px",
@@ -1547,12 +1768,35 @@ export const FacilitiesScreen: React.FC<FacilitiesScreenProps> = ({
                       minHeight: 48
                     }}
                   >
-                    <Phone size={16} /> Call Centre
+                    <Phone size={16} /> Call
                   </button>
                 )}
+
+                <button
+                  id="btn-detail-share"
+                  onClick={() => handleShareFacility(fac)}
+                  style={{
+                    padding: "12px",
+                    borderRadius: 14,
+                    backgroundColor: "#F8FAFC",
+                    color: "#334155",
+                    border: "1px solid #CBD5E1",
+                    fontSize: 13,
+                    fontWeight: 800,
+                    cursor: "pointer",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: 6,
+                    minHeight: 48
+                  }}
+                >
+                  <Share2 size={16} /> Share
+                </button>
               </div>
 
               <button
+                id="btn-detail-request-asha"
                 onClick={() => setCurrentView("ASHA_REQUEST")}
                 style={{
                   padding: "12px",
@@ -1574,6 +1818,7 @@ export const FacilitiesScreen: React.FC<FacilitiesScreenProps> = ({
               </button>
 
               <button
+                id="btn-detail-request-appointment"
                 onClick={() => setCurrentView("APPOINTMENT_REQUEST")}
                 style={{
                   padding: "12px",
@@ -1814,6 +2059,49 @@ export const FacilitiesScreen: React.FC<FacilitiesScreenProps> = ({
                 </div>
               </>
             )}
+          </div>
+        </div>
+      )}
+      {/* Emergency 108 Call Confirmation Modal */}
+      {showEmergencyConfirmModal && (
+        <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: "rgba(0,0,0,0.6)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 110, padding: 16 }}>
+          <div style={{ backgroundColor: "#FFFFFF", borderRadius: 20, padding: 20, width: "100%", maxWidth: 380, display: "flex", flexDirection: "column", gap: 14 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <div style={{ width: 40, height: 40, borderRadius: 12, backgroundColor: "#FEE2E2", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <AlertTriangle size={22} color="#DC2626" />
+              </div>
+              <div style={{ fontSize: 16, fontWeight: 800, color: "#991B1B" }}>
+                Call 108 Emergency Ambulance?
+              </div>
+            </div>
+
+            <div style={{ fontSize: 13, color: "#475569", lineHeight: 1.4 }}>
+              This will connect your phone immediately to the Government of Maharashtra 108 Emergency Medical Response Service.
+            </div>
+
+            <div style={{ backgroundColor: "#FEF2F2", padding: 10, borderRadius: 10, fontSize: 11, color: "#991B1B", fontWeight: 600 }}>
+              🚑 Keep patient details and current locality ready for the emergency operator.
+            </div>
+
+            <div style={{ display: "flex", gap: 10, marginTop: 4 }}>
+              <button
+                id="btn-cancel-emergency-call"
+                onClick={() => setShowEmergencyConfirmModal(false)}
+                style={{ flex: 1, padding: "12px", borderRadius: 12, border: "1px solid #CBD5E1", backgroundColor: "#F8FAFC", color: "#475569", fontSize: 13, fontWeight: 700, cursor: "pointer" }}
+              >
+                Cancel
+              </button>
+              <button
+                id="btn-confirm-emergency-call"
+                onClick={() => {
+                  setShowEmergencyConfirmModal(false);
+                  window.open("tel:108", "_self");
+                }}
+                style={{ flex: 1, padding: "12px", borderRadius: 12, border: "none", backgroundColor: "#DC2626", color: "#FFFFFF", fontSize: 13, fontWeight: 800, cursor: "pointer" }}
+              >
+                📞 Call 108 Now
+              </button>
+            </div>
           </div>
         </div>
       )}

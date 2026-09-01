@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { apiClient } from "@aarogya/api-client";
+import { useLanguage } from "../../context/LanguageContext";
 import { PriorityBadge } from "../../components/StatusBadge";
 import {
   WarningIcon,
@@ -19,6 +20,7 @@ import { getEventMetadata, formatRelativeTime, formatIndiaTimestamp } from "./Do
 
 export function DoctorDashboardScreen() {
   const navigate = useNavigate();
+  const { t } = useLanguage();
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [activeFilter, setActiveFilter] = useState<string>("ALL");
@@ -144,7 +146,7 @@ export function DoctorDashboardScreen() {
   if (loading && !data) {
     return (
       <div style={{ padding: 40, textAlign: "center", color: "var(--text-secondary)" }}>
-        Loading PHC clinical queue...
+        {t("doctor.loading_queue", "Loading PHC clinical queue...")}
       </div>
     );
   }
@@ -197,7 +199,7 @@ export function DoctorDashboardScreen() {
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 12 }}>
         <div>
           <h1 style={{ margin: 0, fontSize: 24, fontWeight: 800, color: "var(--text-primary)" }}>
-            PHC Doctor Dashboard
+            {t("doctor.phc_doctor_dashboard", "PHC Doctor Dashboard")}
           </h1>
           <div style={{ fontSize: 14, color: "var(--text-secondary)", marginTop: 4 }}>
             {data?.facility_name || "Kalyanpur Primary Health Center"} · {data?.doctor_name || "Dr. Abhinav Sharma"} ({data?.doctor_role || "PHC Medical Officer"})
@@ -221,7 +223,7 @@ export function DoctorDashboardScreen() {
           }}
         >
           <StethoscopeIcon size={16} color="#FFF" />
-          <span>View Direct Citizen Requests →</span>
+          <span>{t("doctor.view_direct_requests", "View Direct Citizen Requests →")}</span>
         </Link>
       </div>
 
@@ -258,10 +260,27 @@ export function DoctorDashboardScreen() {
             </div>
             <div>
               <div style={{ fontSize: 16, fontWeight: 700, color: "var(--urgent)" }}>
-                {urgentSummary.count} Urgent PHC Referral{urgentSummary.count > 1 ? "s" : ""} Waiting Doctor Review
+                {urgentSummary.count}{" "}
+                {t(
+                  urgentSummary.count === 1 ? "doctor.urgent_referral_alert_single" : "doctor.urgent_referral_alert_plural",
+                  urgentSummary.count === 1 ? "Urgent PHC Referral Waiting Doctor Review" : "Urgent PHC Referrals Waiting Doctor Review"
+                )}
               </div>
               <div style={{ fontSize: 13, color: "var(--text-primary)", marginTop: 2 }}>
-                Patient: <strong>{urgentSummary.patient_name}</strong> · Referring ASHA: {urgentSummary.referring_asha_name} · Reason: {urgentSummary.reason}
+                {urgentSummary.count > 1 ? (
+                  <>
+                    <span style={{ fontWeight: 600, color: "var(--urgent)" }}>{t("doctor.latest_case", "Latest")}: </span>
+                    <span>{urgentSummary.patient_name || t("doctor.unnamed_patient", "Patient")}</span>
+                    <span> · {t("doctor.referring_asha_label", "Referring ASHA")}: {urgentSummary.referring_asha_name || t("doctor.unassigned_asha", "ASHA")}</span>
+                    <span> · {t("doctor.reason_label", "Reason")}: {urgentSummary.reason || t("doctor.default_urgent_reason", "Immediate PHC clinical evaluation required")}</span>
+                  </>
+                ) : (
+                  <>
+                    <span>{t("doctor.patient_label", "Patient")}: {urgentSummary.patient_name || t("doctor.unnamed_patient", "Patient")}</span>
+                    <span> · {t("doctor.referring_asha_label", "Referring ASHA")}: {urgentSummary.referring_asha_name || t("doctor.unassigned_asha", "ASHA")}</span>
+                    <span> · {t("doctor.reason_label", "Reason")}: {urgentSummary.reason || t("doctor.default_urgent_reason", "Immediate PHC clinical evaluation required")}</span>
+                  </>
+                )}
               </div>
             </div>
           </div>
@@ -281,7 +300,7 @@ export function DoctorDashboardScreen() {
               whiteSpace: "nowrap",
             }}
           >
-            Review Urgent Referrals →
+            {t("doctor.review_urgent_referrals", "Review Urgent Referrals →")}
           </button>
         </div>
       )}
@@ -289,12 +308,12 @@ export function DoctorDashboardScreen() {
       {/* 6 Clickable Metric Cards Grid */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 14 }}>
         {[
-          { id: "NEW", title: "New Referrals", count: metrics.new_referrals_count, color: "#1565C0", bg: "#E3F2FD", border: "#BBDEFB" },
-          { id: "URGENT", title: "Urgent Cases", count: metrics.urgent_cases_count, color: "var(--urgent)", bg: "var(--urgent-bg)", border: "#F5C6CB" },
-          { id: "ACKNOWLEDGED", title: "Awaiting Consultation", count: metrics.awaiting_consultation_count, color: "#D65A00", bg: "#FFF3E8", border: "#FFE8D6" },
-          { id: "FOLLOWUPS", title: "ASHA Follow-ups", count: metrics.asha_followups_count, color: "#B26A00", bg: "#FFF8E1", border: "#FFF3CD" },
-          { id: "ESCALATIONS", title: "Escalations", count: metrics.escalations_count, color: "#C2185B", bg: "#FCE4EC", border: "#F8BBD0" },
-          { id: "COMPLETED", title: "Completed Today", count: metrics.completed_today_count, color: "var(--success)", bg: "var(--success-bg)", border: "#D4EDDA" },
+          { id: "NEW", title: t("doctor.new_referrals_card", "New Referrals"), count: metrics.new_referrals_count, color: "#1565C0", bg: "#E3F2FD", border: "#BBDEFB" },
+          { id: "URGENT", title: t("doctor.urgent_cases_card", "Urgent Cases"), count: metrics.urgent_cases_count, color: "var(--urgent)", bg: "var(--urgent-bg)", border: "#F5C6CB" },
+          { id: "ACKNOWLEDGED", title: t("doctor.awaiting_consultation_card", "Awaiting Consultation"), count: metrics.awaiting_consultation_count, color: "#D65A00", bg: "#FFF3E8", border: "#FFE8D6" },
+          { id: "FOLLOWUPS", title: t("doctor.asha_followups_card", "ASHA Follow-ups"), count: metrics.asha_followups_count, color: "#B26A00", bg: "#FFF8E1", border: "#FFF3CD" },
+          { id: "ESCALATIONS", title: t("doctor.escalations_card", "Escalations"), count: metrics.escalations_count, color: "#C2185B", bg: "#FCE4EC", border: "#F8BBD0" },
+          { id: "COMPLETED", title: t("doctor.completed_today_card", "Completed Today"), count: metrics.completed_today_count, color: "var(--success)", bg: "var(--success-bg)", border: "#D4EDDA" },
         ].map((card) => {
           const isSelected = activeFilter === card.id;
           return (
@@ -328,17 +347,17 @@ export function DoctorDashboardScreen() {
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12, marginBottom: 16 }}>
               <div>
                 <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: "var(--text-primary)" }}>
-                  Incoming ASHA Referrals ({filteredReferrals.length})
+                  {t("doctor.incoming_referrals", "Incoming ASHA Referrals")} ({filteredReferrals.length})
                 </h2>
                 <div style={{ fontSize: 13, color: "var(--text-secondary)", marginTop: 2 }}>
-                  Patients triaged in the field requiring PHC Medical Officer consultation
+                  {t("doctor.incoming_referrals_subtitle", "Patients triaged in the field requiring PHC Medical Officer consultation")}
                 </div>
               </div>
               <Link
                 to="/doctor/referrals"
                 style={{ fontSize: 13, fontWeight: 600, color: "var(--primary)", textDecoration: "none" }}
               >
-                View Full Queue →
+                {t("doctor.view_full_queue", "View Full Queue →")}
               </Link>
             </div>
 
@@ -360,7 +379,7 @@ export function DoctorDashboardScreen() {
                 <SearchIcon size={16} color="var(--text-secondary)" />
                 <input
                   type="text"
-                  placeholder="Search patient, case, referral or ASHA..."
+                  placeholder={t("doctor.search_referrals_placeholder", "Search patient, case, referral or ASHA...")}
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   style={{ border: "none", outline: "none", width: "100%", fontSize: 13, backgroundColor: "transparent" }}
@@ -369,11 +388,11 @@ export function DoctorDashboardScreen() {
 
               <div style={{ display: "flex", gap: 6, overflowX: "auto" }}>
                 {[
-                  { id: "ALL", label: "All" },
-                  { id: "URGENT", label: "Urgent" },
-                  { id: "NEW", label: "New" },
-                  { id: "ACKNOWLEDGED", label: "Acknowledged" },
-                  { id: "ARRIVED", label: "Patient Arrived" },
+                  { id: "ALL", label: t("doctor.filter_all", "All") },
+                  { id: "URGENT", label: t("doctor.filter_urgent", "Urgent") },
+                  { id: "NEW", label: t("doctor.filter_new", "New") },
+                  { id: "ACKNOWLEDGED", label: t("doctor.filter_acknowledged", "Acknowledged") },
+                  { id: "ARRIVED", label: t("doctor.filter_arrived", "Patient Arrived") },
                 ].map((tab) => (
                   <button
                     key={tab.id}
@@ -471,7 +490,11 @@ export function DoctorDashboardScreen() {
                               color: isArrived ? "#03543F" : isAcknowledged ? "#3730A3" : "#92400E",
                             }}
                           >
-                            {isArrived ? "✓ PATIENT ARRIVED" : isAcknowledged ? "DOCTOR ACKNOWLEDGED" : "PENDING REVIEW"}
+                            {isArrived
+                              ? `✓ ${t("doctor.patient_arrived_badge", "PATIENT ARRIVED")}`
+                              : isAcknowledged
+                              ? t("doctor.doctor_acknowledged_badge", "DOCTOR ACKNOWLEDGED")
+                              : t("doctor.pending_review_badge", "PENDING REVIEW")}
                           </span>
                         </div>
                       </div>
@@ -479,11 +502,11 @@ export function DoctorDashboardScreen() {
                       {/* Middle Row: Non-diagnostic Triage Reason & Clinical Evidence */}
                       <div style={{ padding: 12, backgroundColor: "var(--surface)", borderRadius: 8, border: "1px solid var(--border)", display: "flex", flexDirection: "column", gap: 6 }}>
                         <div style={{ fontSize: 13, color: "var(--text-primary)", fontWeight: 600 }}>
-                          ⚠️ Triage Reason: {ref.reason || "Elevated blood pressure and warning signs recorded. Doctor review required."}
+                          ⚠️ {t("doctor.triage_reason_prefix", "Triage Reason")}: {ref.reason || "Elevated blood pressure and warning signs recorded. Doctor review required."}
                         </div>
                         {ref.citizen_reported_concern && (
                           <div style={{ fontSize: 12, color: "var(--text-secondary)" }}>
-                            <strong>Citizen concern:</strong> "{ref.citizen_reported_concern}"
+                            <strong>{t("doctor.citizen_concern_prefix", "Citizen concern")}:</strong> "{ref.citizen_reported_concern}"
                           </div>
                         )}
                         {ref.latest_vitals && (
@@ -523,7 +546,7 @@ export function DoctorDashboardScreen() {
                                 gap: 4,
                               }}
                             >
-                              📞 Call ASHA
+                              📞 {t("doctor.call_asha", "Call ASHA")}
                             </a>
                           )}
                           <button
@@ -539,7 +562,7 @@ export function DoctorDashboardScreen() {
                               cursor: "pointer",
                             }}
                           >
-                            View Timeline
+                            {t("doctor.view_timeline", "View Timeline")}
                           </button>
                         </div>
 
@@ -559,7 +582,7 @@ export function DoctorDashboardScreen() {
                                 cursor: "pointer",
                               }}
                             >
-                              {isProcessing === ref.id ? "Acknowledging..." : "✓ Review & Acknowledge"}
+                              {isProcessing === ref.id ? "Acknowledging..." : `✓ ${t("doctor.review_and_acknowledge", "Review & Acknowledge")}`}
                             </button>
                           )}
 
@@ -579,7 +602,7 @@ export function DoctorDashboardScreen() {
                                   cursor: "pointer",
                                 }}
                               >
-                                {isProcessing === ref.id ? "Updating..." : "Mark Patient Arrived"}
+                                {isProcessing === ref.id ? "Updating..." : t("doctor.mark_arrived", "Mark Patient Arrived")}
                               </button>
                               <button
                                 onClick={(e) => handleStartConsultation(e, ref)}
@@ -879,21 +902,21 @@ export function DoctorDashboardScreen() {
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
               <div>
                 <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: "var(--text-primary)" }}>
-                  ASHA Follow-up Monitor
+                  {t("doctor.asha_followup_monitoring", "ASHA Follow-up Monitoring")}
                 </h3>
                 <span style={{ fontSize: 11, color: "var(--text-secondary)" }}>
-                  Top actionable field checkups & results
+                  {t("doctor.followup_monitoring_desc", "Track adherence, repeated vitals & warning signs")}
                 </span>
               </div>
               <Link to="/doctor/followups" style={{ fontSize: 12, color: "var(--primary)", fontWeight: 700, textDecoration: "none" }}>
-                View All ({ashaFollowups.length}) →
+                {t("doctor.view_all_followups", "View all follow-ups")} ({ashaFollowups.length}) →
               </Link>
             </div>
 
             <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
               {ashaFollowups.length === 0 ? (
                 <div style={{ fontSize: 13, color: "var(--text-secondary)", textAlign: "center", padding: 20 }}>
-                  No active follow-ups requiring doctor attention.
+                  {t("doctor.no_followups_recorded", "No pending ASHA follow-ups.")}
                 </div>
               ) : (
                 ashaFollowups.slice(0, 5).map((fup: any) => {
@@ -969,7 +992,7 @@ export function DoctorDashboardScreen() {
                               cursor: "pointer",
                             }}
                           >
-                            📞 Call ASHA
+                            📞 {t("doctor.call_asha", "Call ASHA")}
                           </button>
                           <button
                             data-testid={`fup-monitor-action-btn-${fupId}`}
@@ -1001,21 +1024,21 @@ export function DoctorDashboardScreen() {
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
               <div>
                 <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: "var(--text-primary)" }}>
-                  Recent Care Activity
+                  {t("doctor.recent_care_activity", "Recent Care Activity")}
                 </h3>
                 <span style={{ fontSize: 11, color: "var(--text-secondary)" }}>
-                  PHC clinical care events & status transitions
+                  {t("doctor.care_activity_desc", "PHC clinical care events & status transitions")}
                 </span>
               </div>
               <Link to="/doctor/activity" style={{ fontSize: 12, color: "var(--primary)", fontWeight: 700, textDecoration: "none" }}>
-                View all activity →
+                {t("doctor.view_all_activity", "View all activity")} →
               </Link>
             </div>
 
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
               {recentActivities.length === 0 ? (
                 <div style={{ fontSize: 13, color: "var(--text-secondary)", textAlign: "center", padding: 20 }}>
-                  No recent care activity recorded.
+                  {t("doctor.no_activity_recorded", "No recent care activity recorded.")}
                 </div>
               ) : (
                 recentActivities.slice(0, 8).map((act: any) => {

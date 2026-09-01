@@ -64,7 +64,7 @@ export const MyCareScreen: React.FC<MyCareScreenProps> = ({ onOpenDoctor, onOpen
     <div style={{ padding: "16px", display: "flex", flexDirection: "column", gap: 16 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <div>
-          <h2 style={{ fontSize: 20, fontWeight: 800, color: "#0F172A", margin: 0 }}>
+          <h2 id="title-my-care-screen" style={{ fontSize: 20, fontWeight: 800, color: "#0F172A", margin: 0 }}>
             {t("citizen.active_care", "My Care")}
           </h2>
           <div style={{ fontSize: 12, color: "#64748B" }}>
@@ -126,7 +126,7 @@ export const MyCareScreen: React.FC<MyCareScreenProps> = ({ onOpenDoctor, onOpen
                   </div>
 
                   <div style={{ fontSize: 13, fontWeight: 700, color: "#1E293B" }}>
-                    {sr.chief_concern || t("citizen.quick_actions", "Care request submitted")}
+                    {sr.chief_concern ? (sr.chief_concern === "General health checkup / care guidance" ? t("concerns.GENERAL_HEALTH_GUIDANCE", sr.chief_concern) : t(`concerns.${sr.chief_concern.toUpperCase().replace(/[\s\/\-]+/g, "_")}`, sr.chief_concern)) : t("citizen.quick_actions", "Care request submitted")}
                   </div>
 
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 11, color: "#64748B", marginTop: 2 }}>
@@ -145,7 +145,7 @@ export const MyCareScreen: React.FC<MyCareScreenProps> = ({ onOpenDoctor, onOpen
           {/* Status Stepper */}
           <div style={{ backgroundColor: "#FFFFFF", borderRadius: 20, padding: 16, border: "1px solid #E2E8F0", boxShadow: "0 4px 12px rgba(0,0,0,0.04)" }}>
             <div style={{ fontSize: 15, fontWeight: 800, color: "#1E293B", marginBottom: 12 }}>
-              {selectedCase.primary_concern}
+              {selectedCase.primary_concern === "General health checkup / care guidance" ? t("concerns.GENERAL_HEALTH_GUIDANCE", selectedCase.primary_concern) : t(`concerns.${selectedCase.primary_concern?.toUpperCase().replace(/[\s\/\-]+/g, "_")}`, selectedCase.primary_concern)}
             </div>
 
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
@@ -167,9 +167,9 @@ export const MyCareScreen: React.FC<MyCareScreenProps> = ({ onOpenDoctor, onOpen
             <div style={{ backgroundColor: "#FEF3C7", padding: 12, borderRadius: 14, border: "1px solid #FDE68A", display: "flex", alignItems: "flex-start", gap: 10 }}>
               <Calendar size={20} color="#D97706" style={{ marginTop: 2 }} />
               <div>
-                <div style={{ fontSize: 13, fontWeight: 800, color: "#92400E" }}>{t("citizen.next_care_action", "What should I do next?")}</div>
+                <div style={{ fontSize: 13, fontWeight: 800, color: "#92400E" }}>{t("common.next_care_action", "What should I do next?")}</div>
                 <div style={{ fontSize: 13, color: "#78350F", marginTop: 2, fontWeight: 600 }}>
-                  {selectedCase.citizen_guidance_text || "Visit Kalyanpur PHC today before 4:00 PM for Doctor evaluation."}
+                  {selectedCase.citizen_guidance_text ? (selectedCase.citizen_guidance_text.includes("calm") || selectedCase.citizen_guidance_text.includes("monitor") ? t("common.monitor_symptoms_guidance", "Please stay calm and monitor your symptoms.") : selectedCase.citizen_guidance_text) : t("common.monitor_symptoms_guidance", "Please stay calm and monitor your symptoms.")}
                 </div>
               </div>
             </div>
@@ -183,7 +183,7 @@ export const MyCareScreen: React.FC<MyCareScreenProps> = ({ onOpenDoctor, onOpen
                   🏥 {t("citizen.find_health_center_card", "Health Centre")}
                 </span>
                 <div style={{ fontSize: 15, fontWeight: 800, color: "#166534", marginTop: 6 }}>
-                  Kalyanpur Primary Health Centre (PHC)
+                  {t("facilities.kalyanpur_phc", "Kalyanpur Primary Health Centre (PHC)")}
                 </div>
                 <div style={{ fontSize: 12, color: "#15803D", marginTop: 2 }}>
                   📍 Main Market Road • 2.8 km away • {t("facility.emergency_open_24_7", "24x7 Emergency Services Available")}

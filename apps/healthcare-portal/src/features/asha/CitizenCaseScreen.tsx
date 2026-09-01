@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useRef } from "react";
 import { useParams, useNavigate, useSearchParams } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import { apiClient } from "@aarogya/api-client";
 import { PriorityBadge, StatusBadge } from "../../components/StatusBadge";
 import {
@@ -16,6 +17,7 @@ import {
 import { db } from "../../db/offlineDb";
 
 export function AshaCitizenCaseScreen() {
+  const { t } = useTranslation();
   const { caseId } = useParams<{ caseId: string }>();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -294,7 +296,7 @@ export function AshaCitizenCaseScreen() {
           }}
         >
           <VisitIcon size={16} color="#FFF" />
-          <span>Start Field Visit</span>
+          <span>{t("asha.start_field_visit", "Start Field Visit")}</span>
         </button>
       );
     }

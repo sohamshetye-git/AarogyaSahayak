@@ -90,8 +90,8 @@ export const LanguageProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   const t = useCallback(
     (key: string, optionsOrFallback?: any, extraOptions?: any): string => {
-      if (typeof optionsOrFallback === "string" && (!extraOptions || typeof extraOptions !== "object")) {
-        return (defaultI18n.t(key, { defaultValue: optionsOrFallback, ...extraOptions }) as string) || optionsOrFallback;
+      if (typeof optionsOrFallback === "string") {
+        return (defaultI18n.t(key, { defaultValue: optionsOrFallback, ...(extraOptions && typeof extraOptions === "object" ? extraOptions : {}) }) as string) || optionsOrFallback;
       }
       return (defaultI18n.t(key, optionsOrFallback) as string) || (typeof optionsOrFallback === "string" ? optionsOrFallback : key);
     },

@@ -122,13 +122,19 @@ async def generic_exception_handler(request: Request, exc: Exception):
         }
     )
 
-from app.routers import auth, citizen, asha, doctor, doctor_prescriptions, doctor_alerts, admin, reports, websocket, ai, schemes, locations
+from app.routers import auth, citizen, asha, doctor, doctor_chat, doctor_prescriptions, doctor_alerts, admin, reports, websocket, ai, schemes, locations, voice
 
 # Include Routers
 app.include_router(auth.router, prefix=settings.API_V1_STR)
 app.include_router(locations.router, prefix=settings.API_V1_STR)
 app.include_router(citizen.router, prefix=settings.API_V1_STR)
+app.include_router(voice.router, prefix=settings.API_V1_STR)
 app.include_router(teleconsultation.router, prefix=settings.API_V1_STR)
+app.include_router(doctor_chat.router, prefix=settings.API_V1_STR)
+app.include_router(doctor_chat.canonical_care_conv_router, prefix=settings.API_V1_STR)
+app.include_router(doctor_chat.canonical_conv_router, prefix=settings.API_V1_STR)
+app.include_router(doctor_chat.canonical_care_req_router, prefix=settings.API_V1_STR)
+app.include_router(doctor_chat.canonical_citizen_doc_router, prefix=settings.API_V1_STR)
 app.include_router(asha.router, prefix=settings.API_V1_STR)
 app.include_router(doctor.router, prefix=settings.API_V1_STR)
 app.include_router(doctor_prescriptions.router, prefix=settings.API_V1_STR)

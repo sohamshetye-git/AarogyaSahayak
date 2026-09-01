@@ -13,7 +13,9 @@ from app.models import (
     CitizenChatMessage, CitizenNeed, ServiceRequest, Case, Referral,
     CasePriorityEnum, CaseStatusEnum, UserRoleEnum, Consultation, Prescription, InvestigationOrder,
     FollowUp, Notification, Facility, WorkerProfile, AuditLog, utc_now,
-    CareHandoff, SharingConsent, ServiceRequestStatusHistory
+    CareHandoff, SharingConsent, ServiceRequestStatusHistory,
+    TeleconsultationRequest, TeleconsultationMessage,
+    DoctorChatThread, DoctorChatMessage
 )
 from app.schemas.citizen import (
     HouseholdMemberCreateRequest, HouseholdMemberUpdateRequest, StartChatSessionRequest,
@@ -1085,16 +1087,25 @@ class CitizenService:
         if req.idempotency_key:
             existing = db.query(ServiceRequest).filter(ServiceRequest.idempotency_key == req.idempotency_key).first()
             if existing:
+                thread = db.query(DoctorChatThread).filter(DoctorChatThread.service_request_id == existing.id).first()
+                conv_id = thread.id if thread else existing.id
                 return {
                     "reused_existing_request": True,
+                    "id": existing.id,
+                    "service_request_id": existing.id,
                     "request_id": existing.id,
                     "reference": existing.request_reference,
                     "request_reference": existing.request_reference,
+                    "conversation_id": conv_id,
+                    "citizen_id": existing.citizen_id or citizen_id,
+                    "assigned_doctor_id": existing.assigned_user_id,
+                    "channel": existing.requested_channel or "CHAT",
+                    "requested_channel": existing.requested_channel or "CHAT",
                     "status": existing.status,
                     "case_id": existing.case_id,
                     "case_reference": existing.case.reference if existing.case else None,
                     "priority": existing.priority,
-                    "assigned_facility": "Kalyanpur PHC",
+                    "assigned_facility": "Kalyanpur Primary Health Centre (PHC)",
                     "message": "Doctor consultation request already submitted (Idempotent)",
                     "created_at": existing.created_at.isoformat()
                 }
@@ -1109,16 +1120,25 @@ class CitizenService:
                 (ServiceRequest.citizen_need_id == target_need_id) | (ServiceRequest.need_id == target_need_id)
             ).first()
             if active_dup:
+                thread = db.query(DoctorChatThread).filter(DoctorChatThread.service_request_id == active_dup.id).first()
+                conv_id = thread.id if thread else active_dup.id
                 return {
                     "reused_existing_request": True,
+                    "id": active_dup.id,
+                    "service_request_id": active_dup.id,
                     "request_id": active_dup.id,
                     "reference": active_dup.request_reference,
                     "request_reference": active_dup.request_reference,
+                    "conversation_id": conv_id,
+                    "citizen_id": active_dup.citizen_id or citizen_id,
+                    "assigned_doctor_id": active_dup.assigned_user_id,
+                    "channel": active_dup.requested_channel or "CHAT",
+                    "requested_channel": active_dup.requested_channel or "CHAT",
                     "status": active_dup.status,
                     "case_id": active_dup.case_id,
                     "case_reference": active_dup.case.reference if active_dup.case else None,
                     "priority": active_dup.priority,
-                    "assigned_facility": "Kalyanpur PHC",
+                    "assigned_facility": "Kalyanpur Primary Health Centre (PHC)",
                     "message": "Active doctor request already exists for this concern",
                     "created_at": active_dup.created_at.isoformat()
                 }
@@ -1146,10 +1166,11 @@ class CitizenService:
         safety_data = packet.get("safety", {})
         priority_val = safety_data.get("priority", "ROUTINE")
         guidance = safety_data.get("citizen_message", "Please stay calm and monitor your symptoms.")
+        requested_channel_val = req.channel or "CHAT"
 
         if not case:
             case_priority = CasePriorityEnum.URGENT if priority_val == "URGENT" else (CasePriorityEnum.HIGH if priority_val == "HIGH" else CasePriorityEnum.ROUTINE)
-            case_ref = f"DOCREQ-CASE-{datetime.now().strftime('%Y%m%d%H%M%S')}-{uuid.uuid4().hex[:4]}"
+            case_ref = f"DOCREQ-CASE-{datetime.now().strftime('%Y%m%d%H%M%S')}-{uuid.uuid4().hex[:4].upper()}"
             case = Case(
                 reference=case_ref,
                 citizen_id=citizen_id,
@@ -1181,7 +1202,7 @@ class CitizenService:
         db.flush()
 
         # 3. Create ServiceRequest in WAITING_FOR_DOCTOR status
-        req_ref = f"DOCREQ-{datetime.now().strftime('%Y%m%d%H%M%S')}-{uuid.uuid4().hex[:4]}"
+        req_ref = f"DOCREQ-{datetime.now().strftime('%Y%m%d%H%M%S')}-{uuid.uuid4().hex[:4].upper()}"
         srv_req = ServiceRequest(
             request_reference=req_ref,
             citizen_id=citizen_id,
@@ -1191,7 +1212,7 @@ class CitizenService:
             chat_session_id=req.chat_session_id,
             case_id=case.id,
             request_type="DOCTOR_CONSULTATION",
-            requested_channel=req.channel or "CALLBACK",
+            requested_channel=requested_channel_val,
             status="WAITING_FOR_DOCTOR",
             priority=priority_val,
             assigned_role="PHC_DOCTOR",
@@ -1200,7 +1221,7 @@ class CitizenService:
             details={
                 "chief_complaint": chief_complaint,
                 "symptoms": symptoms_list,
-                "channel": req.channel or "CALLBACK",
+                "channel": requested_channel_val,
                 "request_type": req.request_type
             },
             idempotency_key=req.idempotency_key
@@ -1224,7 +1245,7 @@ class CitizenService:
             case_id=case.id,
             consent_id=consent.id,
             request_type="DOCTOR_CONSULTATION",
-            requested_channel=req.channel or "CALLBACK",
+            requested_channel=requested_channel_val,
             recipient_role="PHC_DOCTOR",
             source="CITIZEN_CHAT" if req.chat_session_id else "CITIZEN_HOME",
             citizen_summary=packet.get("citizen_summary") or f"{chief_complaint} reported by citizen.",
@@ -1238,7 +1259,43 @@ class CitizenService:
 
         srv_req.handoff_id = handoff.id
 
-        # 5. ServiceRequest Status History
+        # 5. Atomically create canonical DoctorChatThread
+        thread_id = str(uuid.uuid4())
+        thread = DoctorChatThread(
+            id=thread_id,
+            service_request_id=srv_req.id,
+            citizen_id=citizen_id,
+            doctor_id=srv_req.assigned_user_id,
+            facility_id=srv_req.assigned_facility_id or "PHC-09",
+            channel="DOCTOR_CHAT",
+            status=srv_req.status
+        )
+        db.add(thread)
+        db.flush()
+
+        # 6. Atomically create companion TeleconsultationRequest
+        tele_req = TeleconsultationRequest(
+            id=thread_id,
+            public_reference=srv_req.request_reference,
+            citizen_id=citizen_id,
+            household_member_id=req.beneficiary_id if req.beneficiary_id != citizen_id else None,
+            citizen_need_id=srv_req.citizen_need_id or srv_req.need_id,
+            service_request_id=srv_req.id,
+            case_id=case.id,
+            facility_id=srv_req.assigned_facility_id or "PHC-09",
+            assigned_doctor_id=srv_req.assigned_user_id,
+            mode=requested_channel_val,
+            status=srv_req.status,
+            priority=priority_val,
+            chief_complaint=chief_complaint,
+            symptoms=symptoms_list,
+            submitted_at=utc_now(),
+            idempotency_key=req.idempotency_key
+        )
+        db.add(tele_req)
+        db.flush()
+
+        # 7. ServiceRequest Status History
         hist = ServiceRequestStatusHistory(
             service_request_id=srv_req.id,
             from_status="DRAFT",
@@ -1249,7 +1306,7 @@ class CitizenService:
         )
         db.add(hist)
 
-        # 6. Publish Domain Event
+        # 8. Publish Domain Event
         from app.services.event_bus import publish_domain_event
         publish_domain_event(
             event_name="CITIZEN_DOCTOR_REQUEST_SUBMITTED",
@@ -1257,6 +1314,7 @@ class CitizenService:
                 "event_id": f"evt-{uuid.uuid4().hex[:8]}",
                 "service_request_id": srv_req.id,
                 "request_reference": srv_req.request_reference,
+                "conversation_id": thread.id,
                 "case_id": case.id,
                 "citizen_id": citizen_id,
                 "beneficiary_id": req.beneficiary_id,
@@ -1265,14 +1323,35 @@ class CitizenService:
                 "timestamp": utc_now().isoformat()
             }
         )
+        publish_domain_event(
+            event_name="DOCTOR_REQUEST_CREATED",
+            payload={
+                "request_id": thread.id,
+                "conversation_id": thread.id,
+                "service_request_id": srv_req.id,
+                "reference": srv_req.request_reference,
+                "request_reference": srv_req.request_reference,
+                "priority": priority_val,
+                "facility_id": "PHC-09"
+            }
+        )
 
         db.commit()
         db.refresh(srv_req)
+        db.refresh(thread)
         db.refresh(case)
 
         return {
+            "id": srv_req.id,
+            "service_request_id": srv_req.id,
             "request_id": srv_req.id,
+            "request_reference": srv_req.request_reference,
             "reference": srv_req.request_reference,
+            "conversation_id": thread.id,
+            "citizen_id": citizen_id,
+            "assigned_doctor_id": srv_req.assigned_user_id,
+            "channel": srv_req.requested_channel,
+            "requested_channel": srv_req.requested_channel,
             "status": srv_req.status,
             "case_id": case.id,
             "case_reference": case.reference,
@@ -1666,12 +1745,14 @@ class CitizenService:
             for inv in invs:
                 investigations_data.append({
                     "investigation_id": inv.id,
-                    "order_reference": inv.order_reference,
+                    "order_reference": getattr(inv, "reference", getattr(inv, "order_reference", inv.id)),
+                    "reference": getattr(inv, "reference", getattr(inv, "order_reference", inv.id)),
                     "test_name": inv.test_name,
-                    "test_type": inv.test_type,
+                    "test_type": getattr(inv, "category", getattr(inv, "test_type", "GENERAL")),
+                    "category": getattr(inv, "category", getattr(inv, "test_type", "GENERAL")),
                     "priority": inv.priority,
                     "status": inv.status,
-                    "ordered_at": inv.ordered_at.isoformat()
+                    "ordered_at": inv.ordered_at.isoformat() if inv.ordered_at else inv.created_at.isoformat()
                 })
 
             # 4. Fetch Follow-ups
@@ -1687,18 +1768,54 @@ class CitizenService:
                     "status": fu.status
                 })
 
+        # 5. Fetch linked messages if any
+        messages_data = []
+        t_req = db.query(TeleconsultationRequest).filter(
+            (TeleconsultationRequest.service_request_id == r.id) | (TeleconsultationRequest.case_id == r.case_id)
+        ).first()
+        if t_req:
+            msgs = db.query(TeleconsultationMessage).filter(TeleconsultationMessage.request_id == t_req.id).order_by(TeleconsultationMessage.created_at.asc()).all()
+            for m in msgs:
+                messages_data.append({
+                    "id": m.id,
+                    "sender_type": m.sender_type,
+                    "sender_name": m.sender_name,
+                    "message_text": m.message_text,
+                    "created_at": m.created_at.isoformat()
+                })
+
+        beneficiary_name = "Myself"
+        if r.beneficiary:
+            beneficiary_name = r.beneficiary.full_name
+        elif r.citizen:
+            beneficiary_name = r.citizen.display_name
+
         return {
             "id": r.id,
             "service_request_id": r.id,
             "request_reference": r.request_reference,
             "request_type": r.request_type,
             "requested_channel": r.requested_channel,
+            "channel": r.requested_channel,
+            "mode": r.requested_channel,
             "status": r.status,
             "priority": r.priority,
             "assigned_role": r.assigned_role,
             "assigned_worker_name": r.details.get("assigned_asha") or ("Dr. Abhinav Sharma" if r.assigned_role == "PHC_DOCTOR" else "Care Team"),
+            "beneficiary": {
+                "id": r.beneficiary_id or r.citizen_id,
+                "name": beneficiary_name,
+                "displayName": beneficiary_name,
+                "relationship": r.beneficiary.relationship_type if r.beneficiary else "SELF"
+            },
+            "citizen": {
+                "id": r.citizen_id,
+                "phone": r.citizen.phone if r.citizen else ""
+            },
+            "messages": messages_data,
             "details": r.details,
             "chief_concern": latest_handoff.chief_concern if latest_handoff else r.details.get("chief_complaint"),
+            "chief_complaint": latest_handoff.chief_concern if latest_handoff else r.details.get("chief_complaint"),
             "citizen_summary": latest_handoff.citizen_summary if latest_handoff else None,
             "current_handoff_version": latest_handoff.version if latest_handoff else 1,
             "handoff_packet": latest_handoff.structured_payload if latest_handoff else {},

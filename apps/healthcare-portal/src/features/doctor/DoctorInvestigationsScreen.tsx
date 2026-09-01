@@ -162,10 +162,10 @@ export const DoctorInvestigationsScreen: React.FC = () => {
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "1rem" }}>
         <div>
           <h1 style={{ margin: 0, fontSize: "1.75rem", fontWeight: 800, color: "var(--text-primary, #0f172a)" }}>
-            Investigations Workspace
+            {t("doctor.investigations_workspace_title", "Investigations Workspace")}
           </h1>
           <div style={{ fontSize: "0.85rem", color: "var(--text-secondary, #64748b)", marginTop: "0.2rem" }}>
-            Kalyanpur Primary Health Center • Last synced at {lastSyncedTime}
+            Kalyanpur Primary Health Center • {t("doctor.last_synced_at", "Last synced at {{time}}", { time: lastSyncedTime })}
           </div>
         </div>
 
@@ -182,7 +182,7 @@ export const DoctorInvestigationsScreen: React.FC = () => {
               cursor: "pointer",
             }}
           >
-            ↻ Refresh
+            ↻ {t("common.refresh", "Refresh")}
           </button>
 
           <button
@@ -199,7 +199,7 @@ export const DoctorInvestigationsScreen: React.FC = () => {
               boxShadow: "0 2px 4px rgba(2, 132, 199, 0.2)",
             }}
           >
-            + New Investigation Order
+            {t("doctor.new_investigation_order", "+ New Investigation Order")}
           </button>
         </div>
       </div>
@@ -213,14 +213,14 @@ export const DoctorInvestigationsScreen: React.FC = () => {
         }}
       >
         {[
-          { label: "Ordered Today", count: summary.total_ordered_today, status: "ALL_ACTIVE", color: "#0284c7" },
-          { label: "Sample Pending", count: summary.sample_pending, status: "SAMPLE_PENDING", color: "#7c3aed" },
-          { label: "Sample Collected", count: summary.sample_collected, status: "SAMPLE_COLLECTED", color: "#6366f1" },
-          { label: "Results Ready", count: summary.results_ready, status: "RESULT_AVAILABLE", color: "#2563eb" },
-          { label: "Urgent/Critical", count: summary.urgent_critical_results, status: "CRITICAL", color: "#dc2626" },
-          { label: "Awaiting Review", count: summary.awaiting_doctor_review, status: "REVIEW_REQUIRED", color: "#d97706" },
-          { label: "Reviewed Today", count: summary.reviewed_today, status: "REVIEWED", color: "#16a34a" },
-          { label: "Recollection", count: summary.recollection_required, status: "RECOLLECTION_REQUIRED", color: "#ea580c" },
+          { label: t("doctor.ordered_today_metric", "Ordered Today"), count: summary.total_ordered_today, status: "ALL_ACTIVE", color: "#0284c7" },
+          { label: t("doctor.sample_pending_metric", "Sample Pending"), count: summary.sample_pending, status: "SAMPLE_PENDING", color: "#7c3aed" },
+          { label: t("doctor.sample_collected_metric", "Sample Collected"), count: summary.sample_collected, status: "SAMPLE_COLLECTED", color: "#6366f1" },
+          { label: t("doctor.results_ready_metric", "Results Ready"), count: summary.results_ready, status: "RESULT_AVAILABLE", color: "#2563eb" },
+          { label: t("doctor.urgent_critical_metric", "Urgent/Critical"), count: summary.urgent_critical_results, status: "CRITICAL", color: "#dc2626" },
+          { label: t("doctor.awaiting_review_metric", "Awaiting Review"), count: summary.awaiting_doctor_review, status: "REVIEW_REQUIRED", color: "#d97706" },
+          { label: t("doctor.reviewed_today_metric", "Reviewed Today"), count: summary.reviewed_today, status: "REVIEWED", color: "#16a34a" },
+          { label: t("doctor.recollection_metric", "Recollection"), count: summary.recollection_required, status: "RECOLLECTION_REQUIRED", color: "#ea580c" },
         ].map((m) => {
           const isSelected = currentStatusFilter === m.status;
           return (

@@ -6,7 +6,7 @@ from typing import List, Optional, Dict, Any
 from app.database import get_db
 from app.config import settings
 
-from app.models import Case, CitizenProfile, User, UserRoleEnum, Prescription, InvestigationOrder, FollowUp, PrescriptionAcknowledgement
+from app.models import Case, CitizenProfile, HouseholdMember, User, UserRoleEnum, Prescription, InvestigationOrder, FollowUp, PrescriptionAcknowledgement
 from app.schemas import CitizenCreateCaseRequest, CitizenCaseDTO, StandardResponse
 from app.schemas.prescription import CitizenAcknowledgeRequest, CitizenRequestHelpRequest
 from app.schemas.citizen import (
@@ -20,6 +20,7 @@ from app.schemas.citizen import (
     CitizenOtpRequestDTO, CitizenOtpVerifyDTO, CitizenRefreshTokenDTO, CitizenOnboardingRequestDTO,
     GuestSessionCreateDTO, GuestSessionUpdateDTO, GuestSessionMigrateDTO
 )
+from app.schemas.teleconsultation import TeleconsultationMessageCreateDTO
 from app.services.case_service import CaseService
 from app.services.citizen_service import CitizenService
 from app.services.citizen_auth_service import CitizenAuthService
@@ -678,6 +679,155 @@ def create_doctor_request(
     profile = CitizenService.get_or_create_default_profile(db, current_user)
     res = CitizenService.create_doctor_request(db, profile.id, req)
     return StandardResponse(data=res)
+
+@router.get("/doctor/requests/{request_ref}/conversation", response_model=StandardResponse)
+def get_doctor_request_conversation(
+    request_ref: str,
+    db: Session = Depends(get_db),
+    current_user: Optional[User] = Depends(get_optional_user)
+):
+    from app.services.teleconsultation_service import TeleconsultationService
+    profile = CitizenService.get_or_create_default_profile(db, current_user)
+    tele_req, srv_req = TeleconsultationService.resolve_canonical_request(db, request_ref)
+    if not tele_req:
+        raise HTTPException(status_code=404, detail="Doctor consultation request not found")
+
+    # Security check: verify citizen identity or allow if same user/profile or unassigned session
+    target_citizen_id = tele_req.citizen_id or (srv_req.citizen_id if srv_req else None)
+    if target_citizen_id and profile and profile.id != target_citizen_id:
+        if current_user and (tele_req.citizen and tele_req.citizen.user_id != current_user.id):
+            raise HTTPException(status_code=403, detail="Forbidden: You do not have access to this conversation")
+
+    detail = TeleconsultationService.get_request_detail(db, tele_req.id)
+    return StandardResponse(data=detail)
+
+@router.get("/doctor/requests/{request_ref}/messages", response_model=StandardResponse)
+def get_doctor_request_messages(
+    request_ref: str,
+    after: Optional[str] = None,
+    db: Session = Depends(get_db),
+    current_user: Optional[User] = Depends(get_optional_user)
+):
+    from app.services.teleconsultation_service import TeleconsultationService
+    from app.models import TeleconsultationMessage
+    profile = CitizenService.get_or_create_default_profile(db, current_user)
+    tele_req, srv_req = TeleconsultationService.resolve_canonical_request(db, request_ref)
+    if not tele_req:
+        raise HTTPException(status_code=404, detail="Doctor consultation request not found")
+
+    target_citizen_id = tele_req.citizen_id or (srv_req.citizen_id if srv_req else None)
+    if target_citizen_id and profile and profile.id != target_citizen_id:
+        if current_user and (tele_req.citizen and tele_req.citizen.user_id != current_user.id):
+            raise HTTPException(status_code=403, detail="Forbidden: You do not have access to these messages")
+
+    q = db.query(TeleconsultationMessage).filter(
+        (TeleconsultationMessage.request_id == tele_req.id) |
+        (TeleconsultationMessage.conversation_id == tele_req.id) |
+        ((TeleconsultationMessage.service_request_id == tele_req.service_request_id) if tele_req.service_request_id else False)
+    )
+
+    if after:
+        try:
+            after_dt = datetime.fromisoformat(after)
+            q = q.filter(TeleconsultationMessage.created_at > after_dt)
+        except Exception:
+            pass
+
+    msgs = q.order_by(TeleconsultationMessage.created_at.asc()).all()
+    results = [
+        {
+            "id": m.id,
+            "conversation_id": m.conversation_id or tele_req.id,
+            "service_request_id": m.service_request_id or tele_req.service_request_id,
+            "sender_user_id": m.sender_user_id,
+            "sender_role": m.sender_role or ("PHC_DOCTOR" if m.sender_type == "DOCTOR" else "CITIZEN"),
+            "sender_type": m.sender_type or ("DOCTOR" if m.sender_role == "PHC_DOCTOR" else "CITIZEN"),
+            "sender_name": m.sender_name or ("Doctor" if m.sender_type == "DOCTOR" else profile.display_name),
+            "message_type": m.message_type or "TEXT",
+            "body": m.body or m.message_text or "",
+            "message_text": m.message_text or m.body or "",
+            "client_message_id": m.client_message_id,
+            "status": m.status or "DELIVERED",
+            "created_at": m.created_at.isoformat() if m.created_at else "",
+            "delivered_at": m.delivered_at.isoformat() if m.delivered_at else None,
+            "read_at": m.read_at.isoformat() if m.read_at else None
+        }
+        for m in msgs
+    ]
+    return StandardResponse(data=results)
+
+@router.post("/doctor/requests/{request_ref}/messages", response_model=StandardResponse)
+def send_citizen_doctor_request_message(
+    request_ref: str,
+    dto: TeleconsultationMessageCreateDTO,
+    db: Session = Depends(get_db),
+    current_user: Optional[User] = Depends(get_optional_user)
+):
+    from app.services.teleconsultation_service import TeleconsultationService
+    profile = CitizenService.get_or_create_default_profile(db, current_user)
+    tele_req, srv_req = TeleconsultationService.resolve_canonical_request(db, request_ref)
+    if not tele_req:
+        raise HTTPException(status_code=404, detail="Doctor consultation request not found")
+
+    target_citizen_id = tele_req.citizen_id or (srv_req.citizen_id if srv_req else None)
+    if target_citizen_id and profile and profile.id != target_citizen_id:
+        if current_user and (tele_req.citizen and tele_req.citizen.user_id != current_user.id):
+            raise HTTPException(status_code=403, detail="Forbidden: You do not have access to this conversation")
+
+    body_text = dto.body or dto.message_text or ""
+    if not body_text.strip():
+        raise HTTPException(status_code=400, detail="Message text cannot be empty")
+
+    sender_name = profile.display_name if profile else "Citizen"
+    sender_id = profile.id if profile else (current_user.id if current_user else None)
+
+    msg = TeleconsultationService.send_message(
+        db=db,
+        request_id=tele_req.id,
+        sender_type="CITIZEN",
+        sender_role="CITIZEN",
+        sender_name=sender_name,
+        message_text=body_text,
+        sender_id=sender_id,
+        client_message_id=dto.client_message_id,
+        message_type=dto.message_type or "TEXT"
+    )
+
+    return StandardResponse(data={
+        "id": msg.id,
+        "conversation_id": msg.conversation_id or tele_req.id,
+        "service_request_id": msg.service_request_id or tele_req.service_request_id,
+        "sender_user_id": msg.sender_user_id,
+        "sender_role": msg.sender_role,
+        "sender_type": msg.sender_type,
+        "sender_name": msg.sender_name,
+        "message_type": msg.message_type,
+        "body": msg.body,
+        "message_text": msg.message_text,
+        "client_message_id": msg.client_message_id,
+        "status": msg.status,
+        "created_at": msg.created_at.isoformat() if msg.created_at else "",
+        "delivered_at": msg.delivered_at.isoformat() if msg.delivered_at else None,
+        "read_at": msg.read_at.isoformat() if msg.read_at else None
+    })
+
+@router.patch("/messages/{message_id}/read", response_model=StandardResponse)
+def mark_message_as_read(
+    message_id: str,
+    db: Session = Depends(get_db),
+    current_user: Optional[User] = Depends(get_optional_user)
+):
+    from app.services.teleconsultation_service import TeleconsultationService
+    profile = CitizenService.get_or_create_default_profile(db, current_user)
+    msg = TeleconsultationService.mark_message_read(
+        db=db,
+        message_id=message_id,
+        reader_user_id=profile.id if profile else None,
+        reader_role="CITIZEN"
+    )
+    if not msg:
+        raise HTTPException(status_code=404, detail="Message not found")
+    return StandardResponse(data={"id": msg.id, "status": msg.status, "read_at": msg.read_at.isoformat() if msg.read_at else None})
 
 @router.post("/asha/requests", response_model=StandardResponse)
 def create_asha_request(
@@ -2410,8 +2560,23 @@ def search_facilities_post(
     """
     profile = CitizenService.get_or_create_default_profile(db, current_user)
     
+    # Coordinate & Radius Validation
+    loc_obj = req.location
+    c_lat = req.latitude if req.latitude is not None else (loc_obj.latitude if loc_obj else None)
+    c_lng = req.longitude if req.longitude is not None else (loc_obj.longitude if loc_obj else None)
+    
+    if c_lat is not None and not (-90.0 <= c_lat <= 90.0):
+        raise HTTPException(status_code=422, detail="Latitude must be between -90 and 90 degrees.")
+    if c_lng is not None and not (-180.0 <= c_lng <= 180.0):
+        raise HTTPException(status_code=422, detail="Longitude must be between -180 and 180 degrees.")
+    
+    eff_radius = req.radius_km if req.radius_km is not None else (req.max_distance_km or 25.0)
+    if eff_radius <= 0 or eff_radius > 500.0:
+        raise HTTPException(status_code=422, detail="Radius must be between 1 and 500 km.")
+    req.max_distance_km = eff_radius
+
     # Household authorization check
-    if req.beneficiary_id and req.beneficiary_id != "self" and req.beneficiary_id != profile.id:
+    if req.beneficiary_id and req.beneficiary_id not in ["self", "guest", "GUEST"] and req.beneficiary_id != profile.id:
         member = db.query(HouseholdMember).filter(
             HouseholdMember.id == req.beneficiary_id,
             HouseholdMember.citizen_id == profile.id
@@ -2421,17 +2586,17 @@ def search_facilities_post(
 
     search_uuid = str(uuid.uuid4())
     results = FacilityServiceEngine.search_and_rank_facilities(db, req, current_user, search_id=search_uuid)
-    loc_obj = req.location
-    c_lat = req.latitude if req.latitude is not None else (loc_obj.latitude if loc_obj else 18.5204)
-    c_lng = req.longitude if req.longitude is not None else (loc_obj.longitude if loc_obj else 73.8567)
-    radius_m = int((req.max_distance_km or 10.0) * 1000)
+    
+    final_lat = c_lat if c_lat is not None else 18.5204
+    final_lng = c_lng if c_lng is not None else 73.8567
+    radius_m = int(eff_radius * 1000)
 
     resolved_loc = {
         "source": (loc_obj.source if loc_obj and loc_obj.source else (req.location_method or "GPS")),
         "village": req.village_name or (loc_obj.village if loc_obj else "Kalyanpur"),
         "pincode": req.pincode or (loc_obj.pincode if loc_obj else "415001"),
-        "latitude": c_lat,
-        "longitude": c_lng,
+        "latitude": final_lat,
+        "longitude": final_lng,
         "block": loc_obj.taluka if loc_obj and loc_obj.taluka else (loc_obj.block if loc_obj and hasattr(loc_obj, 'block') else "Kalyanpur Block"),
         "district": loc_obj.district if loc_obj and loc_obj.district else "District 04"
     }
@@ -2439,10 +2604,10 @@ def search_facilities_post(
     envelope_data = {
         "search_id": search_uuid,
         "center": {
-            "latitude": c_lat,
-            "longitude": c_lng
+            "latitude": final_lat,
+            "longitude": final_lng
         },
-        "service_code": req.service_code or req.service_type or "GENERAL_OPD",
+        "service_code": req.service_code or req.service_type or "GENERAL_DOCTOR_PHC",
         "radius_meters": radius_m,
         "items": [r.dict() for r in results],
         "total": len(results),

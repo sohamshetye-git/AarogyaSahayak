@@ -100,8 +100,8 @@ def publish_domain_event(
     after a DB commit.
     """
     try:
-        loop = asyncio.get_event_loop()
-        if loop.is_running():
+        try:
+            loop = asyncio.get_running_loop()
             asyncio.create_task(
                 event_bus.broadcast(
                     event_name=event_name,
@@ -111,15 +111,21 @@ def publish_domain_event(
                     facility_id=facility_id
                 )
             )
-        else:
-            loop.run_until_complete(
-                event_bus.broadcast(
-                    event_name=event_name,
-                    payload=payload,
-                    target_roles=target_roles,
-                    target_user_ids=target_user_ids,
-                    facility_id=facility_id
-                )
-            )
+        except RuntimeError:
+            try:
+                loop = asyncio.get_event_loop()
+                if loop and loop.is_running():
+                    asyncio.run_coroutine_threadsafe(
+                        event_bus.broadcast(
+                            event_name=event_name,
+                            payload=payload,
+                            target_roles=target_roles,
+                            target_user_ids=target_user_ids,
+                            facility_id=facility_id
+                        ),
+                        loop
+                    )
+            except Exception:
+                pass
     except Exception as e:
-        logger.error(f"Failed to publish domain event {event_name}: {e}")
+        logger.debug(f"Event broadcast skipped: {e}")

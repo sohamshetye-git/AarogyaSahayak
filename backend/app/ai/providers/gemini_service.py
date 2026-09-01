@@ -296,16 +296,35 @@ class GeminiService:
 
         if self._is_live and self._client:
             models = self._get_candidate_models()
+            lang_prompt_map = {
+                "en-IN": "Respond strictly in English. Do not use non-English sentences.",
+                "hi-IN": "Respond strictly in standard Hindi (हिंदी) in normal Devanagari script. Do not mix English sentences into the reply.",
+                "mr-IN": "Respond strictly in natural Marathi (मराठी) in normal Devanagari script. Do not mix English sentences into the reply.",
+                "gu-IN": "Respond strictly in natural Gujarati (ગુજરાતી) in native Gujarati script. Do not mix English sentences into the reply.",
+                "bn-IN": "Respond strictly in natural Bengali (বাংলা) in native Bengali script. Do not mix English sentences into the reply.",
+                "kn-IN": "Respond strictly in natural Kannada (ಕನ್ನಡ) in native Kannada script. Do not mix English sentences into the reply.",
+                "te-IN": "Respond strictly in natural Telugu (తెలుగు) in native Telugu script. Do not mix English sentences into the reply.",
+                "ta-IN": "Respond strictly in natural Tamil (தமிழ்) in native Tamil script. Do not mix English sentences into the reply.",
+                "ml-IN": "Respond strictly in natural Malayalam (മലയാളം) in native Malayalam script. Do not mix English sentences into the reply.",
+                "pa-IN": "Respond strictly in natural Punjabi (ਪੰਜਾਬੀ) in native Gurmukhi script. Do not mix English sentences into the reply.",
+                "od-IN": "Respond strictly in natural Odia (ଓଡ଼ିଆ) in native Odia script. Do not mix English sentences into the reply."
+            }
+            lang_instruction = lang_prompt_map.get(preferred_language, f"Respond strictly in {preferred_language} in its normal native script.")
+
             prompt = (
-                "You are Aarogya Sahayak, a multilingual rural healthcare-access assistant. "
-                "Understand and answer the citizen's actual latest message using the relevant conversation context. "
-                "Do not force the citizen into a predefined script. Do not repeat previous replies or ask questions already answered. "
-                "Respond naturally in simple Marathi, Hindi or English according to the selected language or citizen's language.\n\n"
-                "For greetings and normal conversation, respond naturally without creating clinical records. "
-                "For general health questions, provide clear low-risk health information and relevant warning signs without diagnosing or prescribing. "
-                "For personal symptoms, acknowledge the current symptoms and ask only the most useful one or two questions. "
-                "For follow-up answers, interpret them using the last assistant question. "
-                "For a topic change, start or clarify the new topic rather than reusing old symptoms. "
+                "You are Aarogya Sahayak, a multilingual rural healthcare-access assistant in India.\n"
+                f"MANDATORY LANGUAGE INSTRUCTION: {lang_instruction}\n"
+                "Do not mix English sentences into the reply for non-English locales.\n"
+                "Keep names, medicine names, measurements (e.g. 'BP 120/80 mmHg'), IDs, clinical codes, and official abbreviations (e.g. PHC, ABHA, PM-JAY) unchanged when required.\n"
+                "Return clarification questions and guidance strictly in the requested language and script.\n"
+                "Never generate frontend button labels. Return canonical action codes subset from Allowed Action Types.\n\n"
+                "Understand and answer the citizen's actual latest message using the relevant conversation context.\n"
+                "Do not force the citizen into a predefined script. Do not repeat previous replies or ask questions already answered.\n"
+                "For greetings and normal conversation, respond naturally without creating clinical records.\n"
+                "For general health questions, provide clear low-risk health information and relevant warning signs without diagnosing or prescribing.\n"
+                "For personal symptoms, acknowledge the current symptoms and ask only the most useful one or two questions.\n"
+                "For follow-up answers, interpret them using the last assistant question.\n"
+                "For a topic change, start or clarify the new topic rather than reusing old symptoms.\n"
                 "For schemes, medicines, facilities, appointments and care-status questions, use only verified data supplied by backend tools.\n\n"
                 "The deterministic safety result is authoritative. Never weaken it. Never invent eligibility, facilities, doctors, prescriptions, appointments, test results or completed actions. Return the required JSON only.\n\n"
                 f"Selected Preferred Language: {preferred_language}\n"
@@ -319,12 +338,12 @@ class GeminiService:
                 f"Verified Backend Data: {verified_tool_data or 'None'}\n"
                 f"Allowed Action Types: {allowed_action_types}\n\n"
                 "Required JSON Output Schema keys:\n"
-                "- 'text': Dynamic citizen-friendly answer\n"
-                "- 'language': Detected/selected language code (e.g. 'mr', 'hi', 'en')\n"
+                "- 'text': Dynamic citizen-friendly answer in the requested language & script\n"
+                "- 'language': Selected language code (e.g. 'mr-IN', 'hi-IN', 'ta-IN', 'en-IN')\n"
                 "- 'response_type': One of DIRECT_ANSWER, CLARIFYING_QUESTION, GUIDANCE, ACTION_OFFER, SAFETY_WARNING, CLOSING\n"
-                "- 'question': Optional single clarifying question string or null\n"
-                "- 'suggested_replies': List of 2-4 short contextual quick replies in citizen's language\n"
-                "- 'requested_action_types': List of action codes subset from Allowed Action Types\n"
+                "- 'question': Optional single clarifying question string in requested language & script, or null\n"
+                "- 'suggested_replies': List of 2-4 short contextual quick replies in citizen's requested language\n"
+                "- 'requested_action_types': List of canonical action codes subset from Allowed Action Types\n"
                 "- 'facts_used': List of facts referenced in explanation\n"
                 "- 'uncertainty_statement': Optional statement if clarification needed or null"
             )
@@ -342,9 +361,8 @@ class GeminiService:
                     raw_text = resp.text.strip()
                     try:
                         dyn_resp = CitizenDynamicResponseOutput.model_validate_json(raw_text)
-                        return dyn_resp, "GEMINI_LIVE"
                     except Exception as parse_err:
-                        repair_prompt = f"Fix JSON to match CitizenDynamicResponseOutput strictly:\n{raw_text}"
+                        repair_prompt = f"Fix JSON to match CitizenDynamicResponseOutput strictly in {preferred_language}:\n{raw_text}"
                         resp_repair = self._client.models.generate_content(
                             model=model_name,
                             contents=repair_prompt,
@@ -354,7 +372,30 @@ class GeminiService:
                             )
                         )
                         dyn_resp = CitizenDynamicResponseOutput.model_validate_json(resp_repair.text)
-                        return dyn_resp, "GEMINI_LIVE"
+
+                    # Validate response script against expected locale
+                    if not self._validate_response_script(dyn_resp.text, preferred_language):
+                        # Strict retry attempt 1
+                        logger.warning(f"Script mismatch for {preferred_language}. Retrying with strict language instruction.")
+                        retry_prompt = (
+                            f"{prompt}\n\n"
+                            f"CRITICAL ERROR: You previously replied in the wrong script/language. "
+                            f"You MUST respond ONLY in {preferred_language} and its native script. "
+                            f"Do not output English text."
+                        )
+                        resp_retry = self._client.models.generate_content(
+                            model=model_name,
+                            contents=retry_prompt,
+                            config=types.GenerateContentConfig(
+                                response_mime_type="application/json",
+                                temperature=0.0
+                            )
+                        )
+                        dyn_retry = CitizenDynamicResponseOutput.model_validate_json(resp_retry.text.strip())
+                        if self._validate_response_script(dyn_retry.text, preferred_language):
+                            return dyn_retry, "GEMINI_LIVE"
+
+                    return dyn_resp, "GEMINI_LIVE"
                 except Exception as e:
                     err_str = str(e).lower()
                     if "429" in err_str or "quota" in err_str:
@@ -375,6 +416,36 @@ class GeminiService:
         )
         return fallback_resp, "LIMITED_FALLBACK"
 
+    def _validate_response_script(self, text: str, locale: str) -> bool:
+        """Validates that text matches expected native script ranges for the requested locale."""
+        if not text or not locale or locale.startswith("en"):
+            return True
+
+        text_clean = "".join(c for c in text if c.isalpha())
+        if not text_clean:
+            return True
+
+        script_ranges = {
+            "hi-IN": [(0x0900, 0x097F)],
+            "mr-IN": [(0x0900, 0x097F)],
+            "gu-IN": [(0x0A80, 0x0AFF)],
+            "bn-IN": [(0x0980, 0x09FF)],
+            "kn-IN": [(0x0C80, 0x0CFF)],
+            "te-IN": [(0x0C00, 0x0C7F)],
+            "ta-IN": [(0x0B80, 0x0BFF)],
+            "ml-IN": [(0x0D00, 0x0D7F)],
+            "pa-IN": [(0x0A00, 0x0A7F)],
+            "od-IN": [(0x0B00, 0x0B7F)],
+        }
+
+        ranges = script_ranges.get(locale)
+        if not ranges:
+            return True
+
+        match_count = sum(1 for char in text_clean if any(start <= ord(char) <= end for start, end in ranges))
+        ratio = match_count / len(text_clean)
+        return ratio >= 0.35
+
     def _fallback_dynamic_response(
         self,
         latest_message: str,
@@ -383,54 +454,84 @@ class GeminiService:
         verified_tool_data: Optional[Dict[str, Any]],
         language: str
     ) -> CitizenDynamicResponseOutput:
-        is_hi = language.startswith("hi")
-        is_en = language.startswith("en")
+        loc = language
+        if loc not in ["en-IN", "hi-IN", "mr-IN", "gu-IN", "bn-IN", "kn-IN", "te-IN", "ta-IN", "ml-IN", "pa-IN", "od-IN"]:
+            prefix_map = {
+                "hi": "hi-IN", "en": "en-IN", "gu": "gu-IN", "bn": "bn-IN",
+                "kn": "kn-IN", "te": "te-IN", "ta": "ta-IN", "ml": "ml-IN",
+                "pa": "pa-IN", "od": "od-IN", "or": "od-IN", "mr": "mr-IN"
+            }
+            loc = prefix_map.get(language[:2].lower(), "mr-IN")
+
         intent = understanding.intent
+
+        emergency_messages = {
+            "en-IN": "⚠️ Critical emergency warning signs detected. Please call 108 Emergency immediately or proceed to the nearest 24x7 healthcare facility.",
+            "hi-IN": "⚠️ गंभीर आपातकालीन लक्षण पाए गए हैं। कृपया तुरंत 108 आपातकालीन सेवा पर कॉल करें या नजदीकी 24x7 स्वास्थ्य केंद्र जाएं।",
+            "mr-IN": "⚠️ गंभीर व तात्काळ काळजीची लक्षणे आढळली आहेत. कृपया त्वरित १०८ आपत्कालीन सेवेवर कॉल करा किंवा जवळच्या २४x७ आरोग्य केंद्रात जा.",
+            "gu-IN": "⚠️ ગંભીર કટોકટીના લક્ષણો જણાયા છે. કૃપા કરીને તાત્કાલિક 108 ઇમરજન્સી પર કૉલ કરો અથવા નજીકના 24x7 આરોગ્ય કેન્દ્ર પર જાઓ.",
+            "bn-IN": "⚠️ জরুরি সতর্কতামূলক লক্ষণ সনাক্ত হয়েছে। অবিলম্বে 108 জরুরি নম্বরে কল করুন বা নিকটস্থ 24x7 স্বাস্থ্যকেন্দ্রে যান।",
+            "kn-IN": "⚠️ ತುರ್ತು ಎಚ್ಚರಿಕೆಯ ಲಕ್ಷಣಗಳು ಕಂಡುಬಂದಿವೆ. ದಯವಿಟ್ಟು ತಕ್ಷಣ 108 ತುರ್ತು ಸೇವೆಗೆ ಕರೆ ಮಾಡಿ ಅಥವಾ ಹತ್ತಿರದ 24x7 ಆರೋಗ್ಯ ಕೇಂದ್ರಕ್ಕೆ ತೆರಳಿ.",
+            "te-IN": "⚠️ అత్యవసర హెచ్చరిక సంకేతాలు గుర్తించబడ్డాయి. దయచేసి వెంటనే 108 అత్యవసర సేవకు కాల్ చేయండి లేదా సమీపంలోని 24x7 ఆరోగ్య కేంద్రానికి వెళ్లండి.",
+            "ta-IN": "⚠️ அவசர எச்சரிக்கை அறிகுறிகள் கண்டறியப்பட்டுள்ளன. உடனடியாக 108 அவசர சேவைக்கு அழைக்கவும் அல்லது அருகிலுள்ள 24x7 சுகாதார மையத்திற்கு செல்லவும்.",
+            "ml-IN": "⚠️ അടിയന്തര മുന്നറിയിപ്പ് ലക്ഷണങ്ങൾ കണ്ടെത്തി. ദയവായി ഉടൻ 108 എമർജൻസിയിൽ വിളിക്കുക അല്ലെങ്കിൽ അടുത്തുള്ള 24x7 ആരോഗ്യ കേന്ദ്രത്തിൽ പോകുക.",
+            "pa-IN": "⚠️ ਗੰਭੀਰ ਐਮਰਜੈਂਸੀ ਲੱਛਣ ਮਿਲੇ ਹਨ। ਕਿਰਪਾ ਕਰਕੇ ਤੁਰੰਤ 108 ਐਮਰਜੈਂਸੀ 'ਤੇ ਕਾਲ ਕਰੋ ਜਾਂ ਨਜ਼ਦੀਕੀ 24x7 ਸਿਹਤ ਕੇਂਦਰ ਜਾਓ।",
+            "od-IN": "⚠️ ଜରୁରୀକାଳୀନ ଚେତାବନୀ ଲକ୍ଷଣ ଚିହ୍ନଟ ହୋଇଛି। ଦୟାକରି ତୁରନ୍ତ 108 ଜରୁରୀକାଳୀନ ସେବାକୁ କଲ୍ କରନ୍ତୁ କିମ୍ବା ନିକଟସ୍ଥ 24x7 ସ୍ୱାସ୍ଥ୍ୟ କେନ୍ଦ୍ରକୁ ଯାଆନ୍ତୁ।"
+        }
+
+        crisis_messages = {
+            "en-IN": "⚠️ Your safety is our highest priority. Please reach out to Tele-MANAS (14416) or Emergency 108 immediately.",
+            "hi-IN": "⚠️ आपकी सुरक्षा हमारी सर्वोच्च प्राथमिकता है। कृपया तुरंत टेली-मानस (14416) या आपातकालीन 108 पर संपर्क करें।",
+            "mr-IN": "⚠️ तुमची सुरक्षितता अत्यंत महत्त्वाची आहे. कृपया तात्काळ २४x७ मानसिक आरोग्य हेल्पलाइन टेली-मानस (१४४१६) अथवा १०८ वर संपर्क करा.",
+            "gu-IN": "⚠️ તમારી સુરક્ષા અમારી સર્વોચ્ચ પ્રાથમિકતા છે. કૃપા કરીને તાત્કાલિક ટેલી-માનસ (14416) અથવા 108 પર સંપર્ક કરો.",
+            "bn-IN": "⚠️ আপনার নিরাপত্তা আমাদের সর্বোচ্চ অগ্রাধিকার। অবিলম্বে টেলি-মানস (14416) বা জরুরি 108 নম্বরে যোগাযোগ করুন।",
+            "kn-IN": "⚠️ ನಿಮ್ಮ ಸುರಕ್ಷತೆ ನಮ್ಮ ಪ್ರಮುಖ ಆದ್ಯತೆಯಾಗಿದೆ. ದಯವಿಟ್ಟು ತಕ್ಷಣ ಟೆಲಿ-ಮಾನಸ್ (14416) ಅಥವಾ ತುರ್ತು 108 ಅನ್ನು ಸಂಪರ್ਕಿಸಿ.",
+            "te-IN": "⚠️ మీ భద్రత మా అత్యున్నత ప్రాధాన్యత. దయచేసి వెంటనే టెలి-మానస్ (14416) లేదా ఎమర్జెన్సీ 108ను సంప్రదించండి.",
+            "ta-IN": "⚠️ உங்கள் பாதுகாப்பு எங்கள் முன்னுரிமை. உடனடியாக டெலி-மானாஸ் (14416) அல்லது அவசர 108 ஐ தொடர்பு கொள்ளவும்.",
+            "ml-IN": "⚠️ നിങ്ങളുടെ സുരക്ഷ ഞങ്ങളുടെ ഏറ്റവും ഉയർന്ന മുൻഗണനയാണ്. ദയവായി ഉടൻ ടെലി-മാനസ് (14416) അല്ലെങ്കിൽ എമർജൻസി 108-ൽ ബന്ധപ്പെടുക.",
+            "pa-IN": "⚠️ ਤੁਹਾਡੀ ਸੁਰੱਖਿਆ ਸਾਡੀ ਸਭ ਤੋਂ ਵੱਡੀ ਤਰਜੀਹ ਹੈ। ਕਿਰਪਾ ਕਰਕੇ ਤੁਰੰਤ ਟੈਲੀ-ਮਾਨਸ (14416) ਜਾਂ ਐਮਰਜੈਂਸੀ 108 'ਤੇ ਸੰਪਰਕ ਕਰੋ।",
+            "od-IN": "⚠️ ଆପଣଙ୍କ ସୁରକ୍ଷା ଆମର ପ୍ରାଥମିକତା। ଦୟାକରି ତୁରନ୍ତ ଟେଲି-ମାନସ (14416) କିମ୍ବା 108 ସହିତ ଯୋଗାଯୋଗ କରନ୍ତୁ।"
+        }
+
+        limited_messages = {
+            "en-IN": "Conversational assistance is temporarily in limited mode. You can directly access healthcare services below or retry.",
+            "hi-IN": "बातचीत सहायता अस्थायी रूप से सीमित मोड में है। आप सीधे नीचे दी गई स्वास्थ्य सेवाओं का उपयोग कर सकते हैं या पुनः प्रयास कर सकते हैं।",
+            "mr-IN": "संभाषण सहाय्य सध्या मर्यादित मोडमध्ये आहे. आपण खालील आरोग्य सेवांचा थेट वापर करू शकता किंवा पुन्हा प्रयत्न करू शकता.",
+            "gu-IN": "વાતચીત સહાય હાલમાં મર્યાદિત મોડમાં છે. તમે નીચે આપેલી આરોગ્ય સેવાઓનો સીધો ઉપયોગ કરી શકો છો અથવા ફરી પ્રયાસ કરી શકો છો.",
+            "bn-IN": "কথোপকথন সহায়তা বর্তমানে সীমিত মোডে রয়েছে। আপনি সরাসরি নীচের স্বাস্থ্য পরিষেবাগুলি ব্যবহার করতে পারেন বা পুনরায় চেষ্টা করতে পারেন।",
+            "kn-IN": "ಸಂಭಾಷಣೆ ಸಹಾಯವು ಪ್ರಸ್ತುತ ಸೀಮಿತ ಮೋಡ್‌ನಲ್ಲಿದೆ. ನೀವು ಕೆಳಗಿನ ಆರೋಗ್ಯ ಸೇವೆಗಳನ್ನು ನೇರವಾಗಿ ಬಳಸಬಹುದು ಅಥವಾ ಮತ್ತೆ ಪ್ರಯತ್ನಿಸಬಹುದು.",
+            "te-IN": "సంభాషణ సహాయం ప్రస్తుతం పరిమిత మోడ్‌లో ఉంది. మీరు దిగువ ఆరోగ్య సేవలను నేరుగా ఉపయోగించవచ్చు లేదా మళ్లీ ప్రయత్నించవచ్చు.",
+            "ta-IN": "உரையாடல் உதவி தற்போது வரம்பிற்குட்பட்ட முறையில் உள்ளது. நீங்கள் கீழே உள்ள சுகாதார சேவைகளை நேரடியாகப் பயன்படுத்தலாம் அல்லது மீண்டும் முயற்சிக்கலாம்.",
+            "ml-IN": "സംഭാഷണ സഹായം നിലവിൽ പരിമിതമായ മോഡിലാണ്. നിങ്ങൾക്ക് താഴെയുള്ള ആരോഗ്യ സേവനങ്ങൾ നേരിട്ട് ഉപയോഗിക്കാം അല്ലെങ്കിൽ വീണ്ടും ശ്രമിക്കാം.",
+            "pa-IN": "ਗੱਲਬਾਤ ਸਹਾਇਤਾ ਫਿਲਹਾਲ ਸੀਮਤ ਮੋਡ ਵਿੱਚ ਹੈ। ਤੁਸੀਂ ਹੇਠਾਂ ਦਿੱਤੀਆਂ ਸਿਹਤ ਸੇਵਾਵਾਂ ਦੀ ਸਿੱਧੀ ਵਰਤੋਂ ਕਰ ਸਕਦੇ ਹੋ ਜਾਂ ਦੁਬਾਰਾ ਕੋਸ਼ਿਸ਼ ਕਰ ਸਕਦੇ ਹੋ।",
+            "od-IN": "କଥାବାର୍ତ୍ତା ସହାୟତା ବର୍ତ୍ତମାନ ସୀମିତ ମୋଡ୍‌ରେ ଅଛି। ଆପଣ ସିଧାସଳଖ ନିମ୍ନଲିଖିତ ସ୍ୱାସ୍ଥ୍ୟ ସେବା ବ୍ୟବହାର କରିପାରିବେ କିମ୍ବା ପୁନର୍ବାର ଚେଷ୍ଟା କରିପାରିବେ।"
+        }
 
         # Emergency override
         if safety_evaluation.get("level") == "EMERGENCY" or intent == CitizenIntentEnum.EMERGENCY_HELP:
-            text = (
-                "⚠️ गंभीर व तात्काळ काळजीची लक्षणे आढळली आहेत. त्वरित १०८ वर कॉल करा किंवा जवळच्या २४x७ आपत्कालीन केंद्रात जा."
-                if not (is_hi or is_en) else
-                ("⚠️ गंभीर लक्षण पाए गए हैं। तुरंत 108 पर कॉल करें या आपातकालीन सहायता लें।" if is_hi else
-                 "⚠️ Critical emergency warning signs detected. Please call 108 Emergency immediately.")
-            )
             return CitizenDynamicResponseOutput(
-                text=text,
-                language=language[:2],
+                text=emergency_messages.get(loc, emergency_messages["en-IN"]),
+                language=loc,
                 response_type="SAFETY_WARNING",
                 requested_action_types=["CALL_108", "FIND_FACILITY", "SPEAK_TO_DOCTOR"],
-                suggested_replies=["108 Emergency", "Doctor Consultation"]
+                suggested_replies=["CALL_108", "SPEAK_TO_DOCTOR"]
             )
 
         if intent == CitizenIntentEnum.MENTAL_HEALTH_CRISIS:
-            text = (
-                "⚠️ तुमची सुरक्षितता अत्यंत महत्त्वाची आहे. कृपया तात्काळ २४x७ मानसिक आरोग्य हेल्पलाइन टेली-मानस (१४४१६) अथवा १०८ वर संपर्क करा."
-                if not (is_hi or is_en) else
-                ("⚠️ हम आपकी सुरक्षा के लिए चिंतित हैं। कृपया तुरंत Tele-MANAS (14416) या 108 पर संपर्क करें।" if is_hi else
-                 "⚠️ Your safety is our highest priority. Please reach out to Tele-MANAS (14416) or Emergency 108 immediately.")
-            )
             return CitizenDynamicResponseOutput(
-                text=text,
-                language=language[:2],
+                text=crisis_messages.get(loc, crisis_messages["en-IN"]),
+                language=loc,
                 response_type="SAFETY_WARNING",
-                requested_action_types=["CALL_14416", "CALL_108", "SPEAK_TO_DOCTOR"]
+                requested_action_types=["CALL_14416", "CALL_108", "SPEAK_TO_DOCTOR"],
+                suggested_replies=["CALL_14416", "SPEAK_TO_DOCTOR"]
             )
-
-        # Honest limited fallback message as mandated in Section 14
-        limited_msg = (
-            "संभाषण सहाय्य सध्या मर्यादित मोडमध्ये आहे. आपण पुन्हा प्रयत्न करू शकता किंवा खालील आरोग्य सेवांचा थेट वापर करू शकता."
-            if not (is_hi or is_en) else
-            ("बातचीत सहायता अस्थायी रूप से सीमित है। आप पुनः प्रयास कर सकते हैं या सीधे नीचे दी गई स्वास्थ्य सेवाओं का उपयोग कर सकते हैं।" if is_hi else
-             "Conversational assistance is temporarily limited. You can try again or directly use health services below.")
-        )
 
         return CitizenDynamicResponseOutput(
-            text=limited_msg,
-            language=language[:2],
+            text=limited_messages.get(loc, limited_messages["en-IN"]),
+            language=loc,
             response_type="GUIDANCE",
             requested_action_types=["SPEAK_TO_DOCTOR", "FIND_FACILITY", "CHECK_SCHEMES"],
-            suggested_replies=["Speak to Doctor", "Find Health Centre", "Check Schemes"]
+            suggested_replies=["SPEAK_TO_DOCTOR", "FIND_HEALTH_CENTRE", "CHECK_SCHEMES"]
         )
 
     def process_intake(self, text: str, preferred_language: str = "en") -> NormalizedIntake:

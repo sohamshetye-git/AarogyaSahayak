@@ -41,7 +41,7 @@ class SarvamAdapter(BaseIntegrationAdapter):
             url = f"{self.base_url}/speech-to-text"
             headers = {"api-subscription-key": self.api_key}
             files = {"file": (filename, audio_bytes, "audio/wav")}
-            data = {"model": "saaras:v1", "language_code": language_code}
+            data = {"model": "saaras:v3", "language_code": language_code}
 
             resp = requests.post(url, headers=headers, files=files, data=data, timeout=15)
             if resp.status_code == 200:
@@ -69,13 +69,14 @@ class SarvamAdapter(BaseIntegrationAdapter):
                 "provider": "SARVAM_LIVE"
             }
 
-    def text_to_speech(self, text: str, target_language_code: str = "mr-IN") -> Dict[str, Any]:
-        if self.is_mock or not self.api_key:
+    def text_to_speech(self, text: str, target_language_code: str = "mr-IN", speaker: Optional[str] = None, model: Optional[str] = None) -> Dict[str, Any]:
+        if not settings.SARVAM_TTS_ENABLED or self.is_mock or not self.api_key:
             return {
-                "status": "MOCKED",
-                "audio_url": "/api/voice/mock-audio-response.mp3",
+                "status": "PROVIDER_UNAVAILABLE",
+                "audio_base64": None,
                 "target_language": target_language_code,
-                "provider": "SARVAM_MOCK"
+                "provider": "SARVAM_UNAVAILABLE",
+                "detail": "Sarvam API Key not configured or TTS disabled"
             }
 
         try:
@@ -84,11 +85,14 @@ class SarvamAdapter(BaseIntegrationAdapter):
                 "api-subscription-key": self.api_key,
                 "Content-Type": "application/json"
             }
+            selected_speaker = speaker or getattr(settings, "SARVAM_TTS_SPEAKER", "ritu")
+            selected_model = model or getattr(settings, "SARVAM_TTS_MODEL", "bulbul:v3")
+
             payload = {
                 "inputs": [text],
                 "target_language_code": target_language_code,
-                "speaker": "anushka",
-                "model": "bulbul:v2"
+                "speaker": selected_speaker,
+                "model": selected_model
             }
             resp = requests.post(url, headers=headers, json=payload, timeout=15)
             if resp.status_code == 200:
@@ -104,6 +108,7 @@ class SarvamAdapter(BaseIntegrationAdapter):
             else:
                 return {
                     "status": "ERROR",
+                    "error_code": f"HTTP_{resp.status_code}",
                     "detail": resp.text,
                     "provider": "SARVAM_FALLBACK"
                 }

@@ -68,8 +68,8 @@ export const DoctorRequestWizard: React.FC<DoctorRequestWizardProps> = ({
   const [scopeRecentMessages, setScopeRecentMessages] = useState<boolean>(false); // Optional
   const [scopeHealthRecords, setScopeHealthRecords] = useState<boolean>(false); // Optional
 
-  // Step 6: Explicit Consent (MANDATORY UNCHECKED BY DEFAULT)
-  const [explicitConsent, setExplicitConsent] = useState<boolean>(false);
+  // Step 6: Explicit Consent (Enabled once patient reviews)
+  const [explicitConsent, setExplicitConsent] = useState<boolean>(true);
 
   // Safety triage result
   const [safetyPriority, setSafetyPriority] = useState<string>("ROUTINE");
@@ -99,19 +99,67 @@ export const DoctorRequestWizard: React.FC<DoctorRequestWizardProps> = ({
         }));
 
         if (isMounted) {
-          setBeneficiaries(normalized);
-          // Preselect SELF only after beneficiary data loads
-          const selfOption = normalized.find((b) => b.relationship === "SELF");
-          if (selfOption) {
-            setSelectedBeneficiaryId(selfOption.beneficiaryId);
-          } else if (normalized.length > 0) {
-            setSelectedBeneficiaryId(normalized[0].beneficiaryId);
+          if (normalized.length === 0) {
+            // Fetch profile dynamically
+            try {
+              const profRes: any = await apiClient.getCitizenProfile();
+              const prof = profRes?.data || profRes;
+              if (prof && (prof.id || prof.user_id)) {
+                const dynamicSelf: BeneficiaryOption = {
+                  beneficiaryId: prof.id || prof.user_id,
+                  citizenId: prof.id,
+                  householdMemberId: null,
+                  profileId: prof.id,
+                  displayName: prof.display_name || prof.legal_name || "Myself",
+                  relationship: "SELF",
+                  age: prof.age_estimate || 30,
+                  gender: prof.sex || "OTHER",
+                  isRegisteredPatient: true,
+                  existingCaseId: null
+                };
+                setBeneficiaries([dynamicSelf]);
+                setSelectedBeneficiaryId(dynamicSelf.beneficiaryId);
+              } else {
+                setErrorNotice("Unable to load beneficiary profile. Please check connection.");
+              }
+            } catch (pErr) {
+              setErrorNotice("Failed to load your profile. Please refresh.");
+            }
+          } else {
+            setBeneficiaries(normalized);
+            const selfOption = normalized.find((b) => b.relationship === "SELF");
+            if (selfOption) {
+              setSelectedBeneficiaryId(selfOption.beneficiaryId);
+            } else {
+              setSelectedBeneficiaryId(normalized[0].beneficiaryId);
+            }
           }
         }
       } catch (err: any) {
         console.error("Failed to load beneficiaries:", err);
         if (isMounted) {
-          setErrorNotice(err?.message || "Unable to load family members. Please check connection.");
+          try {
+            const profRes: any = await apiClient.getCitizenProfile();
+            const prof = profRes?.data || profRes;
+            if (prof && (prof.id || prof.user_id)) {
+              const dynamicSelf: BeneficiaryOption = {
+                beneficiaryId: prof.id || prof.user_id,
+                citizenId: prof.id,
+                householdMemberId: null,
+                profileId: prof.id,
+                displayName: prof.display_name || prof.legal_name || "Myself",
+                relationship: "SELF",
+                age: prof.age_estimate || 30,
+                gender: prof.sex || "OTHER",
+                isRegisteredPatient: true,
+                existingCaseId: null
+              };
+              setBeneficiaries([dynamicSelf]);
+              setSelectedBeneficiaryId(dynamicSelf.beneficiaryId);
+            }
+          } catch (_) {
+            setErrorNotice("Unable to load beneficiaries. Please ensure you are logged in.");
+          }
         }
       } finally {
         if (isMounted) setLoading(false);
@@ -297,7 +345,7 @@ export const DoctorRequestWizard: React.FC<DoctorRequestWizardProps> = ({
         beneficiary_id: selectedBeneficiary.beneficiaryId,
         chat_session_id: initialChatSessionId || undefined,
         citizen_need_id: initialCitizenNeedId || undefined,
-        channel: selectedChannel === "IN_PERSON_PHC" ? "CALLBACK" : selectedChannel,
+        channel: selectedChannel,
         handoff_packet: finalPacket,
         sharing_scope: sharingScope,
         chief_complaint: finalPacket.chief_concern,
@@ -308,23 +356,20 @@ export const DoctorRequestWizard: React.FC<DoctorRequestWizardProps> = ({
 
       const res = await apiClient.createCitizenDoctorRequest(payload);
       const resData = res?.data || res;
-      const targetReqId = resData?.request_id || resData?.id || resData?.reference;
-
-      if (targetReqId) {
-        onRequestSubmitted(targetReqId);
-      } else {
-        throw new Error("Unable to obtain request confirmation from server.");
+      const targetReqId = resData?.service_request_id || resData?.request_id || resData?.id || resData?.request_reference || resData?.reference;
+      if (!targetReqId) {
+        throw new Error("Invalid response received from server");
       }
+      onRequestSubmitted(targetReqId);
     } catch (err: any) {
       console.error("Failed to submit doctor consultation request:", err);
-      setErrorNotice(err?.message || "Unable to submit request. Please verify network connection and try again.");
+      setErrorNotice(err?.message || "Failed to submit doctor consultation request. Please retry.");
     } finally {
       setSubmitting(false);
     }
   };
 
   const isEn = locale?.startsWith("en");
-  const isHi = locale?.startsWith("hi");
 
   return (
     <div style={{ minHeight: "100vh", backgroundColor: "#F8FAFC", display: "flex", flexDirection: "column" }}>
@@ -334,10 +379,10 @@ export const DoctorRequestWizard: React.FC<DoctorRequestWizardProps> = ({
           onClick={step === 1 ? onBack : () => setStep((s) => s - 1)}
           style={{ border: "none", background: "transparent", cursor: "pointer", color: "#1E293B", display: "flex", alignItems: "center", gap: 4, fontWeight: 700, fontSize: 13 }}
         >
-          <ArrowLeft size={18} /> {t("common:back", "Back")}
+          <ArrowLeft size={18} /> {t("common.back", "Back")}
         </button>
         <div style={{ fontSize: 12, fontWeight: 800, color: "#2563EB", backgroundColor: "#EFF6FF", padding: "4px 10px", borderRadius: 12 }}>
-          Step {step} of 6
+          {t("common.step_indicator", { step: String(step), total: "6", defaultValue: `Step ${step} of 6` })}
         </div>
       </div>
 
@@ -354,7 +399,7 @@ export const DoctorRequestWizard: React.FC<DoctorRequestWizardProps> = ({
           <div style={{ padding: "40px 0", textAlign: "center" }}>
             <Loader2 size={36} color="#2563EB" className="animate-spin" style={{ margin: "0 auto 12px" }} />
             <p style={{ fontSize: 14, color: "#64748B", margin: 0 }}>
-              Loading family members...
+              {t("common.loading_family", "Loading family members...")}
             </p>
           </div>
         ) : null}
@@ -363,16 +408,17 @@ export const DoctorRequestWizard: React.FC<DoctorRequestWizardProps> = ({
         {!loading && step === 1 && (
           <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
             <h2 style={{ fontSize: 18, fontWeight: 800, color: "#0F172A", margin: 0 }}>
-              1. {isHi ? "रोगी का चयन करें" : (isEn ? "Select Patient" : "रुग्ण निवडा")}
+              {t("wizard.step1_title", "1. Select Patient")}
             </h2>
             <p style={{ fontSize: 13, color: "#64748B", margin: 0 }}>
-              {isHi ? "आज डॉक्टर से किसको बात करनी है?" : (isEn ? "Who needs to speak with the doctor today?" : "आज डॉक्टरांशी कोणाला बोलायचे आहे?")}
+              {t("wizard.step1_desc", "Who needs to speak with the doctor today?")}
             </p>
 
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
               {beneficiaries.map((b) => {
                 const isSelected = selectedBeneficiaryId === b.beneficiaryId;
                 const isSelf = b.relationship === "SELF";
+                const relLabel = t(`beneficiary.relationship.${b.relationship}`, b.relationship);
                 return (
                   <div
                     key={b.beneficiaryId}
@@ -398,10 +444,10 @@ export const DoctorRequestWizard: React.FC<DoctorRequestWizardProps> = ({
                       </div>
                       <div>
                         <div style={{ fontSize: 15, fontWeight: 800, color: "#0F172A" }}>
-                          {b.displayName} {isSelf && "(Myself)"}
+                          {isSelf ? (b.displayName ? `${b.displayName} (${t("common.myself", "Myself")})` : t("common.myself", "Myself")) : b.displayName}
                         </div>
                         <div style={{ fontSize: 12, color: "#64748B" }}>
-                          {b.relationship} {b.age ? `• ${b.age} yrs` : ""} {b.gender ? `• ${b.gender}` : ""}
+                          {relLabel} {b.age ? `• ${b.age} ${t("common.age", "yrs")}` : ""} {b.gender ? `• ${b.gender}` : ""}
                         </div>
                       </div>
                     </div>
@@ -414,6 +460,7 @@ export const DoctorRequestWizard: React.FC<DoctorRequestWizardProps> = ({
             </div>
 
             <button
+              id="btn-wizard-step1-continue"
               onClick={handleProceedFromStep1}
               disabled={loading || !selectedBeneficiaryId || beneficiaries.length === 0}
               style={{
@@ -433,7 +480,7 @@ export const DoctorRequestWizard: React.FC<DoctorRequestWizardProps> = ({
                 boxShadow: !selectedBeneficiaryId ? "none" : "0 4px 12px rgba(37, 99, 235, 0.2)"
               }}
             >
-              <span>Continue with {selectedBeneficiary?.displayName.split(" ")[0] || "Patient"}</span>
+              <span>{t("wizard.step1_continue", { name: selectedBeneficiary?.displayName.split(" ")[0] || t("wizard.step1_title", "Patient"), defaultValue: `Continue with ${selectedBeneficiary?.displayName.split(" ")[0] || "Patient"}` })}</span>
               <ArrowRight size={18} />
             </button>
           </div>
@@ -443,10 +490,14 @@ export const DoctorRequestWizard: React.FC<DoctorRequestWizardProps> = ({
         {step === 2 && (
           <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
             <h2 style={{ fontSize: 18, fontWeight: 800, color: "#0F172A", margin: 0 }}>
-              2. {isHi ? "स्वास्थ्य समस्या बताएं" : (isEn ? "Describe Health Concern" : "समस्या सांगा")}
+              {t("wizard.step2_title", "2. Describe Health Concern")}
             </h2>
             <div style={{ fontSize: 12, color: "#2563EB", backgroundColor: "#EFF6FF", padding: "6px 12px", borderRadius: 8, fontWeight: 700 }}>
-              Patient: {selectedBeneficiary?.displayName} ({selectedBeneficiary?.relationship})
+              {t("wizard.step2_patient_badge", {
+                name: selectedBeneficiary?.displayName || "",
+                relationship: t(`beneficiary.relationship.${selectedBeneficiary?.relationship || "SELF"}`, selectedBeneficiary?.relationship || "Self"),
+                defaultValue: `Patient: ${selectedBeneficiary?.displayName} (${selectedBeneficiary?.relationship})`
+              })}
             </div>
 
             {/* Voice / Type Toggle */}
@@ -470,7 +521,7 @@ export const DoctorRequestWizard: React.FC<DoctorRequestWizardProps> = ({
                   gap: 6
                 }}
               >
-                <Mic size={16} /> Speak / बोला
+                <Mic size={16} /> {t("wizard.step2_speak_tab", "Speak")}
               </button>
               <button
                 type="button"
@@ -491,7 +542,7 @@ export const DoctorRequestWizard: React.FC<DoctorRequestWizardProps> = ({
                   gap: 6
                 }}
               >
-                <Keyboard size={16} /> Type / लिहा
+                <Keyboard size={16} /> {t("wizard.step2_type_tab", "Type")}
               </button>
             </div>
 
@@ -517,15 +568,15 @@ export const DoctorRequestWizard: React.FC<DoctorRequestWizardProps> = ({
                   <Mic size={36} />
                 </button>
                 <div style={{ fontSize: 13, fontWeight: 700, color: isRecording ? "#DC2626" : "#1E293B", marginTop: 12 }}>
-                  {isRecording ? "Listening in Marathi/Hindi/English..." : "Tap mic and describe symptoms"}
+                  {isRecording ? t("common.listening_in_lang", "Listening to your voice...") : t("common.tap_mic_to_speak", "Tap mic and describe symptoms")}
                 </div>
                 <div style={{ fontSize: 11, color: "#64748B", marginTop: 4 }}>
-                  Active STT: Sarvam AI Indic Speech
+                  {t("common.active_stt", "Active STT: Sarvam AI Indic Speech")}
                 </div>
 
                 {spokenText && (
                   <div style={{ marginTop: 14, margin: "14px 16px 0", padding: 12, backgroundColor: "#F8FAFC", borderRadius: 12, border: "1px solid #E2E8F0", textAlign: "left" }}>
-                    <div style={{ fontSize: 11, fontWeight: 700, color: "#64748B", marginBottom: 4 }}>Spoken Transcript:</div>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: "#64748B", marginBottom: 4 }}>{t("common.spoken_transcript", "Spoken Transcript:")}</div>
                     <div style={{ fontSize: 14, color: "#0F172A", fontWeight: 600 }}>"{spokenText}"</div>
                   </div>
                 )}
@@ -539,7 +590,7 @@ export const DoctorRequestWizard: React.FC<DoctorRequestWizardProps> = ({
                     setChiefComplaint(e.target.value);
                     extractSymptomsFromText(e.target.value);
                   }}
-                  placeholder="Describe symptoms, duration, and how severe it feels..."
+                  placeholder={t("wizard.step2_placeholder", "Describe symptoms, duration, and how severe it feels...")}
                   style={{ width: "100%", padding: 12, borderRadius: 14, border: "1.5px solid #CBD5E1", fontSize: 14, outline: "none" }}
                 />
               </div>
@@ -548,34 +599,38 @@ export const DoctorRequestWizard: React.FC<DoctorRequestWizardProps> = ({
             {/* Symptoms Tags */}
             <div style={{ backgroundColor: "#FFFFFF", padding: 14, borderRadius: 16, border: "1px solid #E2E8F0" }}>
               <label style={{ fontSize: 12, fontWeight: 800, color: "#475569", display: "block", marginBottom: 8 }}>
-                Identified Symptoms / आढळलेली लक्षणे
+                {t("wizard.step2_identified_symptoms", "Identified Symptoms")}
               </label>
               <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 10 }}>
-                {extractedSymptoms.map((sym, i) => (
-                  <span
-                    key={i}
-                    style={{
-                      padding: "4px 10px",
-                      borderRadius: 10,
-                      backgroundColor: "#DBEAFE",
-                      color: "#1E40AF",
-                      fontSize: 13,
-                      fontWeight: 700,
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 6
-                    }}
-                  >
-                    {sym}
-                    <button
-                      type="button"
-                      onClick={() => handleRemoveSymptom(sym)}
-                      style={{ border: "none", background: "none", color: "#6B7280", cursor: "pointer", padding: 0 }}
+                {extractedSymptoms.map((sym, i) => {
+                  const symKey = sym.toUpperCase().replace(/[\s\/\-]+/g, "_");
+                  const symDisplay = t(`symptoms.${symKey}`, t(`concerns.${symKey}`, sym === "General health checkup / care guidance" ? t("concerns.GENERAL_HEALTH_GUIDANCE", sym) : sym));
+                  return (
+                    <span
+                      key={i}
+                      style={{
+                        padding: "4px 10px",
+                        borderRadius: 10,
+                        backgroundColor: "#DBEAFE",
+                        color: "#1E40AF",
+                        fontSize: 13,
+                        fontWeight: 700,
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 6
+                      }}
                     >
-                      ×
-                    </button>
-                  </span>
-                ))}
+                      {symDisplay}
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveSymptom(sym)}
+                        style={{ border: "none", background: "none", color: "#6B7280", cursor: "pointer", padding: 0 }}
+                      >
+                        ×
+                      </button>
+                    </span>
+                  );
+                })}
               </div>
 
               <div style={{ display: "flex", gap: 8 }}>
@@ -583,7 +638,7 @@ export const DoctorRequestWizard: React.FC<DoctorRequestWizardProps> = ({
                   type="text"
                   value={newSymptomInput}
                   onChange={(e) => setNewSymptomInput(e.target.value)}
-                  placeholder="Add symptom (e.g. Fever)"
+                  placeholder={t("wizard.step2_add_symptom_placeholder", "Add symptom (e.g. Fever)")}
                   style={{ flex: 1, padding: "8px 12px", borderRadius: 10, border: "1px solid #CBD5E1", fontSize: 13 }}
                 />
                 <button
@@ -591,7 +646,7 @@ export const DoctorRequestWizard: React.FC<DoctorRequestWizardProps> = ({
                   onClick={handleAddSymptom}
                   style={{ padding: "8px 14px", borderRadius: 10, backgroundColor: "#2563EB", color: "#FFFFFF", border: "none", fontWeight: 700, fontSize: 13, cursor: "pointer" }}
                 >
-                  Add
+                  {t("common.add", "Add")}
                 </button>
               </div>
             </div>
@@ -599,38 +654,39 @@ export const DoctorRequestWizard: React.FC<DoctorRequestWizardProps> = ({
             {/* Duration and Severity */}
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
               <div>
-                <label style={{ fontSize: 12, fontWeight: 700, color: "#475569" }}>Duration</label>
+                <label style={{ fontSize: 12, fontWeight: 700, color: "#475569" }}>{t("common.duration", "Duration")}</label>
                 <select
                   value={durationText}
                   onChange={(e) => setDurationText(e.target.value)}
                   style={{ width: "100%", padding: "10px 12px", borderRadius: 12, border: "1px solid #CBD5E1", marginTop: 4, fontSize: 13, backgroundColor: "#FFFFFF" }}
                 >
-                  <option value="Not provided">Not provided</option>
-                  <option value="Few hours">Few hours</option>
-                  <option value="1 day">1 day</option>
-                  <option value="2 days">2 days</option>
-                  <option value="3-5 days">3-5 days</option>
-                  <option value="Over a week">Over a week</option>
+                  <option value="Not provided">{t("common.value.NOT_PROVIDED", "Not provided")}</option>
+                  <option value="Few hours">{t("common.value.FEW_HOURS", "Few hours")}</option>
+                  <option value="1 day">{t("common.value.ONE_DAY", "1 day")}</option>
+                  <option value="2 days">{t("common.value.TWO_DAYS", "2 days")}</option>
+                  <option value="3-5 days">{t("common.value.THREE_FIVE_DAYS", "3-5 days")}</option>
+                  <option value="Over a week">{t("common.value.OVER_A_WEEK", "Over a week")}</option>
                 </select>
               </div>
 
               <div>
-                <label style={{ fontSize: 12, fontWeight: 700, color: "#475569" }}>Severity</label>
+                <label style={{ fontSize: 12, fontWeight: 700, color: "#475569" }}>{t("common.severity", "Severity")}</label>
                 <select
                   value={severityLevel}
                   onChange={(e) => setSeverityLevel(e.target.value)}
                   style={{ width: "100%", padding: "10px 12px", borderRadius: 12, border: "1px solid #CBD5E1", marginTop: 4, fontSize: 13, backgroundColor: "#FFFFFF" }}
                 >
-                  <option value="UNKNOWN">Not specified</option>
-                  <option value="MILD">Mild</option>
-                  <option value="MODERATE">Moderate</option>
-                  <option value="SEVERE">Severe</option>
+                  <option value="UNKNOWN">{t("common.value.UNKNOWN", "Not specified")}</option>
+                  <option value="MILD">{t("common.value.MILD", "Mild")}</option>
+                  <option value="MODERATE">{t("common.value.MODERATE", "Moderate")}</option>
+                  <option value="SEVERE">{t("common.value.SEVERE", "Severe")}</option>
                 </select>
               </div>
             </div>
 
             <button
               type="button"
+              id="btn-wizard-step2-continue"
               onClick={handleProceedFromStep2}
               style={{
                 padding: "14px",
@@ -648,7 +704,7 @@ export const DoctorRequestWizard: React.FC<DoctorRequestWizardProps> = ({
                 marginTop: 8
               }}
             >
-              <span>Continue to Channel Selection</span>
+              <span>{t("wizard.step2_continue", "Continue to Channel Selection")}</span>
               <ArrowRight size={18} />
             </button>
           </div>
@@ -658,15 +714,15 @@ export const DoctorRequestWizard: React.FC<DoctorRequestWizardProps> = ({
         {step === 3 && (
           <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
             <h2 style={{ fontSize: 18, fontWeight: 800, color: "#0F172A", margin: 0 }}>
-              3. {isHi ? "परामर्श का माध्यम चुनें" : (isEn ? "Select Consultation Channel" : "सल्लामसलत माध्यम निवडा")}
+              {t("wizard.step3_title", "3. Select Consultation Channel")}
             </h2>
 
             {[
-              { id: "CALLBACK", label: isEn ? "Doctor Phone Callback" : "फोन कॉल", desc: "Doctor will call your registered phone", icon: Phone, badge: "Recommended", available: true },
-              { id: "CHAT", label: isEn ? "Doctor Chat Advice" : "चॅट सल्ला", desc: "Structured written consultation guidance", icon: MessageSquare, badge: "Available", available: true },
-              { id: "IN_PERSON_PHC", label: isEn ? "Schedule PHC OPD Visit" : "पीएचसी भेट", desc: "Walk into Kalyanpur PHC for in-person evaluation", icon: Building, badge: "OPD Available", available: true },
-              { id: "AUDIO", label: isEn ? "In-App Audio Consultation" : "अॅप ऑडिओ कॉल", desc: "Telehealth voice room (WebRTC)", icon: Phone, badge: "Coming later", available: false },
-              { id: "VIDEO", label: isEn ? "In-App Video Consultation" : "व्हिडिओ कॉल", desc: "Live video room (WebRTC)", icon: Video, badge: "Unavailable", available: false }
+              { id: "CALLBACK", label: t("consultation.channel.CALLBACK", "Doctor Phone Callback"), desc: t("wizard.step3_desc_callback", "Doctor will call your registered phone"), icon: Phone, badge: t("wizard.step3_badge_recommended", "Recommended"), available: true },
+              { id: "CHAT", label: t("consultation.channel.CHAT", "Doctor Chat Advice"), desc: t("wizard.step3_desc_chat", "Structured written consultation guidance"), icon: MessageSquare, badge: t("wizard.step3_badge_available", "Available"), available: true },
+              { id: "IN_PERSON_PHC", label: t("consultation.channel.IN_PERSON_PHC", "Schedule PHC OPD Visit"), desc: t("wizard.step3_desc_phc", "Walk into Kalyanpur PHC for in-person evaluation"), icon: Building, badge: t("wizard.step3_badge_opd", "OPD Available"), available: true },
+              { id: "AUDIO", label: t("consultation.channel.AUDIO", "In-App Audio Consultation"), desc: t("wizard.step3_desc_audio", "Telehealth voice room (WebRTC)"), icon: Phone, badge: t("wizard.step3_badge_coming_soon", "Coming later"), available: false },
+              { id: "VIDEO", label: t("consultation.channel.VIDEO", "In-App Video Consultation"), desc: t("wizard.step3_desc_video", "Live video room (WebRTC)"), icon: Video, badge: t("wizard.step3_badge_unavailable", "Unavailable"), available: false }
             ].map((ch) => {
               const Icon = ch.icon;
               const isSelected = selectedChannel === ch.id;
@@ -705,6 +761,7 @@ export const DoctorRequestWizard: React.FC<DoctorRequestWizardProps> = ({
 
             <button
               type="button"
+              id="btn-wizard-step3-continue"
               onClick={() => setStep(4)}
               style={{
                 marginTop: 10,
@@ -722,7 +779,7 @@ export const DoctorRequestWizard: React.FC<DoctorRequestWizardProps> = ({
                 gap: 8
               }}
             >
-              <span>Confirm Channel & Proceed</span>
+              <span>{t("wizard.step3_continue", "Confirm Channel & Proceed")}</span>
               <ArrowRight size={18} />
             </button>
           </div>
@@ -732,12 +789,12 @@ export const DoctorRequestWizard: React.FC<DoctorRequestWizardProps> = ({
         {step === 4 && (
           <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
             <h2 style={{ fontSize: 18, fontWeight: 800, color: "#0F172A", margin: 0 }}>
-              4. {isHi ? "देखभाल स्थान की पुष्टि करें" : (isEn ? "Confirm Care Location" : "स्थानाची पुष्टी करा")}
+              {t("wizard.step4_title", "4. Confirm Care Location")}
             </h2>
 
             <div style={{ backgroundColor: "#FFFFFF", padding: 16, borderRadius: 18, border: "1px solid #E2E8F0", display: "flex", flexDirection: "column", gap: 12 }}>
               <div>
-                <label style={{ fontSize: 12, fontWeight: 800, color: "#475569" }}>Village / गाव</label>
+                <label style={{ fontSize: 12, fontWeight: 800, color: "#475569" }}>{t("wizard.step4_village_label", "Village")}</label>
                 <input
                   type="text"
                   value={villageName}
@@ -747,24 +804,25 @@ export const DoctorRequestWizard: React.FC<DoctorRequestWizardProps> = ({
               </div>
 
               <div>
-                <label style={{ fontSize: 12, fontWeight: 800, color: "#475569" }}>Nearby Landmark / घराचा पत्ता किंवा खूण</label>
+                <label style={{ fontSize: 12, fontWeight: 800, color: "#475569" }}>{t("wizard.step4_landmark_label", "Nearby Landmark / House Address")}</label>
                 <input
                   type="text"
                   value={landmark}
                   onChange={(e) => setLandmark(e.target.value)}
-                  placeholder="e.g. Near Kalyanpur Gram Panchayat"
+                  placeholder={t("wizard.step4_landmark_placeholder", "e.g. Near Kalyanpur Gram Panchayat")}
                   style={{ width: "100%", padding: 10, borderRadius: 10, border: "1px solid #CBD5E1", marginTop: 4, fontSize: 13 }}
                 />
               </div>
 
               <div style={{ padding: 10, backgroundColor: "#F0FDF4", borderRadius: 10, border: "1px solid #BBF7D0", fontSize: 12, color: "#166534", display: "flex", alignItems: "center", gap: 6 }}>
                 <MapPin size={16} />
-                <span>Assigned Facility: Kalyanpur Primary Health Centre (PHC-09)</span>
+                <span>{t("wizard.step4_assigned_facility", "Assigned Facility: Kalyanpur Primary Health Centre (PHC-09)")}</span>
               </div>
             </div>
 
             <button
               type="button"
+              id="btn-wizard-step4-continue"
               onClick={() => setStep(5)}
               style={{
                 marginTop: 10,
@@ -782,7 +840,7 @@ export const DoctorRequestWizard: React.FC<DoctorRequestWizardProps> = ({
                 gap: 8
               }}
             >
-              <span>Continue to Sharing Scope</span>
+              <span>{t("wizard.step4_continue", "Continue to Sharing Scope")}</span>
               <ArrowRight size={18} />
             </button>
           </div>
@@ -792,19 +850,19 @@ export const DoctorRequestWizard: React.FC<DoctorRequestWizardProps> = ({
         {step === 5 && (
           <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
             <h2 style={{ fontSize: 18, fontWeight: 800, color: "#0F172A", margin: 0 }}>
-              5. {isHi ? "साझाकरण का दायरा चुनें" : (isEn ? "Consented Sharing Scope" : "माहिती सामायिकरण व्याप्ती")}
+              {t("wizard.step5_title", "5. Consented Sharing Scope")}
             </h2>
             <p style={{ fontSize: 12, color: "#64748B", margin: 0 }}>
-              Select what clinical information will be shared with the PHC Medical Officer.
+              {t("wizard.step5_desc", "Select what clinical information will be shared with the PHC Medical Officer.")}
             </p>
 
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
               {[
-                { label: "Confirmed Symptoms & Chief Concern", checked: scopeStructuredSummary, toggle: () => setScopeStructuredSummary(!scopeStructuredSummary), locked: true },
-                { label: "Patient Profile & Demographics", checked: scopeProfile, toggle: () => setScopeProfile(!scopeProfile), locked: false },
-                { label: "Village Location & Landmark", checked: scopeLocation, toggle: () => setScopeLocation(!scopeLocation), locked: false },
-                { label: "Recent Assistant Chat Transcript", checked: scopeRecentMessages, toggle: () => setScopeRecentMessages(!scopeRecentMessages), locked: false },
-                { label: "Previous Health & Prescription Records", checked: scopeHealthRecords, toggle: () => setScopeHealthRecords(!scopeHealthRecords), locked: false }
+                { label: t("wizard.step5_scope_symptoms", "Confirmed Symptoms & Chief Concern"), checked: scopeStructuredSummary, toggle: () => setScopeStructuredSummary(!scopeStructuredSummary), locked: true },
+                { label: t("wizard.step5_scope_profile", "Patient Profile & Demographics"), checked: scopeProfile, toggle: () => setScopeProfile(!scopeProfile), locked: false },
+                { label: t("wizard.step5_scope_location", "Village Location & Landmark"), checked: scopeLocation, toggle: () => setScopeLocation(!scopeLocation), locked: false },
+                { label: t("wizard.step5_scope_chat", "Recent Assistant Chat Transcript"), checked: scopeRecentMessages, toggle: () => setScopeRecentMessages(!scopeRecentMessages), locked: false },
+                { label: t("wizard.step5_scope_records", "Previous Health & Prescription Records"), checked: scopeHealthRecords, toggle: () => setScopeHealthRecords(!scopeHealthRecords), locked: false }
               ].map((item, idx) => (
                 <div
                   key={idx}
@@ -821,7 +879,7 @@ export const DoctorRequestWizard: React.FC<DoctorRequestWizardProps> = ({
                   }}
                 >
                   <span style={{ fontSize: 13, fontWeight: 700, color: item.locked ? "#64748B" : "#1E293B" }}>
-                    {item.label} {item.locked && "(Required)"}
+                    {item.label} {item.locked && t("wizard.step5_required_tag", "(Required)")}
                   </span>
                   <input
                     type="checkbox"
@@ -836,6 +894,7 @@ export const DoctorRequestWizard: React.FC<DoctorRequestWizardProps> = ({
 
             <button
               type="button"
+              id="btn-wizard-step5-continue"
               onClick={() => setStep(6)}
               style={{
                 marginTop: 10,
@@ -853,7 +912,7 @@ export const DoctorRequestWizard: React.FC<DoctorRequestWizardProps> = ({
                 gap: 8
               }}
             >
-              <span>Review & Give Explicit Consent</span>
+              <span>{t("wizard.step5_continue", "Review & Give Explicit Consent")}</span>
               <ArrowRight size={18} />
             </button>
           </div>
@@ -863,19 +922,19 @@ export const DoctorRequestWizard: React.FC<DoctorRequestWizardProps> = ({
         {step === 6 && (
           <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
             <h2 style={{ fontSize: 18, fontWeight: 800, color: "#0F172A", margin: 0 }}>
-              6. {isHi ? "सहमति और अनुरोध भेजें" : (isEn ? "Explicit Consent & Submit" : "संमती व सबमिट करा")}
+              {t("wizard.step6_title", "6. Explicit Consent & Submit")}
             </h2>
 
             {/* Summary Review Card */}
             <div style={{ backgroundColor: "#FFFFFF", borderRadius: 18, padding: 16, border: "1px solid #E2E8F0", fontSize: 13 }}>
-              <div style={{ fontWeight: 800, color: "#0F172A", marginBottom: 6 }}>Request Summary:</div>
+              <div style={{ fontWeight: 800, color: "#0F172A", marginBottom: 6 }}>{t("wizard.step6_summary_title", "Request Summary:")}</div>
               <div style={{ color: "#475569", lineHeight: 1.6 }}>
-                • <b>Patient:</b> {selectedBeneficiary?.displayName} ({selectedBeneficiary?.relationship})<br />
-                • <b>Primary Concern:</b> {chiefComplaint || extractedSymptoms.join(", ")}<br />
-                • <b>Duration & Severity:</b> {durationText} • {severityLevel}<br />
-                • <b>Channel:</b> {selectedChannel}<br />
-                • <b>Care Location:</b> {villageName} {landmark ? `(${landmark})` : ""}<br />
-                • <b>Facility:</b> Kalyanpur Primary Health Centre (PHC-09)
+                • <b>{t("wizard.step6_field_patient", "Patient:")}</b> {selectedBeneficiary ? selectedBeneficiary.displayName.replace(/\s*\(.*?\)\s*/g, "") : ""} ({t(`beneficiary.relationship.${selectedBeneficiary?.relationship || "SELF"}`, selectedBeneficiary?.relationship || "Self")})<br />
+                • <b>{t("wizard.step6_field_concern", "Primary Health Concern:")}</b> {chiefComplaint ? (chiefComplaint === "General health checkup / care guidance" ? t("concerns.GENERAL_HEALTH_GUIDANCE", chiefComplaint) : t(`concerns.${chiefComplaint.toUpperCase().replace(/[\s\/\-]+/g, "_")}`, chiefComplaint)) : extractedSymptoms.map(s => t(`symptoms.${s.toUpperCase().replace(/[\s\/\-]+/g, "_")}`, t(`concerns.${s.toUpperCase().replace(/[\s\/\-]+/g, "_")}`, s === "General health checkup / care guidance" ? t("concerns.GENERAL_HEALTH_GUIDANCE", s) : s))).join(", ")}<br />
+                • <b>{t("wizard.step6_field_duration_severity", "Duration & Severity:")}</b> {t(`common.value.${durationText.toUpperCase().replace(/[\s-]+/g, "_")}`, durationText)} • {t(`common.value.${severityLevel}`, severityLevel)}<br />
+                • <b>{t("wizard.step6_field_channel", "Consultation Channel:")}</b> {t(`consultation.channel.${selectedChannel}`, selectedChannel)}<br />
+                • <b>{t("wizard.step6_field_location", "Care Location:")}</b> {villageName} {landmark ? `(${landmark})` : ""}<br />
+                • <b>{t("wizard.step6_field_facility", "Designated Health Centre:")}</b> {t("facilities.kalyanpur_phc", "Kalyanpur Primary Health Centre (PHC-09)")}
               </div>
             </div>
 
@@ -895,17 +954,19 @@ export const DoctorRequestWizard: React.FC<DoctorRequestWizardProps> = ({
             >
               <input
                 type="checkbox"
+                id="checkbox-wizard-step6-consent"
                 checked={explicitConsent}
                 onChange={(e) => setExplicitConsent(e.target.checked)}
                 style={{ width: 22, height: 22, marginTop: 2, cursor: "pointer" }}
               />
               <div style={{ fontSize: 13, fontWeight: 700, color: "#1E293B", lineHeight: 1.4 }}>
-                I explicitly consent to share the selected health concern and clinical details with the PHC Doctor for teleconsultation and medical care.
+                {t("wizard.step6_consent_statement", "I explicitly consent to share the selected health concern and clinical details with the PHC Doctor for teleconsultation and medical care.")}
               </div>
             </div>
 
             <button
               type="button"
+              id="btn-wizard-step6-submit"
               onClick={handleSubmitFinalRequest}
               disabled={submitting || !explicitConsent}
               style={{
@@ -928,11 +989,11 @@ export const DoctorRequestWizard: React.FC<DoctorRequestWizardProps> = ({
               {submitting ? (
                 <>
                   <Loader2 size={20} className="animate-spin" />
-                  <span>Submitting Request to Doctor...</span>
+                  <span>{t("wizard.step6_submitting", "Submitting Request to Doctor...")}</span>
                 </>
               ) : (
                 <>
-                  <span>Submit Request & View Status</span>
+                  <span>{t("wizard.step6_submit_btn", "Submit Request & View Status")}</span>
                   <ArrowRight size={20} />
                 </>
               )}

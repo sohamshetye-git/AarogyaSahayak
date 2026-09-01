@@ -1,6 +1,14 @@
 import enIN from "./locales/en-IN.json";
 import hiIN from "./locales/hi-IN.json";
 import mrIN from "./locales/mr-IN.json";
+import guIN from "./locales/gu-IN.json";
+import bnIN from "./locales/bn-IN.json";
+import knIN from "./locales/kn-IN.json";
+import teIN from "./locales/te-IN.json";
+import taIN from "./locales/ta-IN.json";
+import mlIN from "./locales/ml-IN.json";
+import paIN from "./locales/pa-IN.json";
+import odIN from "./locales/od-IN.json";
 
 function getDeepKeys(obj: Record<string, any>, prefix = ""): string[] {
   return Object.keys(obj).reduce((res: string[], el: string) => {
@@ -12,6 +20,20 @@ function getDeepKeys(obj: Record<string, any>, prefix = ""): string[] {
   }, []);
 }
 
+export const ALL_LOCALES = {
+  "en-IN": enIN,
+  "hi-IN": hiIN,
+  "mr-IN": mrIN,
+  "gu-IN": guIN,
+  "bn-IN": bnIN,
+  "kn-IN": knIN,
+  "te-IN": teIN,
+  "ta-IN": taIN,
+  "ml-IN": mlIN,
+  "pa-IN": paIN,
+  "od-IN": odIN,
+};
+
 export function validateLocaleParity(): {
   valid: boolean;
   totalKeys: number;
@@ -19,22 +41,37 @@ export function validateLocaleParity(): {
   missingInMr: string[];
   extraInHi: string[];
   extraInMr: string[];
+  missingByLocale: Record<string, string[]>;
+  extraByLocale: Record<string, string[]>;
 } {
   const enKeys = new Set(getDeepKeys(enIN));
-  const hiKeys = new Set(getDeepKeys(hiIN));
-  const mrKeys = new Set(getDeepKeys(mrIN));
+  const missingByLocale: Record<string, string[]> = {};
+  const extraByLocale: Record<string, string[]> = {};
 
-  const missingInHi = [...enKeys].filter((k) => !hiKeys.has(k));
-  const missingInMr = [...enKeys].filter((k) => !mrKeys.has(k));
-  const extraInHi = [...hiKeys].filter((k) => !enKeys.has(k));
-  const extraInMr = [...mrKeys].filter((k) => !enKeys.has(k));
+  let allValid = true;
+
+  for (const [locale, data] of Object.entries(ALL_LOCALES)) {
+    if (locale === "en-IN") continue;
+    const keys = new Set(getDeepKeys(data));
+    const missing = [...enKeys].filter((k) => !keys.has(k));
+    const extra = [...keys].filter((k) => !enKeys.has(k));
+
+    missingByLocale[locale] = missing;
+    extraByLocale[locale] = extra;
+
+    if (missing.length > 0) {
+      allValid = false;
+    }
+  }
 
   return {
-    valid: missingInHi.length === 0 && missingInMr.length === 0,
+    valid: allValid,
     totalKeys: enKeys.size,
-    missingInHi,
-    missingInMr,
-    extraInHi,
-    extraInMr,
+    missingInHi: missingByLocale["hi-IN"] || [],
+    missingInMr: missingByLocale["mr-IN"] || [],
+    extraInHi: extraByLocale["hi-IN"] || [],
+    extraInMr: extraByLocale["mr-IN"] || [],
+    missingByLocale,
+    extraByLocale,
   };
 }

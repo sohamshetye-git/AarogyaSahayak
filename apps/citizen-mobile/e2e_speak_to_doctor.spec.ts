@@ -3,19 +3,47 @@ import { test, expect } from '@playwright/test';
 test.describe('Citizen Speak to Doctor E2E Workflow', () => {
   test('Complete flow: Patient selection -> Doctor request -> Direct requests visibility', async ({ page }) => {
     // 1. Open Citizen Mobile
-    await page.goto('http://localhost:5173');
+    await page.goto('http://localhost:3001');
     await page.waitForLoadState('networkidle');
 
     // If language selection is shown, pick Marathi or English
-    const continueBtn = page.locator('button:has-text("Continue"), button:has-text("पुढे जा")');
+    const continueBtn = page.locator('button:has-text("Continue"), button:has-text("पुढे जा")').first();
     if (await continueBtn.isVisible()) {
       await continueBtn.click();
     }
 
-    // 2. Click "Speak to Doctor" on Home screen
-    const speakToDoctorBtn = page.locator('text=Speak to Doctor, text=डॉक्टरांशी बोला, text=डॉक्टर से बात करें').first();
-    await expect(speakToDoctorBtn).toBeVisible({ timeout: 10000 });
-    await speakToDoctorBtn.click();
+    // Authenticate with Mobile Number for Doctor Consultation flow
+    const mobileEntryBtn = page.locator('#btn-entry-mobile-otp, button:has-text("Continue with Mobile Number")').first();
+    await expect(mobileEntryBtn).toBeVisible({ timeout: 10000 });
+    await mobileEntryBtn.click();
+
+    await page.waitForSelector('#input-citizen-phone', { timeout: 10000 });
+    await page.fill('#input-citizen-phone', '9820005544');
+    await page.click('#btn-citizen-request-otp, #btn-citizen-send-otp');
+
+    await page.waitForSelector('#otp-input-0', { timeout: 10000 });
+    for (let i = 0; i < 6; i++) {
+      await page.fill(`#otp-input-${i}`, `${i + 1}`);
+    }
+    const verifyBtn = page.locator('#btn-citizen-verify-otp-submit');
+    if (await verifyBtn.isVisible() && await verifyBtn.isEnabled()) {
+      await verifyBtn.click();
+    }
+
+    // If onboarding shown, complete registration
+    const onboardingTitle = page.locator('#title-citizen-onboarding');
+    if (await onboardingTitle.isVisible({ timeout: 4000 }).catch(() => false)) {
+      const nameInput = page.locator('#input-onboarding-fullname, input[placeholder*="Patil" i], input[type="text"]').first();
+      await nameInput.fill('Sunita Devi');
+      const submitBtn = page.locator('#btn-onboarding-submit, button:has-text("Complete Registration")').first();
+      await expect(submitBtn).toBeEnabled({ timeout: 5000 });
+      await submitBtn.click();
+    }
+
+    // 2. Wait for Home screen and click "Speak to Doctor"
+    await page.waitForSelector('text=Sunita Devi, #btn-home-speak-to-doctor', { timeout: 15000 });
+    await page.waitForSelector('#btn-home-speak-to-doctor', { timeout: 15000 });
+    await page.click('#btn-home-speak-to-doctor');
 
     // 3. Step 1: Beneficiary Selection - Verify Sunita Devi is loaded and selectable
     await page.waitForSelector('text=Sunita Devi', { timeout: 10000 });

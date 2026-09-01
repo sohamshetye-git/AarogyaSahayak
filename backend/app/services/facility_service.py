@@ -65,9 +65,19 @@ def estimate_travel_time(distance_km: float) -> Tuple[int, str]:
 from app.integrations.google_maps import google_maps_adapter, GoogleMapsAdapterException
 
 SERVICE_CANONICAL_SEARCH_STRATEGY: Dict[str, Dict[str, Any]] = {
+    "EMERGENCY_CARE": {
+        "types": ["hospital"],
+        "text_fallback": "24 hour emergency hospital",
+        "use_text": False
+    },
     "EMERGENCY": {
         "types": ["hospital"],
         "text_fallback": "24 hour emergency hospital",
+        "use_text": False
+    },
+    "GENERAL_DOCTOR_PHC": {
+        "types": ["hospital", "doctor"],
+        "text_fallback": "primary health centre government hospital",
         "use_text": False
     },
     "GENERAL_OPD": {
@@ -75,9 +85,19 @@ SERVICE_CANONICAL_SEARCH_STRATEGY: Dict[str, Dict[str, Any]] = {
         "text_fallback": "primary health centre government hospital",
         "use_text": False
     },
+    "PREGNANCY_DELIVERY": {
+        "types": ["hospital"],
+        "text_query": "maternity hospital delivery centre",
+        "use_text": True
+    },
     "MATERNITY": {
         "types": ["hospital"],
         "text_query": "maternity hospital delivery centre",
+        "use_text": True
+    },
+    "CHILD_HEALTH_VACCINATION": {
+        "types": ["hospital", "doctor"],
+        "text_query": "children hospital vaccination centre",
         "use_text": True
     },
     "CHILD_HEALTH": {
@@ -85,9 +105,19 @@ SERVICE_CANONICAL_SEARCH_STRATEGY: Dict[str, Dict[str, Any]] = {
         "text_query": "children hospital vaccination centre",
         "use_text": True
     },
+    "TESTS_DIAGNOSTICS": {
+        "types": ["medical_lab"],
+        "text_fallback": "diagnostic laboratory",
+        "use_text": False
+    },
     "DIAGNOSTICS": {
         "types": ["medical_lab"],
         "text_fallback": "diagnostic laboratory",
+        "use_text": False
+    },
+    "MEDICINES_PHARMACY": {
+        "types": ["pharmacy"],
+        "text_fallback": "government pharmacy Jan Aushadhi",
         "use_text": False
     },
     "PHARMACY": {
@@ -95,9 +125,19 @@ SERVICE_CANONICAL_SEARCH_STRATEGY: Dict[str, Dict[str, Any]] = {
         "text_fallback": "government pharmacy Jan Aushadhi",
         "use_text": False
     },
+    "TB_SERVICES": {
+        "types": ["hospital", "doctor"],
+        "text_query": "DOTS centre TB clinic",
+        "use_text": True
+    },
     "TB_DOTS": {
         "types": ["hospital", "doctor"],
         "text_query": "DOTS centre TB clinic",
+        "use_text": True
+    },
+    "DIABETES_BP_SERVICES": {
+        "types": ["hospital", "doctor"],
+        "text_query": "diabetes blood pressure clinic",
         "use_text": True
     },
     "NCD": {
@@ -105,9 +145,19 @@ SERVICE_CANONICAL_SEARCH_STRATEGY: Dict[str, Dict[str, Any]] = {
         "text_query": "diabetes blood pressure clinic",
         "use_text": True
     },
+    "GOVERNMENT_SCHEME_DESK": {
+        "types": ["local_government_office", "hospital"],
+        "text_query": "Ayushman Bharat help desk CSC government hospital",
+        "use_text": True
+    },
     "SCHEME_HELP": {
         "types": ["local_government_office", "hospital"],
         "text_query": "Ayushman Bharat help desk CSC government hospital",
+        "use_text": True
+    },
+    "DISTRICT_HOSPITAL_SURGERY": {
+        "types": ["hospital"],
+        "text_query": "district hospital surgical hospital",
         "use_text": True
     },
     "SURGERY": {
@@ -275,63 +325,63 @@ class FacilityServiceEngine:
             suitability_score = 100.0
             reasons = []
 
-            if req_service in ["EMERGENCY", "EMERGENCY_24X7"]:
+            if req_service in ["EMERGENCY_CARE", "EMERGENCY", "EMERGENCY_24X7"]:
                 if has_24x7_emergency:
                     suitability_score += 250.0
                     reasons.append("Verified 24x7 Emergency & Trauma Capability")
                 else:
                     suitability_score -= 300.0
                     reasons.append("No emergency facility available on-site")
-            elif req_service in ["GENERAL_OPD", "OPD", "DOCTOR"]:
+            elif req_service in ["GENERAL_DOCTOR_PHC", "GENERAL_OPD", "OPD", "DOCTOR"]:
                 if fac.facility_type in [FacilityTypeEnum.PHC, FacilityTypeEnum.CHC, FacilityTypeEnum.SUB_CENTRE, FacilityTypeEnum.DISTRICT_HOSPITAL]:
                     suitability_score += 150.0
                     reasons.append("Verified Outpatient Medical Officer & Consultation")
-            elif req_service in ["MATERNITY", "MATERNITY_DELIVERY", "PREGNANCY", "ANC"]:
+            elif req_service in ["PREGNANCY_DELIVERY", "MATERNITY", "MATERNITY_DELIVERY", "PREGNANCY", "ANC"]:
                 if has_maternity:
                     suitability_score += 220.0
                     reasons.append("Verified Maternity, Labor Room & Obstetric Care")
                 else:
                     suitability_score -= 250.0
                     reasons.append("No inpatient maternity delivery beds")
-            elif req_service in ["CHILD_HEALTH", "IMMUNIZATION", "CHILD_VACCINATION", "VACCINATION", "CHILD"]:
+            elif req_service in ["CHILD_HEALTH_VACCINATION", "CHILD_HEALTH", "IMMUNIZATION", "CHILD_VACCINATION", "VACCINATION", "CHILD"]:
                 if has_vaccination:
                     suitability_score += 200.0
                     reasons.append("Verified Universal Child Immunization & Pediatric Clinic")
                 else:
                     suitability_score -= 150.0
-            elif req_service in ["DIAGNOSTICS", "PATHOLOGY_XRAY", "TESTS", "LAB"]:
+            elif req_service in ["TESTS_DIAGNOSTICS", "DIAGNOSTICS", "PATHOLOGY_XRAY", "TESTS", "LAB"]:
                 if has_pathology:
                     suitability_score += 200.0
                     reasons.append("Verified Laboratory Testing & Digital Diagnostic Services")
                 else:
                     suitability_score -= 150.0
-            elif req_service in ["PHARMACY", "MEDICINES", "JAN_AUSHADHI"]:
+            elif req_service in ["MEDICINES_PHARMACY", "PHARMACY", "MEDICINES", "JAN_AUSHADHI"]:
                 has_pharmacy = any("PHARMACY" in s.service_code or "MEDICINE" in s.service_code for s in services) or fac.facility_type == FacilityTypeEnum.PHARMACY
                 if has_pharmacy or fac.facility_type in [FacilityTypeEnum.PHC, FacilityTypeEnum.CHC, FacilityTypeEnum.DISTRICT_HOSPITAL]:
                     suitability_score += 180.0
                     reasons.append("Verified Essential Medicines & Pharmacy Dispensary")
                 else:
                     suitability_score -= 100.0
-            elif req_service in ["TB_DOTS", "TB", "NTEP"]:
+            elif req_service in ["TB_SERVICES", "TB_DOTS", "TB", "NTEP"]:
                 if has_tb:
                     suitability_score += 200.0
                     reasons.append("Verified Nikshay TB Testing & DOTS Treatment Center")
                 else:
                     suitability_score -= 150.0
-            elif req_service in ["NCD", "NCD_DIABETES_BP", "DIABETES", "HYPERTENSION"]:
+            elif req_service in ["DIABETES_BP_SERVICES", "NCD", "NCD_DIABETES_BP", "DIABETES", "HYPERTENSION"]:
                 has_ncd = any("NCD" in s.service_code or "DIABETES" in s.service_code for s in services) or fac.facility_type in [FacilityTypeEnum.PHC, FacilityTypeEnum.CHC, FacilityTypeEnum.DISTRICT_HOSPITAL]
                 if has_ncd:
                     suitability_score += 180.0
                     reasons.append("Verified NCD Clinic (Diabetes & Hypertension Screening)")
                 else:
                     suitability_score -= 100.0
-            elif req_service in ["SCHEME_HELP", "SCHEMES", "AYUSHMAN_HELP_DESK", "PMJAY"]:
+            elif req_service in ["GOVERNMENT_SCHEME_DESK", "SCHEME_HELP", "SCHEMES", "AYUSHMAN_HELP_DESK", "PMJAY"]:
                 if has_scheme_desk or "PMJAY" in scheme_codes or "MJPJAY" in scheme_codes or fac.facility_type == FacilityTypeEnum.AYUSHMAN_HELP_DESK:
                     suitability_score += 200.0
                     reasons.append("Verified Ayushman Bharat & Government Scheme Help Desk")
                 else:
                     suitability_score -= 100.0
-            elif req_service in ["SURGERY", "SPECIALIZED_HOSPITAL", "DISTRICT_HOSPITAL"]:
+            elif req_service in ["DISTRICT_HOSPITAL_SURGERY", "SURGERY", "SPECIALIZED_HOSPITAL", "DISTRICT_HOSPITAL"]:
                 has_surgery = any("SURGERY" in s.service_code or "OT" in s.service_code for s in services) or fac.facility_type in [FacilityTypeEnum.DISTRICT_HOSPITAL, FacilityTypeEnum.CHC, FacilityTypeEnum.SPECIALIZED_HOSPITAL]
                 if has_surgery:
                     suitability_score += 220.0
@@ -702,6 +752,8 @@ class FacilityServiceEngine:
             services=services_dto,
             weekly_hours=hours_dto,
             schemes=schemes_dto,
+            google_maps_uri=f"https://www.google.com/maps/search/?api=1&query={fac.latitude},{fac.longitude}",
+            google_place_id=None,
             directions_text=directions_text
         )
 

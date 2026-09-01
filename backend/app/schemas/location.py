@@ -40,6 +40,8 @@ class LocationDataDTO(BaseModel):
 class ReverseGeocodeRequestDTO(BaseModel):
     latitude: float
     longitude: float
+    accuracy_m: Optional[float] = None
+    captured_at: Optional[str] = None
     language: Optional[str] = "mr-IN"
 
     @validator("latitude")
@@ -58,12 +60,17 @@ class ReverseGeocodeRequestDTO(BaseModel):
 class ReverseGeocodeResponseDTO(BaseModel):
     formatted_address: str
     village: Optional[str] = None
-    pincode: Optional[str] = None
+    locality: Optional[str] = None
     block: Optional[str] = None
     district: Optional[str] = None
     state: Optional[str] = None
+    postal_code: Optional[str] = None
+    pincode: Optional[str] = None
     latitude: float
     longitude: float
+    accuracy_m: Optional[float] = None
+    provider: str = "GOOGLE"
+    resolved_at: Optional[str] = None
     place_id: Optional[str] = None
 
 

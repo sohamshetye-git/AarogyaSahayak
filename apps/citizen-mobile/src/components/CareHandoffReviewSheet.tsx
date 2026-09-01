@@ -135,8 +135,6 @@ export const CareHandoffReviewSheet: React.FC<CareHandoffReviewSheetProps> = ({
   if (!isOpen) return null;
 
   const isDoc = requestType === "DOCTOR_CONSULTATION";
-  const isHi = locale?.startsWith("hi");
-  const isEn = locale?.startsWith("en");
 
   const handleResolveNewMember = async () => {
     if (!newMemberName.trim()) {
@@ -248,48 +246,50 @@ export const CareHandoffReviewSheet: React.FC<CareHandoffReviewSheetProps> = ({
         status: "CONFIRMED",
         source: "AI_STRUCTURED_CITIZEN_CONFIRMED"
       })),
-      sharing_scope: sharingScope,
       location: {
         ...(previewPacket?.location || {}),
         landmark: landmark || previewPacket?.location?.landmark
-      }
+      },
+      sharing_scope: sharingScope,
+      requested_channel: isDoc ? doctorChannel : ashaAssistanceType,
+      preferred_time_window: !isDoc ? preferredTimeWindow : undefined
     };
 
-    const idempotencyKey = `idemp-${requestType.toLowerCase()}-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
-
     try {
+      let submitRes: any;
       if (isDoc) {
-        const payload = {
+        submitRes = await apiClient.createCitizenDoctorRequest({
           beneficiary_id: selectedBeneficiaryId || undefined,
-          chat_session_id: sessionId || undefined,
-          citizen_need_id: needId || undefined,
+          chat_session_id: sessionId,
+          citizen_need_id: needId,
           channel: doctorChannel,
           handoff_packet: finalPacket,
           sharing_scope: sharingScope,
-          idempotency_key: idempotencyKey
-        };
-        const res = await apiClient.createCitizenDoctorRequest(payload);
-        onSuccess(res?.data || res);
+          chief_complaint: editedChiefConcern,
+          symptoms: editedSymptoms,
+          preferred_language: locale || "mr-IN"
+        });
       } else {
-        const payload = {
+        submitRes = await apiClient.createCitizenAshaRequest({
           beneficiary_id: selectedBeneficiaryId || undefined,
-          chat_session_id: sessionId || undefined,
-          citizen_need_id: needId || undefined,
+          chat_session_id: sessionId,
+          citizen_need_id: needId,
           assistance_type: ashaAssistanceType,
           preferred_time_window: preferredTimeWindow,
-          preferred_date: preferredDate || undefined,
-          landmark: landmark || undefined,
-          mobility_constraint_notes: mobilityNote || undefined,
           handoff_packet: finalPacket,
           sharing_scope: sharingScope,
-          idempotency_key: idempotencyKey
-        };
-        const res = await apiClient.createCitizenAshaRequest(payload);
-        onSuccess(res?.data || res);
+          chief_complaint: editedChiefConcern,
+          symptoms: editedSymptoms,
+          landmark: landmark || undefined,
+          preferred_language: locale || "mr-IN"
+        });
       }
+
+      onSuccess(submitRes?.data || submitRes);
+      onClose();
     } catch (err: any) {
-      console.error("Failed to submit care handoff request:", err);
-      setErrorMsg(err.message || "Failed to submit request. Please try again.");
+      console.error("Failed to submit care request:", err);
+      setErrorMsg(err.message || "Failed to submit care request. Please try again.");
     } finally {
       setSubmitting(false);
     }
@@ -351,17 +351,11 @@ export const CareHandoffReviewSheet: React.FC<CareHandoffReviewSheetProps> = ({
             <div>
               <h3 style={{ fontSize: 16, fontWeight: 800, color: "#0F172A", margin: 0 }}>
                 {isDoc
-                  ? (isHi ? "डॉक्टर परामर्श अनुरोध" : (isEn ? "Request Doctor Teleconsultation" : "डॉक्टर सल्लामसलत विनंती"))
-                  : (isHi ? "आशा कार्यकर्ता सहायता" : (isEn ? "Request ASHA Assistance" : "आशा ताईंची मदत विनंती"))}
+                  ? t("citizen.doctor_teleconsultation", "Request Doctor Teleconsultation")
+                  : t("citizen.asha_assistance", "Request ASHA Assistance")}
               </h3>
               <div style={{ fontSize: 11, color: "#64748B", fontWeight: 600 }}>
-                {t("common.step", "Step")} {step} {t("common.of", "of")} 5: {
-                  step === 1 ? (isEn ? "Select Beneficiary" : "रुग्ण निवडा") :
-                  step === 2 ? (isEn ? "Review Health Info" : "आरोग्य माहिती") :
-                  step === 3 ? (isEn ? "Delivery Channel" : "माध्यम व वेळ") :
-                  step === 4 ? (isEn ? "Sharing Scope" : "माहिती व्याप्ती") :
-                  (isEn ? "Consent & Submit" : "संमती व सबमिट")
-                }
+                {t("common.step_indicator", { step: String(step), total: "5", defaultValue: `Step ${step} of 5` })}
               </div>
             </div>
           </div>
@@ -411,7 +405,7 @@ export const CareHandoffReviewSheet: React.FC<CareHandoffReviewSheetProps> = ({
             <div style={{ padding: "40px 0", textAlign: "center" }}>
               <Loader2 size={36} color={isDoc ? "#2563EB" : "#059669"} className="animate-spin" style={{ margin: "0 auto 12px" }} />
               <p style={{ fontSize: 14, color: "#64748B", margin: 0 }}>
-                {t("loading.loading_facilities", "Preparing verified care handoff summary...")}
+                {t("loading.loading_data", "Preparing verified care handoff summary...")}
               </p>
             </div>
           ) : (
@@ -420,13 +414,14 @@ export const CareHandoffReviewSheet: React.FC<CareHandoffReviewSheetProps> = ({
               {step === 1 && (
                 <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
                   <div style={{ fontSize: 15, fontWeight: 800, color: "#0F172A" }}>
-                    {isHi ? "यह अनुरोध किसके लिए है?" : (isEn ? "Who is this care request for?" : "ही विनंती कोणासाठी आहे?")}
+                    {t("wizard.step1_desc", "Who needs to speak with the doctor today?")}
                   </div>
 
                   {beneficiaries.map((b) => {
                     const bId = b.beneficiary_id || b.beneficiaryId;
                     const isSelected = selectedBeneficiaryId === bId;
                     const isSelf = b.relationship === "SELF";
+                    const rel = t(`beneficiary.relationship.${b.relationship || "OTHER"}`, b.relationship || "Other");
                     return (
                       <div
                         key={bId}
@@ -448,10 +443,10 @@ export const CareHandoffReviewSheet: React.FC<CareHandoffReviewSheetProps> = ({
                           </div>
                           <div>
                             <div style={{ fontSize: 14, fontWeight: 800, color: "#1E293B" }}>
-                              {b.display_name || b.displayName} {isSelf && "(Myself)"}
+                              {b.display_name || b.displayName} {isSelf && `(${t("common.myself", "Myself")})`}
                             </div>
                             <div style={{ fontSize: 12, color: "#64748B" }}>
-                              {b.relationship} {b.age ? `• ${b.age} yrs` : ""}
+                              {rel} {b.age ? `• ${b.age} ${t("common.age", "yrs")}` : ""}
                             </div>
                           </div>
                         </div>
@@ -475,16 +470,16 @@ export const CareHandoffReviewSheet: React.FC<CareHandoffReviewSheetProps> = ({
                         cursor: "pointer"
                       }}
                     >
-                      + {isEn ? "Add another family member" : "नवीन कुटुंब सदस्य जोडा"}
+                      + {t("citizen.add_family_member", "Add another family member")}
                     </button>
                   ) : (
                     <div style={{ backgroundColor: "#F8FAFC", borderRadius: 16, padding: 14, border: "1px solid #E2E8F0", display: "flex", flexDirection: "column", gap: 10 }}>
                       <div style={{ fontSize: 13, fontWeight: 800, color: "#0F172A" }}>
-                        {isEn ? "Add Family Member" : "कुटुंब सदस्य माहिती"}
+                        {t("citizen.family_member_details", "Family Member Details")}
                       </div>
                       <input
                         type="text"
-                        placeholder="Full Name"
+                        placeholder={t("patient.full_name", "Full Name")}
                         value={newMemberName}
                         onChange={(e) => setNewMemberName(e.target.value)}
                         style={{ padding: 10, borderRadius: 10, border: "1px solid #CBD5E1", fontSize: 13 }}
@@ -495,15 +490,15 @@ export const CareHandoffReviewSheet: React.FC<CareHandoffReviewSheetProps> = ({
                           onChange={(e) => setNewMemberRelation(e.target.value)}
                           style={{ padding: 10, borderRadius: 10, border: "1px solid #CBD5E1", fontSize: 13 }}
                         >
-                          <option value="SPOUSE">Spouse / पती/पत्नी</option>
-                          <option value="CHILD">Child / मुलगा/मुलगी</option>
-                          <option value="MOTHER">Mother / आई</option>
-                          <option value="FATHER">Father / वडील</option>
-                          <option value="OTHER">Other / इतर</option>
+                          <option value="SPOUSE">{t("beneficiary.relationship.SPOUSE", "Spouse")}</option>
+                          <option value="CHILD">{t("beneficiary.relationship.CHILD", "Child")}</option>
+                          <option value="MOTHER">{t("beneficiary.relationship.MOTHER", "Mother")}</option>
+                          <option value="FATHER">{t("beneficiary.relationship.FATHER", "Father")}</option>
+                          <option value="OTHER">{t("beneficiary.relationship.OTHER", "Other")}</option>
                         </select>
                         <input
                           type="number"
-                          placeholder="Age (years)"
+                          placeholder={t("common.age", "Age")}
                           value={newMemberAge}
                           onChange={(e) => setNewMemberAge(e.target.value)}
                           style={{ padding: 10, borderRadius: 10, border: "1px solid #CBD5E1", fontSize: 13 }}
@@ -514,13 +509,13 @@ export const CareHandoffReviewSheet: React.FC<CareHandoffReviewSheetProps> = ({
                           onClick={handleResolveNewMember}
                           style={{ flex: 1, padding: 10, borderRadius: 10, backgroundColor: "#2563EB", color: "#FFFFFF", border: "none", fontWeight: 700, fontSize: 13, cursor: "pointer" }}
                         >
-                          {isEn ? "Save & Select" : "जतन करा व निवडा"}
+                          {t("common.save", "Save")}
                         </button>
                         <button
                           onClick={() => setShowAddMember(false)}
                           style={{ padding: 10, borderRadius: 10, backgroundColor: "#E2E8F0", color: "#475569", border: "none", fontWeight: 700, fontSize: 13, cursor: "pointer" }}
                         >
-                          {isEn ? "Cancel" : "रद्द करा"}
+                          {t("common.cancel", "Cancel")}
                         </button>
                       </div>
                     </div>
@@ -559,21 +554,21 @@ export const CareHandoffReviewSheet: React.FC<CareHandoffReviewSheetProps> = ({
               {step === 2 && (
                 <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
                   <div style={{ fontSize: 15, fontWeight: 800, color: "#0F172A" }}>
-                    {isHi ? "स्वास्थ्य सारांश की समीक्षा करें" : (isEn ? "Review Clinical Summary" : "आरोग्य माहिती तपासा")}
+                    {t("wizard.step2_title", "2. Describe Health Concern")}
                   </div>
 
                   {/* Editable Chief Concern */}
                   <div style={{ backgroundColor: "#F8FAFC", borderRadius: 16, padding: 14, border: "1px solid #E2E8F0" }}>
                     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
                       <span style={{ fontSize: 12, fontWeight: 800, color: "#64748B" }}>
-                        {isEn ? "PRIMARY HEALTH CONCERN" : "मुख्य आरोग्य समस्या"}
+                        {t("wizard.step6_field_concern", "Primary Health Concern:")}
                       </span>
                       <button
                         onClick={() => setIsEditingConcern(!isEditingConcern)}
                         style={{ border: "none", background: "none", color: "#2563EB", fontSize: 12, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", gap: 4 }}
                       >
                         <Edit2 size={12} />
-                        {isEditingConcern ? "Done" : "Edit"}
+                        {isEditingConcern ? t("common.save", "Done") : t("common.edit", "Edit")}
                       </button>
                     </div>
                     {isEditingConcern ? (
@@ -585,7 +580,7 @@ export const CareHandoffReviewSheet: React.FC<CareHandoffReviewSheetProps> = ({
                       />
                     ) : (
                       <div style={{ fontSize: 14, fontWeight: 700, color: "#0F172A" }}>
-                        {editedChiefConcern || "Not specified"}
+                        {editedChiefConcern || t("common.value.UNKNOWN", "Not specified")}
                       </div>
                     )}
                   </div>
@@ -593,33 +588,37 @@ export const CareHandoffReviewSheet: React.FC<CareHandoffReviewSheetProps> = ({
                   {/* Symptoms list */}
                   <div style={{ backgroundColor: "#F8FAFC", borderRadius: 16, padding: 14, border: "1px solid #E2E8F0" }}>
                     <span style={{ fontSize: 12, fontWeight: 800, color: "#64748B", display: "block", marginBottom: 8 }}>
-                      {isEn ? "IDENTIFIED SYMPTOMS" : "लक्षणे"}
+                      {t("wizard.step2_identified_symptoms", "Identified Symptoms")}
                     </span>
                     <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 10 }}>
-                      {editedSymptoms.map((sym, i) => (
-                        <span
-                          key={i}
-                          style={{
-                            padding: "4px 10px",
-                            borderRadius: 10,
-                            backgroundColor: "#DBEAFE",
-                            color: "#1E40AF",
-                            fontSize: 13,
-                            fontWeight: 700,
-                            display: "flex",
-                            alignItems: "center",
-                            gap: 6
-                          }}
-                        >
-                          {sym}
-                          <button
-                            onClick={() => handleRemoveSymptom(sym)}
-                            style={{ border: "none", background: "none", color: "#6B7280", cursor: "pointer", padding: 0 }}
+                      {editedSymptoms.map((sym, i) => {
+                        const symKey = sym.toUpperCase().replace(/\s+/g, "_");
+                        const symDisplay = t(`symptoms.${symKey}`, sym);
+                        return (
+                          <span
+                            key={i}
+                            style={{
+                              padding: "4px 10px",
+                              borderRadius: 10,
+                              backgroundColor: "#DBEAFE",
+                              color: "#1E40AF",
+                              fontSize: 13,
+                              fontWeight: 700,
+                              display: "flex",
+                              alignItems: "center",
+                              gap: 6
+                            }}
                           >
-                            ×
-                          </button>
-                        </span>
-                      ))}
+                            {symDisplay}
+                            <button
+                              onClick={() => handleRemoveSymptom(sym)}
+                              style={{ border: "none", background: "none", color: "#6B7280", cursor: "pointer", padding: 0 }}
+                            >
+                              ×
+                            </button>
+                          </span>
+                        );
+                      })}
                     </div>
 
                     <div style={{ display: "flex", gap: 8 }}>
@@ -627,7 +626,7 @@ export const CareHandoffReviewSheet: React.FC<CareHandoffReviewSheetProps> = ({
                         type="text"
                         value={newSymptomInput}
                         onChange={(e) => setNewSymptomInput(e.target.value)}
-                        placeholder={isEn ? "Add symptom (e.g. Cough)" : "लक्षण जोडा"}
+                        placeholder={t("wizard.step2_add_symptom_placeholder", "Add symptom (e.g. Fever)")}
                         style={{
                           flex: 1,
                           padding: "8px 12px",
@@ -650,7 +649,7 @@ export const CareHandoffReviewSheet: React.FC<CareHandoffReviewSheetProps> = ({
                           cursor: "pointer"
                         }}
                       >
-                        Add
+                        {t("common.add", "Add")}
                       </button>
                     </div>
                   </div>
@@ -670,7 +669,7 @@ export const CareHandoffReviewSheet: React.FC<CareHandoffReviewSheetProps> = ({
                     >
                       <ShieldCheck size={20} color={previewPacket.safety.priority === "URGENT" ? "#DC2626" : "#166534"} />
                       <div style={{ fontSize: 13, color: "#1E293B", fontWeight: 600 }}>
-                        <strong>Safety Triage:</strong> {previewPacket.safety.priority} priority evaluated deterministically.
+                        <strong>{t("common.priority", "Priority")}:</strong> {t(`priority.${previewPacket.safety.priority}`, previewPacket.safety.priority)}
                       </div>
                     </div>
                   )}
@@ -682,17 +681,17 @@ export const CareHandoffReviewSheet: React.FC<CareHandoffReviewSheetProps> = ({
                 <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
                   <div style={{ fontSize: 15, fontWeight: 800, color: "#0F172A" }}>
                     {isDoc
-                      ? (isHi ? "परामर्श का माध्यम चुनें" : (isEn ? "Choose Consultation Channel" : "सल्लामसलत प्रकार निवडा"))
-                      : (isHi ? "सहायता प्रकार और समय चुनें" : (isEn ? "Select Assistance Type & Time" : "मदत प्रकार व वेळ निवडा"))}
+                      ? t("wizard.step3_title", "3. Select Consultation Channel")
+                      : t("citizen.asha_assistance", "Select Assistance Type & Time")}
                   </div>
 
                   {isDoc ? (
                     <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                       {[
-                        { id: "CALLBACK", label: isEn ? "Phone Callback" : "फोन कॉल", desc: isEn ? "Doctor will call your registered number" : "डॉक्टर नोंदणीकृत नंबरवर कॉल करतील", icon: Phone },
-                        { id: "AUDIO", label: isEn ? "In-App Audio Call" : "ऑडिओ कॉल", desc: isEn ? "Secure voice call inside app" : "अॅपमध्ये सुरक्षित ऑडिओ कॉल", icon: Phone },
-                        { id: "VIDEO", label: isEn ? "In-App Video Call" : "व्हिडिओ कॉल", desc: isEn ? "Face-to-face secure consultation" : "व्हिडिओद्वारे थेट सल्लामसलत", icon: Video },
-                        { id: "CHAT", label: isEn ? "Doctor Chat Message" : "चॅट संदेश", desc: isEn ? "Structured medical text response" : "लिखित मार्गदर्शन", icon: MessageSquare }
+                        { id: "CALLBACK", label: t("consultation.channel.CALLBACK", "Doctor Phone Callback"), desc: t("wizard.step3_desc_callback", "Doctor will call your registered phone"), icon: Phone },
+                        { id: "AUDIO", label: t("consultation.channel.AUDIO", "In-App Audio Consultation"), desc: t("wizard.step3_desc_audio", "Telehealth voice room (WebRTC)"), icon: Phone },
+                        { id: "VIDEO", label: t("consultation.channel.VIDEO", "In-App Video Consultation"), desc: t("wizard.step3_desc_video", "Live video room (WebRTC)"), icon: Video },
+                        { id: "CHAT", label: t("consultation.channel.CHAT", "Doctor Chat Advice"), desc: t("wizard.step3_desc_chat", "Structured written consultation guidance"), icon: MessageSquare }
                       ].map((ch) => {
                         const Icon = ch.icon;
                         const active = doctorChannel === ch.id;
@@ -727,9 +726,9 @@ export const CareHandoffReviewSheet: React.FC<CareHandoffReviewSheetProps> = ({
                     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
                       <div style={{ display: "flex", gap: 8 }}>
                         {[
-                          { id: "HOME_VISIT", label: isEn ? "Home Visit" : "गृह भेट" },
-                          { id: "CALLBACK", label: isEn ? "Phone Call" : "फोन कॉल" },
-                          { id: "MEDICINE_DELIVERY", label: isEn ? "Medicine Drop" : "औषध पुरवठा" }
+                          { id: "HOME_VISIT", label: t("asha.home_visit", "Home Visit") },
+                          { id: "CALLBACK", label: t("consultation.channel.CALLBACK", "Phone Call") },
+                          { id: "MEDICINE_DELIVERY", label: t("asha.medicine_delivery", "Medicine Drop") }
                         ].map((item) => (
                           <button
                             key={item.id}
@@ -753,7 +752,7 @@ export const CareHandoffReviewSheet: React.FC<CareHandoffReviewSheetProps> = ({
 
                       <div>
                         <label style={{ fontSize: 12, fontWeight: 800, color: "#475569", display: "block", marginBottom: 6 }}>
-                          {isEn ? "Preferred Time Window" : "योग्य वेळ"}
+                          {t("common.time", "Preferred Time Window")}
                         </label>
                         <select
                           value={preferredTimeWindow}
@@ -776,13 +775,13 @@ export const CareHandoffReviewSheet: React.FC<CareHandoffReviewSheetProps> = ({
 
                       <div>
                         <label style={{ fontSize: 12, fontWeight: 800, color: "#475569", display: "block", marginBottom: 6 }}>
-                          {isEn ? "Nearby Landmark / House Location" : "जवळची खूण / घराचा पत्ता"}
+                          {t("wizard.step4_landmark_label", "Nearby Landmark / House Address")}
                         </label>
                         <input
                           type="text"
                           value={landmark}
                           onChange={(e) => setLandmark(e.target.value)}
-                          placeholder={isEn ? "e.g. Near Kalyanpur Primary School" : "उदा. शाळेजवळ, कल्याणपूर"}
+                          placeholder={t("wizard.step4_landmark_placeholder", "e.g. Near Kalyanpur Gram Panchayat")}
                           style={{
                             width: "100%",
                             padding: 10,
@@ -802,20 +801,18 @@ export const CareHandoffReviewSheet: React.FC<CareHandoffReviewSheetProps> = ({
               {step === 4 && (
                 <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
                   <div style={{ fontSize: 15, fontWeight: 800, color: "#0F172A" }}>
-                    {isHi ? "साझाकरण का दायरा चुनें" : (isEn ? "Customize What Gets Shared" : "माहिती सामायिकरणाची व्याप्ती निवडा")}
+                    {t("wizard.step5_title", "5. Consented Sharing Scope")}
                   </div>
                   <div style={{ fontSize: 12, color: "#64748B", lineHeight: 1.4 }}>
-                    {isEn
-                      ? "Select exactly what details the care team can view with this request."
-                      : "या विनंतीसोबत आरोग्य पथक कोणती माहिती पाहू शकते ते निवडा."}
+                    {t("wizard.step5_desc", "Select what clinical information will be shared with the PHC Medical Officer.")}
                   </div>
 
                   {[
-                    { label: isEn ? "Confirmed Symptoms & Health Concern" : "पुष्टी केलेली लक्षणे व समस्या", checked: scopeStructuredSummary, toggle: () => setScopeStructuredSummary(!scopeStructuredSummary), locked: true },
-                    { label: isEn ? "Citizen Profile & Age/Gender" : "रुग्ण तपशील (वय/लिंग)", checked: scopeProfile, toggle: () => setScopeProfile(!scopeProfile), locked: false },
-                    { label: isEn ? "Village Location & Landmark" : "गाव व ठिकाण", checked: scopeLocation, toggle: () => setScopeLocation(!scopeLocation), locked: false },
-                    { label: isEn ? "Recent Assistant Conversation Transcript" : "सहाय्यक संभाषण उतारा", checked: scopeRecentMessages, toggle: () => setScopeRecentMessages(!scopeRecentMessages), locked: false },
-                    { label: isEn ? "Previous Health & Prescription Records" : "मागील वैद्यकीय नोंदी", checked: scopeHealthRecords, toggle: () => setScopeHealthRecords(!scopeHealthRecords), locked: false }
+                    { label: t("wizard.step5_scope_symptoms", "Confirmed Symptoms & Chief Concern"), checked: scopeStructuredSummary, toggle: () => setScopeStructuredSummary(!scopeStructuredSummary), locked: true },
+                    { label: t("wizard.step5_scope_profile", "Patient Profile & Demographics"), checked: scopeProfile, toggle: () => setScopeProfile(!scopeProfile), locked: false },
+                    { label: t("wizard.step5_scope_location", "Village Location & Landmark"), checked: scopeLocation, toggle: () => setScopeLocation(!scopeLocation), locked: false },
+                    { label: t("wizard.step5_scope_chat", "Recent Assistant Chat Transcript"), checked: scopeRecentMessages, toggle: () => setScopeRecentMessages(!scopeRecentMessages), locked: false },
+                    { label: t("wizard.step5_scope_records", "Previous Health & Prescription Records"), checked: scopeHealthRecords, toggle: () => setScopeHealthRecords(!scopeHealthRecords), locked: false }
                   ].map((item, idx) => (
                     <div
                       key={idx}
@@ -832,7 +829,7 @@ export const CareHandoffReviewSheet: React.FC<CareHandoffReviewSheetProps> = ({
                       }}
                     >
                       <span style={{ fontSize: 13, fontWeight: 700, color: item.locked ? "#64748B" : "#1E293B" }}>
-                        {item.label} {item.locked && "(Required)"}
+                        {item.label} {item.locked && t("wizard.step5_required_tag", "(Required)")}
                       </span>
                       <input
                         type="checkbox"
@@ -850,7 +847,7 @@ export const CareHandoffReviewSheet: React.FC<CareHandoffReviewSheetProps> = ({
               {step === 5 && (
                 <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
                   <div style={{ fontSize: 15, fontWeight: 800, color: "#0F172A" }}>
-                    {isHi ? "अंतिम सहमति और जमा करें" : (isEn ? "Explicit Consent & Submit" : "अंतिम संमती आणि सबमिट")}
+                    {t("wizard.step6_title", "6. Explicit Consent & Submit")}
                   </div>
 
                   <div style={{ backgroundColor: "#F8FAFC", borderRadius: 16, padding: 14, border: "1px solid #E2E8F0" }}>
@@ -859,16 +856,16 @@ export const CareHandoffReviewSheet: React.FC<CareHandoffReviewSheetProps> = ({
                       {isDoc ? "PHC Medical Officer (Kalyanpur PHC)" : "Jurisdiction ASHA Worker (Kalyanpur)"}
                     </div>
 
-                    <div style={{ fontSize: 12, fontWeight: 700, color: "#64748B", marginTop: 10, marginBottom: 4 }}>{t("patient.personal_info", "Patient")}</div>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: "#64748B", marginTop: 10, marginBottom: 4 }}>{t("wizard.step6_field_patient", "Patient:")}</div>
                     <div style={{ fontSize: 14, fontWeight: 800, color: "#1E293B" }}>{selectedBeneficiaryName}</div>
 
-                    <div style={{ fontSize: 12, fontWeight: 700, color: "#64748B", marginTop: 10, marginBottom: 4 }}>{t("location.confirm_care_location", "Care Location")}</div>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: "#64748B", marginTop: 10, marginBottom: 4 }}>{t("wizard.step6_field_location", "Care Location:")}</div>
                     <div style={{ fontSize: 13, fontWeight: 700, color: "#0F172A", display: "flex", alignItems: "center", gap: 6 }}>
                       <MapPin size={14} color="#2563EB" />
-                      <span>{landmark || previewPacket?.location?.village || previewPacket?.location?.formatted_address || "Current Location"}</span>
+                      <span>{landmark || previewPacket?.location?.village || previewPacket?.location?.formatted_address || "Kalyanpur"}</span>
                     </div>
 
-                    <div style={{ fontSize: 12, fontWeight: 700, color: "#64748B", marginTop: 10, marginBottom: 4 }}>{t("citizen.quick_actions", "Concern")}</div>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: "#64748B", marginTop: 10, marginBottom: 4 }}>{t("wizard.step6_field_concern", "Primary Health Concern:")}</div>
                     <div style={{ fontSize: 13, fontWeight: 600, color: "#334155" }}>{editedChiefConcern}</div>
                   </div>
 
@@ -892,9 +889,7 @@ export const CareHandoffReviewSheet: React.FC<CareHandoffReviewSheetProps> = ({
                       style={{ width: 22, height: 22, marginTop: 2, cursor: "pointer" }}
                     />
                     <div style={{ fontSize: 13, fontWeight: 700, color: "#1E293B", lineHeight: 1.4 }}>
-                      {isEn
-                        ? `I explicitly consent to share the selected health summary with the ${isDoc ? 'PHC Doctor' : 'ASHA Worker'} for clinical care and follow-up.`
-                        : `मी वैद्यकीय मार्गदर्शन आणि पाठपुराव्यासाठी ${isDoc ? 'पीएचसी डॉक्टर' : 'आशा ताई'} सोबत ही माहिती सामायिक करण्यास स्पष्ट संमती देतो/देते.`}
+                      {t("wizard.step6_consent_statement", "I explicitly consent to share the selected health concern and clinical details with the PHC Doctor for teleconsultation and medical care.")}
                     </div>
                   </div>
                 </div>
@@ -930,7 +925,7 @@ export const CareHandoffReviewSheet: React.FC<CareHandoffReviewSheetProps> = ({
                 cursor: "pointer"
               }}
             >
-              {isEn ? "Back" : "मागे"}
+              {t("common.back", "Back")}
             </button>
           ) : (
             <button
@@ -948,7 +943,7 @@ export const CareHandoffReviewSheet: React.FC<CareHandoffReviewSheetProps> = ({
                 cursor: "pointer"
               }}
             >
-              {isEn ? "Cancel" : "रद्द करा"}
+              {t("common.cancel", "Cancel")}
             </button>
           )}
 
@@ -968,7 +963,7 @@ export const CareHandoffReviewSheet: React.FC<CareHandoffReviewSheetProps> = ({
                 cursor: "pointer"
               }}
             >
-              {isEn ? "Continue" : "पुढे चला"}
+              {t("common.continue", "Continue")}
             </button>
           ) : (
             <button
@@ -998,7 +993,7 @@ export const CareHandoffReviewSheet: React.FC<CareHandoffReviewSheetProps> = ({
               ) : (
                 <>
                   <Check size={18} />
-                  <span>{isEn ? "Confirm & Submit" : "संमती द्या व सबमिट करा"}</span>
+                  <span>{t("wizard.step6_submit_btn", "Confirm & Submit")}</span>
                 </>
               )}
             </button>

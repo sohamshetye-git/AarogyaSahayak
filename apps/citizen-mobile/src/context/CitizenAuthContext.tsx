@@ -64,15 +64,42 @@ export const CitizenAuthProvider: React.FC<{ children: React.ReactNode }> = ({ c
   const [activeBeneficiary, setActiveBeneficiary] = useState<BeneficiaryOption | null>(null);
   const [authorizedBeneficiaries, setAuthorizedBeneficiaries] = useState<BeneficiaryOption[]>([]);
 
-  const [pendingPhone, setPendingPhone] = useState<string>("");
-  const [maskedPhone, setMaskedPhone] = useState<string>("");
-  const [challengeId, setChallengeId] = useState<string | null>(null);
+  const [pendingPhone, setPendingPhone] = useState<string>(() => {
+    return sessionStorage.getItem("aarogya_citizen_pending_phone") || "";
+  });
+  const [maskedPhone, setMaskedPhone] = useState<string>(() => {
+    return sessionStorage.getItem("aarogya_citizen_masked_phone") || "";
+  });
+  const [challengeId, setChallengeId] = useState<string | null>(() => {
+    return sessionStorage.getItem("aarogya_citizen_challenge_id") || null;
+  });
   const [cooldownSeconds, setCooldownSeconds] = useState<number>(0);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [initError, setInitError] = useState<string | null>(null);
   const [pendingProtectedAction, setPendingProtectedAction] = useState<PendingProtectedAction | null>(null);
 
   const hasBootstrappedRef = useRef(false);
+
+  // Helper to persist in-flight flow state during refresh
+  const saveFlowState = useCallback((mode: CitizenAuthMode, phone?: string, masked?: string, challenge?: string | null) => {
+    if (["PHONE_ENTRY", "OTP_VERIFY", "ONBOARDING", "ENTRY_SELECT"].includes(mode)) {
+      sessionStorage.setItem("aarogya_citizen_flow_step", mode);
+    } else {
+      sessionStorage.removeItem("aarogya_citizen_flow_step");
+    }
+    if (phone !== undefined) {
+      if (phone) sessionStorage.setItem("aarogya_citizen_pending_phone", phone);
+      else sessionStorage.removeItem("aarogya_citizen_pending_phone");
+    }
+    if (masked !== undefined) {
+      if (masked) sessionStorage.setItem("aarogya_citizen_masked_phone", masked);
+      else sessionStorage.removeItem("aarogya_citizen_masked_phone");
+    }
+    if (challenge !== undefined) {
+      if (challenge) sessionStorage.setItem("aarogya_citizen_challenge_id", challenge);
+      else sessionStorage.removeItem("aarogya_citizen_challenge_id");
+    }
+  }, []);
 
   // Sync token changes to API client & listen for background auto-refresh
   useEffect(() => {
@@ -120,8 +147,12 @@ export const CitizenAuthProvider: React.FC<{ children: React.ReactNode }> = ({ c
               LanguageService.saveLocalPreference(meData.user.preferred_language as any);
             }
 
-            // Clear any guest state
+            // Clear any guest & in-flight auth flow state
             localStorage.removeItem("aarogya_guest_session");
+            sessionStorage.removeItem("aarogya_citizen_flow_step");
+            sessionStorage.removeItem("aarogya_citizen_pending_phone");
+            sessionStorage.removeItem("aarogya_citizen_masked_phone");
+            sessionStorage.removeItem("aarogya_citizen_challenge_id");
             setGuestSession(null);
 
             setAuthMode("AUTHENTICATED");
@@ -136,7 +167,7 @@ export const CitizenAuthProvider: React.FC<{ children: React.ReactNode }> = ({ c
           setIsLoading(false);
           return;
         }
-        // 401 or invalid session -> continue to language or entry select
+        // 401 or invalid session -> continue
       }
 
       // If refresh failed with 401 / no session:
@@ -144,14 +175,21 @@ export const CitizenAuthProvider: React.FC<{ children: React.ReactNode }> = ({ c
       setUser(null);
       apiClient.setToken(null);
 
-      // Check if user needs language selection for first unauthenticated launch
-      const hasLang = LanguageService.hasConfirmedPreference();
-      if (!hasLang) {
-        setAuthMode("LANGUAGE_SELECT");
+      // Check if this is a browser refresh restoring an in-progress flow step
+      const savedStep = sessionStorage.getItem("aarogya_citizen_flow_step") as CitizenAuthMode | null;
+      if (savedStep && ["PHONE_ENTRY", "OTP_VERIFY", "ONBOARDING", "ENTRY_SELECT"].includes(savedStep)) {
+        const savedPhone = sessionStorage.getItem("aarogya_citizen_pending_phone") || "";
+        const savedMasked = sessionStorage.getItem("aarogya_citizen_masked_phone") || "";
+        const savedChallenge = sessionStorage.getItem("aarogya_citizen_challenge_id") || null;
+        if (savedPhone) setPendingPhone(savedPhone);
+        if (savedMasked) setMaskedPhone(savedMasked);
+        if (savedChallenge) setChallengeId(savedChallenge);
+        setAuthMode(savedStep);
         setIsLoading(false);
         return;
       }
 
+      // Active guest session restore check
       const storedGuest = localStorage.getItem("aarogya_guest_session");
       if (storedGuest) {
         try {
@@ -165,9 +203,10 @@ export const CitizenAuthProvider: React.FC<{ children: React.ReactNode }> = ({ c
         }
       }
 
-      setAuthMode("ENTRY_SELECT");
+      // Requirement 1 & 2: Whenever the Citizen App is opened through a fresh launch, show the Language Selection page first.
+      setAuthMode("LANGUAGE_SELECT");
     } catch (e: any) {
-      setAuthMode("ENTRY_SELECT");
+      setAuthMode("LANGUAGE_SELECT");
     } finally {
       setIsLoading(false);
     }
@@ -195,18 +234,29 @@ export const CitizenAuthProvider: React.FC<{ children: React.ReactNode }> = ({ c
     setMaskedPhone("");
     setChallengeId(null);
     setCooldownSeconds(0);
+    saveFlowState("ENTRY_SELECT", "", "", null);
     setAuthMode("ENTRY_SELECT");
-  }, []);
+  }, [saveFlowState]);
+
+  // Custom setAuthMode wrapper that updates session persistence
+  const updateAuthMode = useCallback((mode: CitizenAuthMode) => {
+    saveFlowState(mode);
+    setAuthMode(mode);
+  }, [saveFlowState]);
 
   // Start Phone OTP
   const startPhoneLogin = async (phone: string) => {
     try {
       setPendingPhone(phone);
+      saveFlowState("PHONE_ENTRY", phone);
       const res = await apiClient.requestCitizenOtp(phone);
       const data = res?.data || res;
-      setMaskedPhone(data.phone_masked || phone);
-      setChallengeId(data.challenge_id || data.otp_request_id || null);
+      const masked = data.phone_masked || phone;
+      const challenge = data.challenge_id || data.otp_request_id || null;
+      setMaskedPhone(masked);
+      setChallengeId(challenge);
       setCooldownSeconds(data.cooldown_seconds || 60);
+      saveFlowState("OTP_VERIFY", phone, masked, challenge);
       setAuthMode("OTP_VERIFY");
       return { success: true, mockCode: data.mock_code };
     } catch (err: any) {
@@ -228,7 +278,9 @@ export const CitizenAuthProvider: React.FC<{ children: React.ReactNode }> = ({ c
     try {
       const res = await apiClient.requestCitizenOtp(pendingPhone);
       const data = res?.data || res;
-      setChallengeId(data.challenge_id || data.otp_request_id || null);
+      const challenge = data.challenge_id || data.otp_request_id || null;
+      setChallengeId(challenge);
+      saveFlowState("OTP_VERIFY", pendingPhone, maskedPhone, challenge);
       setCooldownSeconds(data.cooldown_seconds || 60);
       return true;
     } catch (e) {
@@ -256,6 +308,7 @@ export const CitizenAuthProvider: React.FC<{ children: React.ReactNode }> = ({ c
       }
 
       if (data.onboarding_required || data.is_new_citizen) {
+        saveFlowState("ONBOARDING", pendingPhone, maskedPhone, challengeId);
         setAuthMode("ONBOARDING");
         return { isNewCitizen: true };
       }
@@ -287,6 +340,10 @@ export const CitizenAuthProvider: React.FC<{ children: React.ReactNode }> = ({ c
           }
         }
         localStorage.removeItem("aarogya_guest_session");
+        sessionStorage.removeItem("aarogya_citizen_flow_step");
+        sessionStorage.removeItem("aarogya_citizen_pending_phone");
+        sessionStorage.removeItem("aarogya_citizen_masked_phone");
+        sessionStorage.removeItem("aarogya_citizen_challenge_id");
         setGuestSession(null);
 
         // Resume protected action if pending
@@ -363,6 +420,10 @@ export const CitizenAuthProvider: React.FC<{ children: React.ReactNode }> = ({ c
             localStorage.setItem("aarogya_citizen_active_ben_id", benList[0].beneficiaryId);
           }
           localStorage.removeItem("aarogya_guest_session");
+          sessionStorage.removeItem("aarogya_citizen_flow_step");
+          sessionStorage.removeItem("aarogya_citizen_pending_phone");
+          sessionStorage.removeItem("aarogya_citizen_masked_phone");
+          sessionStorage.removeItem("aarogya_citizen_challenge_id");
           setGuestSession(null);
           setAuthMode("AUTHENTICATED");
           return { success: true };
@@ -388,6 +449,10 @@ export const CitizenAuthProvider: React.FC<{ children: React.ReactNode }> = ({ c
           }
         }
         localStorage.removeItem("aarogya_guest_session");
+        sessionStorage.removeItem("aarogya_citizen_flow_step");
+        sessionStorage.removeItem("aarogya_citizen_pending_phone");
+        sessionStorage.removeItem("aarogya_citizen_masked_phone");
+        sessionStorage.removeItem("aarogya_citizen_challenge_id");
         setGuestSession(null);
 
         if (pendingProtectedAction) {
@@ -430,6 +495,7 @@ export const CitizenAuthProvider: React.FC<{ children: React.ReactNode }> = ({ c
       };
       setGuestSession(gObj);
       localStorage.setItem("aarogya_guest_session", JSON.stringify(gObj));
+      sessionStorage.removeItem("aarogya_citizen_flow_step");
       setAuthMode("GUEST_ACTIVE");
     } catch (err) {
       console.error("Guest session creation error", err);
@@ -440,6 +506,7 @@ export const CitizenAuthProvider: React.FC<{ children: React.ReactNode }> = ({ c
       };
       setGuestSession(fallbackGuest);
       localStorage.setItem("aarogya_guest_session", JSON.stringify(fallbackGuest));
+      sessionStorage.removeItem("aarogya_citizen_flow_step");
       setAuthMode("GUEST_ACTIVE");
     }
   };
@@ -469,6 +536,10 @@ export const CitizenAuthProvider: React.FC<{ children: React.ReactNode }> = ({ c
       localStorage.removeItem("aarogya_citizen_active_ben_id");
       localStorage.removeItem("aarogya_citizen_active_beneficiary");
       localStorage.removeItem("aarogya_guest_session");
+      sessionStorage.removeItem("aarogya_citizen_flow_step");
+      sessionStorage.removeItem("aarogya_citizen_pending_phone");
+      sessionStorage.removeItem("aarogya_citizen_masked_phone");
+      sessionStorage.removeItem("aarogya_citizen_challenge_id");
       apiClient.setToken(null);
       setToken(null);
       setUser(null);
@@ -476,7 +547,11 @@ export const CitizenAuthProvider: React.FC<{ children: React.ReactNode }> = ({ c
       setActiveBeneficiary(null);
       setAuthorizedBeneficiaries([]);
       setPendingProtectedAction(null);
-      setAuthMode("ENTRY_SELECT");
+      setPendingPhone("");
+      setMaskedPhone("");
+      setChallengeId(null);
+      setCooldownSeconds(0);
+      setAuthMode("LANGUAGE_SELECT");
     }
   };
 
@@ -484,7 +559,7 @@ export const CitizenAuthProvider: React.FC<{ children: React.ReactNode }> = ({ c
     <CitizenAuthContext.Provider
       value={{
         authMode,
-        setAuthMode,
+        setAuthMode: updateAuthMode,
         user,
         token,
         guestSession,

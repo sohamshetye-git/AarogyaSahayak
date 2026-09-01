@@ -2,13 +2,12 @@ services:
   # Aarogya Sahayak - Backend API (FastAPI)
   - type: web
     name: aarogya-sahayak-backend
-    env: python
+    runtime: python
     region: singapore
-    plan: starter
+    plan: free
     rootDir: backend
     buildCommand: "pip install -r requirements.txt"
-    preDeployCommand: "alembic upgrade head"
-    startCommand: "uvicorn app.main:app --host 0.0.0.0 --port $PORT"
+    startCommand: "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port $PORT"
     healthCheckPath: /health
     envVars:
       - key: ENVIRONMENT
@@ -49,9 +48,10 @@ services:
         sync: false
 
 databases:
-  # Managed PostgreSQL 16 in Singapore
+  # Managed PostgreSQL 16 in Singapore (Free Tier)
   - name: aarogya-sahayak-db
     region: singapore
-    plan: starter
+    plan: free
+    postgresMajorVersion: "16"
     databaseName: aarogya_db
     user: aarogya_user

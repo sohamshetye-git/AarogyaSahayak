@@ -31,6 +31,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   useEffect(() => {
     if (token) {
       apiClient.setToken(token);
+      // Fetch authoritative user principal from /api/auth/me
+      apiClient.getCurrentUser()
+        .then((res: any) => {
+          const authUser = res?.data || res;
+          if (authUser && authUser.id) {
+            setUser(authUser);
+            localStorage.setItem("aarogya_user", JSON.stringify(authUser));
+          }
+        })
+        .catch((err: any) => {
+          console.warn("Failed to refresh user profile from /auth/me:", err);
+        });
     }
     if (user) {
       ashaSyncService.setUser(user.id, user.role);
@@ -39,7 +51,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       ashaSyncService.setUser(null, null);
       LocationService.setUserContext(null, null);
     }
-  }, [token, user]);
+  }, [token]);
+
+  useEffect(() => {
+    if (user) {
+      ashaSyncService.setUser(user.id, user.role);
+      LocationService.setUserContext(user.id, user.role);
+    }
+  }, [user]);
 
   const login = async (identifier: string, password: string): Promise<UserSession> => {
     setIsLoading(true);

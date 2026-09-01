@@ -27,8 +27,10 @@ class FacilitySearchRequestDTO(BaseModel):
     location_method: Optional[str] = Field("GPS", description="GPS, PINCODE_VILLAGE, SAVED, ASHA_HELP, MANUAL")
     scheme_code: Optional[str] = Field(None, description="Filter by empanelled scheme e.g. PMJAY, MJPJAY, JSY")
     government_only: Optional[bool] = Field(False, description="Filter only government facilities")
+    radius_km: Optional[float] = Field(None, description="Alias for max_distance_km")
     max_distance_km: Optional[float] = Field(50.0, description="Maximum search radius in kilometers")
     preferred_language: Optional[str] = Field("mr-IN", description="Preferred response language")
+    locale: Optional[str] = Field(None, description="Alias for preferred_language")
     location_consent: Optional[bool] = Field(True, description="Explicit user consent to process coordinates")
 
 class FacilityServiceDTO(BaseModel):
@@ -186,6 +188,8 @@ class FacilityDetailDTO(BaseModel):
     services: List[FacilityServiceDTO]
     weekly_hours: List[FacilityHoursDTO]
     schemes: List[FacilitySchemeDTO]
+    google_maps_uri: Optional[str] = None
+    google_place_id: Optional[str] = None
     directions_text: Optional[str] = None
 
 class FacilitySelectionRequestDTO(BaseModel):

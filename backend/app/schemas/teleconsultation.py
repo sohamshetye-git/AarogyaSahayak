@@ -31,7 +31,44 @@ class TeleconsultationSubmitDTO(BaseModel):
     consents: Optional[TeleconsultationConsentDTO] = None
 
 class TeleconsultationMessageCreateDTO(BaseModel):
-    message_text: str
+    message_text: Optional[str] = None
+    body: Optional[str] = None
+    client_message_id: Optional[str] = None
+    message_type: str = "TEXT"
+
+class ChatMessageResponseDTO(BaseModel):
+    id: str
+    conversation_id: Optional[str] = None
+    service_request_id: Optional[str] = None
+    sender_user_id: Optional[str] = None
+    sender_role: str
+    sender_name: Optional[str] = None
+    message_type: str
+    body: str
+    client_message_id: Optional[str] = None
+    status: str
+    created_at: str
+    delivered_at: Optional[str] = None
+    read_at: Optional[str] = None
+    # Backward compatibility
+    sender_type: Optional[str] = None
+    message_text: Optional[str] = None
+
+class ChatConversationResponseDTO(BaseModel):
+    conversation_id: str
+    service_request_id: Optional[str] = None
+    request_reference: Optional[str] = None
+    citizen_id: str
+    beneficiary_id: Optional[str] = None
+    beneficiary_name: Optional[str] = None
+    assigned_doctor_id: Optional[str] = None
+    assigned_doctor_name: Optional[str] = None
+    facility_id: Optional[str] = "PHC-09"
+    status: str
+    channel: str
+    created_at: str
+    closed_at: Optional[str] = None
+    messages: List[ChatMessageResponseDTO] = []
 
 class TeleconsultationSymptomsUpdateDTO(BaseModel):
     new_symptoms: List[str]

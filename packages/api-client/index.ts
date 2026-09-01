@@ -29,13 +29,17 @@ export interface DoctorReferralsSummaryDTO {
 
 export class ApiError extends Error {
   code: string;
+  status?: number;
+  statusCode?: number;
   fields?: Record<string, string>;
   requestId?: string;
 
-  constructor(message: string, code = "API_ERROR", fields?: Record<string, string>, requestId?: string) {
+  constructor(message: string, code = "API_ERROR", fields?: Record<string, string>, requestId?: string, status?: number) {
     super(message);
     this.name = "ApiError";
     this.code = code;
+    this.status = status;
+    this.statusCode = status;
     this.fields = fields;
     this.requestId = requestId;
   }
@@ -148,6 +152,14 @@ export class AarogyaApiClient {
       headers["Authorization"] = `Bearer ${activeToken}`;
     }
 
+    if (!headers["Accept-Language"] && typeof localStorage !== "undefined") {
+      const activeLang =
+        localStorage.getItem("aarogya_preferred_language") ||
+        localStorage.getItem("preferred_language") ||
+        "en-IN";
+      headers["Accept-Language"] = activeLang;
+    }
+
     const url = `${this.baseUrl}${endpoint.startsWith("/") ? "" : "/"}${endpoint}`;
     
     let response: Response;
@@ -194,12 +206,12 @@ export class AarogyaApiClient {
 
       if (response.status === 401 || response.status === 403) {
         const msg = (typeof rawErrorData?.detail === "string" ? rawErrorData.detail : rawErrorData?.detail?.message) || rawErrorData?.error?.message || "Sign-in details incorrect. Please check your credentials.";
-        throw new ApiError(msg, "INVALID_CREDENTIALS", rawErrorData?.error?.fields, rawErrorData?.request_id);
+        throw new ApiError(msg, response.status === 401 ? "UNAUTHORIZED" : "FORBIDDEN", rawErrorData?.error?.fields, rawErrorData?.request_id, response.status);
       }
 
       if (response.status >= 500) {
         const msg = (typeof rawErrorData?.detail === "string" ? rawErrorData.detail : rawErrorData?.detail?.message) || rawErrorData?.error?.message || "Server error occurred. Please try again later.";
-        throw new ApiError(msg, "SERVER_ERROR", rawErrorData?.error?.fields, rawErrorData?.request_id);
+        throw new ApiError(msg, "SERVER_ERROR", rawErrorData?.error?.fields, rawErrorData?.request_id, response.status);
       }
 
       let message = "Request failed";
@@ -224,7 +236,7 @@ export class AarogyaApiClient {
       const fields = rawErrorData?.error?.fields;
       const requestId = rawErrorData?.request_id;
 
-      throw new ApiError(message, code, fields, requestId);
+      throw new ApiError(message, code, fields, requestId, response.status);
 
     }
 
@@ -260,6 +272,38 @@ export class AarogyaApiClient {
 
   getCurrentUser() {
     return this.request<any>("/auth/me");
+  }
+
+  // Voice & Speech Synthesis
+  synthesizeSpeech(data: {
+    text: string;
+    language_code: string;
+    context?: string;
+    speaker?: string;
+  }): Promise<{
+    audio_base64: string;
+    mime_type: string;
+    language_code: string;
+    provider: string;
+    model: string;
+  }> {
+    return this.request<any>("/voice/tts", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  }
+
+  getVoiceDiagnostics(): Promise<{
+    sarvam_key_configured: boolean;
+    tts_enabled: boolean;
+    model: string;
+    speaker: string;
+    api_connectivity: string;
+    last_status_code?: number | null;
+  }> {
+    return this.request<any>("/voice/diagnostics", {
+      method: "GET",
+    });
   }
 
   // Citizen
@@ -1496,10 +1540,104 @@ export class AarogyaApiClient {
     });
   }
 
-  sendDoctorRequestMessage(requestId: string, message_text: string) {
+  sendDoctorRequestMessage(requestId: string, message_text: string, client_message_id?: string) {
     return this.request<any>(`/citizen/doctor-requests/${encodeURIComponent(requestId)}/messages`, {
       method: "POST",
-      body: JSON.stringify({ message_text })
+      body: JSON.stringify({ message_text, body: message_text, client_message_id })
+    });
+  }
+
+  // --- Canonical Doctor Chat Advice APIs ---
+  getCitizenDoctorRequest(requestId: string) {
+    return this.request<any>(`/citizen/doctor/requests/${encodeURIComponent(requestId)}`);
+  }
+
+  getCareRequestConversation(requestId: string) {
+    return this.request<any>(`/citizen/doctor/requests/${encodeURIComponent(requestId)}`);
+  }
+
+  getCareConversationMessages(conversationId: string, after?: string) {
+    const qs = after ? `?after=${encodeURIComponent(after)}` : "";
+    return this.request<any>(`/care-conversations/${encodeURIComponent(conversationId)}/messages${qs}`);
+  }
+
+  postCareConversationMessage(conversationId: string, body: string, client_message_id: string, message_type: string = "TEXT") {
+    return this.request<any>(`/care-conversations/${encodeURIComponent(conversationId)}/messages`, {
+      method: "POST",
+      body: JSON.stringify({ body, client_message_id, message_type })
+    });
+  }
+
+  getConversationMessages(conversationId: string, after?: string) {
+    const qs = after ? `?after=${encodeURIComponent(after)}` : "";
+    return this.request<any>(`/care-conversations/${encodeURIComponent(conversationId)}/messages${qs}`);
+  }
+
+  postConversationMessage(conversationId: string, body: string, client_message_id: string, message_type: string = "TEXT") {
+    return this.request<any>(`/care-conversations/${encodeURIComponent(conversationId)}/messages`, {
+      method: "POST",
+      body: JSON.stringify({ body, client_message_id, message_type })
+    });
+  }
+
+  markConversationRead(conversationId: string, up_to_message_id?: string, message_ids?: string[]) {
+    return this.request<any>(`/care-conversations/${encodeURIComponent(conversationId)}/read`, {
+      method: "POST",
+      body: JSON.stringify({ up_to_message_id, message_ids })
+    });
+  }
+
+  getDoctorChatThread(requestId: string) {
+    return this.request<any>(`/citizen/doctor/requests/${encodeURIComponent(requestId)}`);
+  }
+
+  getDoctorChatMessages(conversationId: string, after?: string) {
+    const qs = after ? `?after=${encodeURIComponent(after)}` : "";
+    return this.request<any>(`/care-conversations/${encodeURIComponent(conversationId)}/messages${qs}`);
+  }
+
+  sendDoctorChatMessage(conversationId: string, body: string, client_message_id: string, message_type: string = "TEXT") {
+    return this.request<any>(`/care-conversations/${encodeURIComponent(conversationId)}/messages`, {
+      method: "POST",
+      body: JSON.stringify({ body, client_message_id, message_type })
+    });
+  }
+
+  markDoctorChatRead(conversationId: string, up_to_message_id?: string, message_ids?: string[]) {
+    return this.request<any>(`/care-conversations/${encodeURIComponent(conversationId)}/read`, {
+      method: "POST",
+      body: JSON.stringify({ up_to_message_id, message_ids })
+    });
+  }
+
+  getDoctorRequestConversation(requestRef: string) {
+    return this.request<any>(`/citizen/doctor/requests/${encodeURIComponent(requestRef)}`);
+  }
+
+  getDoctorRequestMessages(requestRef: string, after?: string) {
+    const qs = after ? `?after=${encodeURIComponent(after)}` : "";
+    return this.request<any>(`/care-conversations/${encodeURIComponent(requestRef)}/messages${qs}`);
+  }
+
+  sendDoctorRequestChatMessage(requestRef: string, body: string, client_message_id?: string) {
+    const cid = client_message_id || `cmsg-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+    return this.request<any>(`/care-conversations/${encodeURIComponent(requestRef)}/messages`, {
+      method: "POST",
+      body: JSON.stringify({ body, client_message_id: cid, message_type: "TEXT" })
+    });
+  }
+
+  sendDoctorReplyMessage(requestRef: string, body: string, client_message_id?: string) {
+    const cid = client_message_id || `dmsg-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+    return this.request<any>(`/care-conversations/${encodeURIComponent(requestRef)}/messages`, {
+      method: "POST",
+      body: JSON.stringify({ body, client_message_id: cid, message_type: "TEXT" })
+    });
+  }
+
+  markChatMessageRead(messageId: string) {
+    return this.request<any>(`/citizen/messages/${encodeURIComponent(messageId)}/read`, {
+      method: "PATCH"
     });
   }
 
@@ -1669,12 +1807,19 @@ export class AarogyaApiClient {
     scheme_code?: string;
     government_only?: boolean;
     max_distance_km?: number;
+    radius_km?: number;
     preferred_language?: string;
+    locale?: string;
     idempotency_key?: string;
   }) {
+    const payload = {
+      ...(params || {}),
+      max_distance_km: params?.max_distance_km ?? params?.radius_km ?? 25,
+      preferred_language: params?.preferred_language ?? params?.locale ?? "en"
+    };
     return this.request<any>("/citizen/facilities/search", {
       method: "POST",
-      body: JSON.stringify(params || {})
+      body: JSON.stringify(payload)
     });
   }
 
@@ -1877,24 +2022,30 @@ export class AarogyaApiClient {
   }
 
   acceptDoctorDirectRequest(requestId: string) {
-    return this.patchDoctorDirectRequestStatus(requestId, { action: "ACCEPT" });
+    return this.post<any>(`/doctor/direct-requests/${encodeURIComponent(requestId)}/accept`);
   }
 
   startDoctorDirectConsultation(requestId: string) {
-    return this.patchDoctorDirectRequestStatus(requestId, { action: "START_CONSULTATION" });
+    return this.post<any>(`/doctor/direct-requests/${encodeURIComponent(requestId)}/start`);
   }
 
   completeDoctorDirectConsultation(requestId: string, data: any) {
-    return this.patchDoctorDirectRequestStatus(requestId, { action: "COMPLETE", ...data });
+    return this.post<any>(`/doctor/direct-requests/${encodeURIComponent(requestId)}/complete`, data);
   }
 
   declineDoctorDirectRequest(requestId: string, reason: string) {
-    return this.patchDoctorDirectRequestStatus(requestId, { action: "DECLINE", reason });
+    return this.post<any>(`/doctor/direct-requests/${encodeURIComponent(requestId)}/decline`, { reason });
   }
 
   // Location APIs
-  reverseGeocodeLocation(latitude: number, longitude: number, language = "mr-IN") {
-    return this.post<any>("/locations/reverse-geocode", { latitude, longitude, language });
+  reverseGeocodeLocation(latitude: number, longitude: number, language = "mr-IN", accuracy_m?: number | null, captured_at?: string | null) {
+    return this.post<any>("/locations/reverse-geocode", {
+      latitude,
+      longitude,
+      accuracy_m,
+      captured_at: captured_at || new Date().toISOString(),
+      language
+    });
   }
 
   searchLocationsQuery(q: string) {

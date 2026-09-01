@@ -160,13 +160,13 @@ def get_integrations_health(db: Session = Depends(get_db)):
         },
         {
             "provider": "Sarvam Voice",
-            "implementation_status": "LIVE_VERIFIED" if os.getenv("SARVAM_ENABLED", "false").lower() == "true" else "BLOCKED_BY_CREDENTIALS",
-            "configured_mode": "LIVE" if os.getenv("SARVAM_ENABLED", "false").lower() == "true" else "MOCK",
-            "connectivity": "CONNECTED" if os.getenv("SARVAM_ENABLED", "false").lower() == "true" else "DISCONNECTED",
+            "implementation_status": "LIVE_VERIFIED" if (settings.SARVAM_API_KEY and settings.SARVAM_MODE == "live" and settings.SARVAM_TTS_ENABLED) else ("BLOCKED_BY_CREDENTIALS" if settings.SARVAM_TTS_ENABLED else "DISABLED"),
+            "configured_mode": "LIVE" if (settings.SARVAM_API_KEY and settings.SARVAM_MODE == "live") else "MOCK",
+            "connectivity": "CONNECTED" if (settings.SARVAM_API_KEY and settings.SARVAM_MODE == "live") else "DISCONNECTED",
             "last_checked": f"{int(time.time())}",
             "latency": 8.5,
             "fallback_available": True,
-            "limitation": "Marathi/Hindi STT translations fallback chain."
+            "limitation": "11 Indian locales STT (saaras:v3) and TTS (bulbul:v3) audio synthesis."
         },
         {
             "provider": "Tavily Search",

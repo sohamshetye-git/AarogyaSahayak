@@ -1353,6 +1353,54 @@ class GuestSessionMigration(Base):
     user = relationship("User")
 
 
+# -------------------------------------------------------------
+# Canonical Doctor Chat Models
+# -------------------------------------------------------------
+class DoctorChatThread(Base):
+    __tablename__ = "doctor_chat_threads"
+
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    service_request_id = Column(String(36), ForeignKey("service_requests.id"), unique=True, index=True, nullable=False)
+    citizen_id = Column(String(36), ForeignKey("citizen_profiles.id"), nullable=False, index=True)
+    doctor_id = Column(String(36), ForeignKey("users.id"), nullable=True, index=True)
+    facility_id = Column(String(36), ForeignKey("facilities.id"), nullable=False, default="PHC-09")
+    channel = Column(String(30), nullable=False, default="DOCTOR_CHAT")
+    status = Column(String(30), nullable=False, default="WAITING_FOR_DOCTOR", index=True) 
+    # Status: WAITING_FOR_DOCTOR, DOCTOR_ACCEPTED, IN_CONSULTATION, COMPLETED, CANCELLED
+    created_at = Column(DateTime, default=utc_now)
+    updated_at = Column(DateTime, default=utc_now, onupdate=utc_now)
+
+    service_request = relationship("ServiceRequest", foreign_keys=[service_request_id])
+    citizen = relationship("CitizenProfile", foreign_keys=[citizen_id])
+    doctor = relationship("User", foreign_keys=[doctor_id])
+    facility = relationship("Facility", foreign_keys=[facility_id])
+    messages = relationship("DoctorChatMessage", back_populates="thread", cascade="all, delete-orphan", order_by="DoctorChatMessage.created_at")
+
+
+class DoctorChatMessage(Base):
+    __tablename__ = "doctor_chat_messages"
+
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    conversation_id = Column(String(36), ForeignKey("doctor_chat_threads.id"), nullable=False, index=True)
+    service_request_id = Column(String(36), ForeignKey("service_requests.id"), nullable=True, index=True)
+    sender_role = Column(String(30), nullable=False, default="CITIZEN") # CITIZEN, PHC_DOCTOR, SYSTEM
+    sender_user_id = Column(String(36), ForeignKey("users.id"), nullable=True, index=True)
+    sender_id = Column(String(36), nullable=True, index=True)
+    sender_name = Column(String(150), nullable=True)
+    body = Column(Text, nullable=False)
+    client_message_id = Column(String(100), unique=True, index=True, nullable=False)
+    status = Column(String(30), nullable=False, default="SENT") # SENDING, SENT, DELIVERED, READ, FAILED
+    delivery_status = Column(String(30), nullable=True, default="DELIVERED")
+    created_at = Column(DateTime, default=utc_now, index=True)
+    delivered_at = Column(DateTime, nullable=True)
+    read_at = Column(DateTime, nullable=True)
+
+    thread = relationship("DoctorChatThread", back_populates="messages")
+    service_request = relationship("ServiceRequest", foreign_keys=[service_request_id])
+    sender_user = relationship("User", foreign_keys=[sender_user_id])
+
+
+
 
 
 

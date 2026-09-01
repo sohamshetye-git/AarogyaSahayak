@@ -4,7 +4,7 @@ import { useTranslation } from "react-i18next";
 import { useAuth } from "../auth/AuthContext";
 import { useLanguage } from "../context/LanguageContext";
 import { UserRole } from "@aarogya/shared-types";
-import { formatDate, SupportedLanguage } from "@aarogya/i18n";
+import { formatDate, SupportedLanguage, SUPPORTED_LANGUAGES } from "@aarogya/i18n";
 import {
   HomeIcon,
   UserPlusIcon,
@@ -104,8 +104,8 @@ export function AppLayout({ children, pageTitle, onBack }: LayoutProps) {
   }
 
   const roleLabel = 
-    role === UserRole.ASHA_WORKER ? t("authentication.role_asha", "ASHA Worker") :
-    role === UserRole.PHC_DOCTOR ? t("authentication.role_doctor", "PHC Medical Officer") : t("authentication.role_admin", "District Health Officer");
+    role === UserRole.ASHA_WORKER ? t("common.role_asha", "ASHA Worker") :
+    role === UserRole.PHC_DOCTOR ? t("common.role_doctor", "PHC Medical Officer") : t("common.role_admin", "District Health Officer");
 
   const handleLogout = () => {
     logout();
@@ -180,10 +180,11 @@ export function AppLayout({ children, pageTitle, onBack }: LayoutProps) {
             </p>
           </div>
           <select
+            id="portal-mobile-language-select"
             value={currentLanguage}
             onChange={(e) => setLanguage(e.target.value as SupportedLanguage)}
             style={{
-              fontSize: 11,
+              fontSize: 12,
               padding: "4px 8px",
               borderRadius: 6,
               border: "1px solid var(--border)",
@@ -194,9 +195,11 @@ export function AppLayout({ children, pageTitle, onBack }: LayoutProps) {
             }}
             title={t("common.language", "Language")}
           >
-            <option value="mr-IN">मराठी</option>
-            <option value="hi-IN">हिंदी</option>
-            <option value="en-IN">English</option>
+            {SUPPORTED_LANGUAGES.map((lang) => (
+              <option key={lang.code} value={lang.code}>
+                {lang.name} ({lang.code.split("-")[0]})
+              </option>
+            ))}
           </select>
           <LocationChip
             userRole={user?.role}
@@ -305,16 +308,17 @@ export function AppLayout({ children, pageTitle, onBack }: LayoutProps) {
         <div style={{ padding: "14px 16px", backgroundColor: "var(--primary-light)", margin: "12px 16px", borderRadius: 10, display: "flex", flexDirection: "column", gap: 8 }}>
           <div>
             <div style={{ fontSize: 14, fontWeight: 700, color: "var(--primary-dark)" }}>
-              {user?.name || "Sita Patel"}
+              {user?.name || (role === UserRole.PHC_DOCTOR ? "PHC Doctor" : role === UserRole.DISTRICT_ADMIN ? "District Health Officer" : "ASHA Worker")}
             </div>
             <div style={{ fontSize: 12, color: "var(--text-secondary)", marginTop: 2 }}>
-              <span style={{ fontWeight: 600 }}>Registered:</span> {role === UserRole.PHC_DOCTOR ? (user?.facility_name || "Kalyanpur PHC") : (user?.village_name || "Kalyanpur Village")}
+              <span style={{ fontWeight: 600 }}>Registered:</span> {role === UserRole.PHC_DOCTOR ? (user?.facility_name || "Primary Health Centre") : (user?.village_name || "Catchment Area")}
             </div>
           </div>
 
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
             <OnlineStatusBadge isOnline={isOnline} />
             <select
+              id="portal-desktop-language-select"
               value={currentLanguage}
               onChange={(e) => setLanguage(e.target.value as SupportedLanguage)}
               style={{
@@ -330,9 +334,11 @@ export function AppLayout({ children, pageTitle, onBack }: LayoutProps) {
               }}
               title={t("common.language", "Preferred Language")}
             >
-              <option value="mr-IN">मराठी (mr)</option>
-              <option value="hi-IN">हिंदी (hi)</option>
-              <option value="en-IN">English (en)</option>
+              {SUPPORTED_LANGUAGES.map((lang) => (
+                <option key={lang.code} value={lang.code}>
+                  {lang.name} ({lang.code.split("-")[0]})
+                </option>
+              ))}
             </select>
           </div>
         </div>

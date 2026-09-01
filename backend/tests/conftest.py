@@ -26,8 +26,10 @@ def setup_test_db():
     import app.models  # Ensure all SQLAlchemy models are registered on Base
     from app.models import (
         CitizenProfile, HouseholdMember, CitizenChatSession, CitizenChatMessage, CitizenNeed,
-        ServiceRequest, Case, Referral, Prescription, FollowUp, Facility, User
+        ServiceRequest, Case, Referral, Prescription, FollowUp, Facility, User,
+        TeleconsultationRequest, TeleconsultationMessage, TeleconsultationConsent, TeleconsultationStatusHistory
     )
+    Base.metadata.drop_all(bind=test_engine)
     Base.metadata.create_all(bind=test_engine)
     # Seed the test database
     seed_module.engine = test_engine
@@ -69,4 +71,16 @@ def db_session():
         yield db
     finally:
         db.close()
+
+@pytest.fixture
+def doctor_auth_headers():
+    from app.auth.security import create_access_token
+    token = create_access_token({"sub": "DOC-007", "role": "PHC_DOCTOR", "facility_id": "PHC-09"})
+    return {"Authorization": f"Bearer {token}"}
+
+@pytest.fixture
+def citizen_auth_headers():
+    from app.auth.security import create_access_token
+    token = create_access_token({"sub": "CP-001", "role": "CITIZEN", "phone": "9823012345"})
+    return {"Authorization": f"Bearer {token}"}
 

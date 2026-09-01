@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from "react";
-import { useLanguage } from "@aarogya/i18n";
+import { useLanguage, getLanguageBadgeLabel } from "@aarogya/i18n";
 import {
   User, Users, Shield, Phone, Globe, ChevronRight, Plus, CheckCircle2,
   AlertTriangle, ArrowLeft, Loader2, Edit3, Trash2, HeartPulse, Stethoscope,
@@ -370,8 +370,8 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
     try {
       await setLocale(newLang);
       LanguageService.saveLocalPreference(newLang);
-      await apiClient.setCitizenLanguagePreference(newLang);
-      showToast(`${t("common.saved", "Saved")}: ${newLang}`);
+      await LanguageService.syncPreferenceToBackend(newLang);
+      showToast(t("citizen.language_changed_success", "Language changed successfully"));
     } catch (err) {
       console.error("Failed to persist language", err);
     } finally {
@@ -1308,8 +1308,16 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
   if (routeState.type === "language") {
     const languages: { code: LanguageCode; name: string; nativeName: string; region: string }[] = [
       { code: "mr-IN", name: "Marathi", nativeName: "मराठी", region: "Maharashtra" },
-      { code: "hi-IN", name: "Hindi", nativeName: "हिन्दी", region: "India" },
-      { code: "en-IN", name: "English", nativeName: "English", region: "Global" }
+      { code: "hi-IN", name: "Hindi", nativeName: "हिन्दी", region: "National" },
+      { code: "en-IN", name: "English", nativeName: "English", region: "National" },
+      { code: "gu-IN", name: "Gujarati", nativeName: "ગુજરાતી", region: "Gujarat" },
+      { code: "bn-IN", name: "Bengali", nativeName: "বাংলা", region: "West Bengal" },
+      { code: "kn-IN", name: "Kannada", nativeName: "ಕನ್ನಡ", region: "Karnataka" },
+      { code: "te-IN", name: "Telugu", nativeName: "తెలుగు", region: "Andhra Pradesh / Telangana" },
+      { code: "ta-IN", name: "Tamil", nativeName: "தமிழ்", region: "Tamil Nadu" },
+      { code: "ml-IN", name: "Malayalam", nativeName: "മലയാളം", region: "Kerala" },
+      { code: "pa-IN", name: "Punjabi", nativeName: "ਪੰਜਾਬੀ", region: "Punjab" },
+      { code: "od-IN", name: "Odia", nativeName: "ଓଡ଼ିଆ", region: "Odisha" },
     ];
 
     return (
@@ -1613,7 +1621,7 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
           {
             id: "btn-menu-change-language",
             icon: <Globe size={18} color="#2563EB" />,
-            title: `${t("profile.change_language", "Change Language")} (${(locale || "mr-IN").substring(0, 2).toUpperCase()})`,
+            title: `${t("profile.change_language", "Change Language")} (${getLanguageBadgeLabel(locale)})`,
             desc: "Switch whole application language",
             action: () => navigateTo({ type: "language" })
           },

@@ -8,13 +8,19 @@ import os
 app_env = os.environ.get("APP_ENV", "development")
 db_url = settings.DATABASE_URL
 
+backend_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+
 # Safety mechanism: ensure we don't drop/delete prod data in tests
 if app_env == "test":
     if db_url.startswith("sqlite"):
-        db_url = "sqlite:///./aarogya_test.db"
+        db_url = f"sqlite:///{os.path.join(backend_dir, 'aarogya_test.db').replace('\\', '/')}"
     elif db_url.startswith("postgresql"):
         if not db_url.endswith("_test"):
             db_url = db_url + "_test"
+elif db_url.startswith("sqlite:///."):
+    # Convert relative sqlite path to absolute backend dir path
+    rel_path = db_url[len("sqlite:///."):]
+    db_url = f"sqlite:///{os.path.join(backend_dir, rel_path.lstrip('/\\')).replace('\\', '/')}"
 
 connect_args = {}
 if db_url.startswith("sqlite"):
@@ -25,6 +31,7 @@ engine = create_engine(
     connect_args=connect_args,
     pool_pre_ping=True
 )
+
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 

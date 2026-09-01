@@ -42,9 +42,65 @@ export const SUPPORTED_LANGUAGES: LanguageOption[] = [
     code: "en-IN",
     nativeName: "English",
     englishLabel: "English",
-    subLabel: "इंग्रजी",
+    subLabel: "English",
     enabled: true,
     ttsPhrase: "Choose English to use Aarogya Sahayak"
+  },
+  {
+    code: "gu-IN",
+    nativeName: "ગુજરાતી",
+    englishLabel: "Gujarati",
+    enabled: true,
+    ttsPhrase: "આરોગ્ય સહાયક વાપરવા માટે ગુજરાતી પસંદ કરો"
+  },
+  {
+    code: "bn-IN",
+    nativeName: "বাংলা",
+    englishLabel: "Bengali",
+    enabled: true,
+    ttsPhrase: "আরোগ্য সহায়ক ব্যবহার করার জন্য বাংলা বেছে নিন"
+  },
+  {
+    code: "kn-IN",
+    nativeName: "ಕನ್ನಡ",
+    englishLabel: "Kannada",
+    enabled: true,
+    ttsPhrase: "ಆರೋಗ್ಯ ಸಹಾಯಕ ಬಳಸಲು ಕನ್ನಡ ಆಯ್ಕೆಮಾಡಿ"
+  },
+  {
+    code: "te-IN",
+    nativeName: "తెలుగు",
+    englishLabel: "Telugu",
+    enabled: true,
+    ttsPhrase: "ఆరోగ్య సహాయక్ ఉపయోగించడానికి తెలుగు ఎంచుకోండి"
+  },
+  {
+    code: "ta-IN",
+    nativeName: "தமிழ்",
+    englishLabel: "Tamil",
+    enabled: true,
+    ttsPhrase: "ஆரோக்ய சஹாயக்கைப் பயன்படுத்த தமிழைத் தேர்வு செய்யவும்"
+  },
+  {
+    code: "ml-IN",
+    nativeName: "മലയാളം",
+    englishLabel: "Malayalam",
+    enabled: true,
+    ttsPhrase: "ആരോഗ്യ സഹായക് ഉപയോഗിക്കാൻ മലയാളം തിരഞ്ഞെടുക്കുക"
+  },
+  {
+    code: "pa-IN",
+    nativeName: "ਪੰਜਾਬੀ",
+    englishLabel: "Punjabi",
+    enabled: true,
+    ttsPhrase: "ਅਰੋਗਿਆ ਸਹਾਇਕ ਦੀ ਵਰਤੋਂ ਕਰਨ ਲਈ ਪੰਜਾਬੀ ਚੁਣੋ"
+  },
+  {
+    code: "od-IN",
+    nativeName: "ଓଡ଼ିଆ",
+    englishLabel: "Odia",
+    enabled: true,
+    ttsPhrase: "ଆରୋଗ୍ୟ ସହାୟକ ବ୍ୟବହାର କରିବା ପାଇଁ ଓଡ଼ିଆ ବାଛନ୍ତୁ"
   }
 ];
 

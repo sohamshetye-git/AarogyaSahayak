@@ -42,12 +42,21 @@ Render Dashboard
 → Apply Blueprint
 ```
 
-### Resource Details Declared in `render.yaml`:
+### Resource Details Declared in `render.yaml` (Free Staging Tier):
 
 | Resource | Type | Region | Plan | Key Settings |
 | :--- | :--- | :--- | :--- | :--- |
-| `aarogya-sahayak-db` | PostgreSQL 16 | Singapore | Starter | `databaseName: aarogya_db`, `user: aarogya_user` |
-| `aarogya-sahayak-backend` | Web Service (Python 3) | Singapore | Starter | `preDeployCommand: alembic upgrade head`<br>`startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT`<br>`healthCheckPath: /health` |
+| `aarogya-sahayak-db` | PostgreSQL 16 | Singapore | Free (`plan: free`) | `postgresMajorVersion: "16"`, `databaseName: aarogya_db`, `user: aarogya_user` |
+| `aarogya-sahayak-backend` | Web Service (Python 3) | Singapore | Free (`plan: free`) | `startCommand: alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port $PORT`<br>`healthCheckPath: /health` |
+
+> [!IMPORTANT]
+> **Render Free Tier Staging Characteristics & Constraints:**
+> * **No Credit Card / Payment Required**: Both the PostgreSQL database and FastAPI Web Service run on Render's 100% free plan.
+> * **Zero Cost**: Blueprint sync and deployment require no billing setup.
+> * **Web Service Sleep / Spin-down**: The backend spins down after 15 minutes of inactivity. When a new request arrives, initial wake-up time is ~50-60 seconds.
+> * **Database Limits**: Render Free PostgreSQL has a 1 GB storage limit, no automated snapshots/backups, and expires after 30 days.
+> * **Purpose**: Strictly for staging validation, hackathon demonstration, and integration testing. Not for production workloads.
+> * **Restart-Safe Startup Migration**: Since `preDeployCommand` is not available on Render Free tier, migrations execute safely at start (`alembic upgrade head && uvicorn app.main:app...`), which idempotently skips when the schema is already current.
 
 ### Environment Variables Configured on Render:
 

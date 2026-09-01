@@ -84,14 +84,19 @@ export interface VisitLocationPayload {
 export interface ReverseGeocodeResult {
   formatted_address: string;
   village?: string | null;
+  locality?: string | null;
   pincode?: string | null;
+  postal_code?: string | null;
   block?: string | null;
   district?: string | null;
   state?: string | null;
   latitude: number;
   longitude: number;
+  accuracy_m?: number | null;
   place_id?: string | null;
+  provider?: string;
   source?: string;
+  resolved_at?: string | null;
 }
 
 export interface NearbyFacilityItem {

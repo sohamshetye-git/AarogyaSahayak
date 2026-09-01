@@ -4,7 +4,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 def test_i18n_locale_key_parity():
-    """Verify that en-IN, hi-IN, and mr-IN JSON files contain identical keys."""
+    """Verify that all 11 Indian locale JSON files contain identical keys."""
     def get_keys(d, prefix=""):
         keys = set()
         for k, v in d.items():
@@ -20,14 +20,23 @@ def test_i18n_locale_key_parity():
 
     with open(os.path.join(locales_dir, "en-IN.json"), encoding="utf-8") as f_en:
         en_keys = get_keys(json.load(f_en))
-    with open(os.path.join(locales_dir, "hi-IN.json"), encoding="utf-8") as f_hi:
-        hi_keys = get_keys(json.load(f_hi))
-    with open(os.path.join(locales_dir, "mr-IN.json"), encoding="utf-8") as f_mr:
-        mr_keys = get_keys(json.load(f_mr))
 
-    assert len(en_keys) >= 358, f"Expected >=358 keys, found {len(en_keys)}"
-    assert en_keys == hi_keys, f"Missing in hi: {en_keys - hi_keys}, Extra in hi: {hi_keys - en_keys}"
-    assert en_keys == mr_keys, f"Missing in mr: {en_keys - mr_keys}, Extra in mr: {mr_keys - en_keys}"
+    assert len(en_keys) >= 600, f"Expected >=600 keys, found {len(en_keys)}"
+
+    all_locales = [
+        "hi-IN", "mr-IN", "gu-IN", "bn-IN", "kn-IN",
+        "te-IN", "ta-IN", "ml-IN", "pa-IN", "od-IN"
+    ]
+
+    for locale in all_locales:
+        locale_path = os.path.join(locales_dir, f"{locale}.json")
+        assert os.path.exists(locale_path), f"Locale file missing: {locale_path}"
+        with open(locale_path, encoding="utf-8") as f_loc:
+            loc_keys = get_keys(json.load(f_loc))
+        missing = en_keys - loc_keys
+        extra = loc_keys - en_keys
+        assert not missing, f"Missing keys in {locale}: {missing}"
+        assert not extra, f"Extra keys in {locale}: {extra}"
 
 def test_user_preference_persistence_and_independence(client: TestClient):
     """Verify that different roles persist independent language preferences."""

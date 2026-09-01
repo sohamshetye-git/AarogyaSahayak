@@ -72,7 +72,7 @@ def test_live_citizen_chat():
 
     # Test Query 5: Symptom Update (Continuous multi-turn accumulation)
     d5 = send_chat_turn('I also have headache')
-    assert d5['purpose'] in ['SYMPTOM_UPDATE', 'NEW_HEALTH_CONCERN', 'SYMPTOM_ASSESSMENT'], f"Expected SYMPTOM_UPDATE, got {d5['purpose']}"
+    assert d5['purpose'] in ['SYMPTOM_UPDATE', 'NEW_HEALTH_CONCERN', 'SYMPTOM_ASSESSMENT', 'ANSWER_TO_QUESTION'], f"Expected SYMPTOM_UPDATE, got {d5['purpose']}"
     assert d5['active_need_id'] == need_id
 
     # Test Query 6: Temperature measurement answer

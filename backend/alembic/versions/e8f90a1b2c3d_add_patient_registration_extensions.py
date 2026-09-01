@@ -19,6 +19,9 @@ depends_on: Union[str, Sequence[str], None] = None
 def upgrade() -> None:
     # Add new columns to citizen_profiles
     with op.batch_alter_table('citizen_profiles') as batch_op:
+        batch_op.add_column(sa.Column('legal_name', sa.String(length=150), nullable=True))
+        batch_op.add_column(sa.Column('preferred_name', sa.String(length=150), nullable=True))
+        batch_op.add_column(sa.Column('current_care_location', sa.String(length=255), nullable=True))
         batch_op.add_column(sa.Column('date_of_birth', sa.String(length=20), nullable=True))
         batch_op.add_column(sa.Column('alternate_phone', sa.String(length=20), nullable=True))
         batch_op.add_column(sa.Column('preferred_contact_method', sa.String(length=30), server_default='PHONE', nullable=True))

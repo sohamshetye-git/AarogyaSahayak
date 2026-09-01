@@ -33,6 +33,9 @@ export const CitizenPhoneOtpScreen: React.FC<CitizenPhoneOtpScreenProps> = ({
 
   const otpInputsRef = useRef<(HTMLInputElement | null)[]>([]);
 
+  const [localStep, setLocalStep] = useState<"PHONE" | "OTP">(() => authMode === "OTP_VERIFY" ? "OTP" : "PHONE");
+  const isOtpStep = authMode === "OTP_VERIFY" || localStep === "OTP";
+
   // Sync phone input if pendingPhone updates
   useEffect(() => {
     if (pendingPhone) {
@@ -42,18 +45,19 @@ export const CitizenPhoneOtpScreen: React.FC<CitizenPhoneOtpScreenProps> = ({
 
   // Auto focus first OTP input when entering OTP verify step
   useEffect(() => {
-    if (authMode === "OTP_VERIFY") {
+    if (isOtpStep) {
       setOtpDigits(["", "", "", "", "", ""]);
       setErrorMessage(null);
       setTimeout(() => {
         otpInputsRef.current[0]?.focus();
       }, 100);
     }
-  }, [authMode]);
+  }, [isOtpStep]);
 
   const handleBackToPhone = () => {
     setOtpDigits(["", "", "", "", "", ""]);
     setErrorMessage(null);
+    setLocalStep("PHONE");
     resetOtpFlow();
     onBack();
   };
@@ -75,8 +79,11 @@ export const CitizenPhoneOtpScreen: React.FC<CitizenPhoneOtpScreenProps> = ({
       const res = await startPhoneLogin(clean);
       if (!res.success) {
         setErrorMessage(res.error || "Failed to send OTP");
-      } else if (res.mockCode) {
-        setMockHint(`Dev Demo OTP: ${res.mockCode}`);
+      } else {
+        setLocalStep("OTP");
+        if (res.mockCode) {
+          setMockHint(`Dev Demo OTP: ${res.mockCode}`);
+        }
       }
     } finally {
       setLoading(false);
@@ -174,29 +181,19 @@ export const CitizenPhoneOtpScreen: React.FC<CitizenPhoneOtpScreenProps> = ({
 
   return (
     <div
+      className="w-full flex-1 flex flex-col justify-start sm:justify-center items-center select-none"
       style={{
-        minHeight: "100vh",
+        minHeight: "100dvh",
         backgroundColor: "#F8FAFC",
-        display: "flex",
-        flexDirection: "column",
-        justifyContent: "center",
-        alignItems: "center",
-        padding: "16px 12px",
+        paddingTop: "max(0px, var(--safe-area-top))",
+        paddingBottom: "max(16px, var(--safe-area-bottom))",
+        paddingLeft: "max(0px, var(--safe-area-left))",
+        paddingRight: "max(0px, var(--safe-area-right))",
         fontFamily: "'Noto Sans', 'Noto Sans Devanagari', sans-serif"
       }}
     >
       <div
-        style={{
-          width: "100%",
-          maxWidth: 440,
-          backgroundColor: "#FFFFFF",
-          borderRadius: 24,
-          boxShadow: "0 12px 40px rgba(0, 0, 0, 0.08)",
-          border: "1px solid #E2E8F0",
-          overflow: "hidden",
-          display: "flex",
-          flexDirection: "column"
-        }}
+        className="w-full sm:max-w-[430px] bg-white sm:rounded-3xl sm:shadow-xl sm:border sm:border-slate-200 overflow-hidden flex flex-col flex-1 sm:flex-initial sm:my-4 min-h-[100dvh] sm:min-h-auto"
       >
         {/* Top Header */}
         <div
@@ -227,7 +224,7 @@ export const CitizenPhoneOtpScreen: React.FC<CitizenPhoneOtpScreenProps> = ({
           </button>
 
           <span style={{ fontSize: 14, fontWeight: 700, color: "#64748B" }}>
-            {authMode === "OTP_VERIFY" ? "2 / 2" : "1 / 2"}
+            {isOtpStep ? "2 / 2" : "1 / 2"}
           </span>
 
           <button
@@ -252,7 +249,7 @@ export const CitizenPhoneOtpScreen: React.FC<CitizenPhoneOtpScreenProps> = ({
 
         {/* Form Body */}
         <div style={{ padding: "24px 20px" }}>
-          {authMode !== "OTP_VERIFY" ? (
+          {!isOtpStep ? (
             /* Step 1: Mobile Number Entry */
             <form onSubmit={handleRequestOtp}>
               <div
@@ -353,7 +350,7 @@ export const CitizenPhoneOtpScreen: React.FC<CitizenPhoneOtpScreenProps> = ({
 
               <button
                 type="submit"
-                id="btn-citizen-send-otp"
+                id="btn-citizen-request-otp"
                 disabled={loading || phoneInput.length < 10}
                 style={{
                   minHeight: 48,

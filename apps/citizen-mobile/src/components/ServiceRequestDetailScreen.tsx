@@ -119,17 +119,17 @@ export const ServiceRequestDetailScreen: React.FC<ServiceRequestDetailScreenProp
 
   // Status Stepper definition
   const ashaSteps = [
-    { title: "Submitted", done: true },
-    { title: "ASHA Assigned", done: status !== "ASSIGNMENT_PENDING" },
-    { title: "Visit Scheduled", done: ["VISIT_SCHEDULED", "IN_PROGRESS", "FIELD_VISIT_IN_PROGRESS", "COMPLETED"].includes(status) },
-    { title: "Completed", done: status === "COMPLETED" }
+    { title: t("common.submitted", "Submitted"), done: true },
+    { title: t("status.ASHA_ASSIGNED", "ASHA Assigned"), done: status !== "ASSIGNMENT_PENDING" },
+    { title: t("status.VISIT_SCHEDULED", "Visit Scheduled"), done: ["VISIT_SCHEDULED", "IN_PROGRESS", "FIELD_VISIT_IN_PROGRESS", "COMPLETED"].includes(status) },
+    { title: t("common.completed", "Completed"), done: status === "COMPLETED" }
   ];
 
   const docSteps = [
-    { title: "Submitted", done: true },
-    { title: "Doctor Accepted", done: ["DOCTOR_ACCEPTED", "IN_CONSULTATION", "COMPLETED"].includes(status) },
-    { title: "Consultation", done: ["IN_CONSULTATION", "COMPLETED"].includes(status) },
-    { title: "Completed", done: status === "COMPLETED" }
+    { title: t("common.submitted", "Submitted"), done: true },
+    { title: t("status.DOCTOR_ACKNOWLEDGED", "Doctor Accepted"), done: ["DOCTOR_ACCEPTED", "IN_CONSULTATION", "COMPLETED"].includes(status) },
+    { title: t("status.CONSULTATION_IN_PROGRESS", "Consultation"), done: ["IN_CONSULTATION", "COMPLETED"].includes(status) },
+    { title: t("common.completed", "Completed"), done: status === "COMPLETED" }
   ];
 
   const steps = isDoc ? docSteps : ashaSteps;
@@ -155,7 +155,7 @@ export const ServiceRequestDetailScreen: React.FC<ServiceRequestDetailScreenProp
             border: "1px solid #E2E8F0"
           }}
         >
-          <ArrowLeft size={16} /> Back
+          <ArrowLeft size={16} /> {t("common.back", "Back")}
         </button>
 
         <span
@@ -169,7 +169,7 @@ export const ServiceRequestDetailScreen: React.FC<ServiceRequestDetailScreenProp
             border: `1px solid ${isUrgent ? '#FCA5A5' : '#BFDBFE'}`
           }}
         >
-          {isUrgent ? "⚠️ URGENT" : "ROUTINE"} • Ref: {detail.request_reference}
+          {isUrgent ? `⚠️ ${t("priority.URGENT", "URGENT")}` : t("priority.ROUTINE", "ROUTINE")} • Ref: {detail.request_reference}
         </span>
       </div>
 
@@ -186,7 +186,7 @@ export const ServiceRequestDetailScreen: React.FC<ServiceRequestDetailScreenProp
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
           <div>
             <div style={{ fontSize: 11, fontWeight: 800, color: isDoc ? "#2563EB" : "#059669", textTransform: "uppercase" }}>
-              {isDoc ? "🩺 Doctor Teleconsultation" : "🏡 ASHA Home Assistance"}
+              {isDoc ? `🩺 ${t("citizen.doctor_teleconsultation", "Doctor Teleconsultation")}` : `🏡 ${t("citizen.asha_assistance", "ASHA Home Assistance")}`}
             </div>
             <div style={{ fontSize: 16, fontWeight: 800, color: "#0F172A", marginTop: 4 }}>
               {detail.chief_concern || "Health Care Request"}
@@ -202,18 +202,18 @@ export const ServiceRequestDetailScreen: React.FC<ServiceRequestDetailScreenProp
               color: status === "COMPLETED" ? "#166534" : "#92400E"
             }}
           >
-            {status.replace(/_/g, " ")}
+            {t(`status.${status}`, status.replace(/_/g, " "))}
           </span>
         </div>
 
         <div style={{ display: "flex", flexWrap: "wrap", gap: 12, marginTop: 12, fontSize: 12, color: "#64748B" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
             <User size={14} />
-            <span>Beneficiary: <strong style={{ color: "#1E293B" }}>{handoff.beneficiary_name || "Self (Sunita Devi)"}</strong></span>
+            <span>{t("wizard.step6_field_patient", "Patient:")} <strong style={{ color: "#1E293B" }}>{detail.beneficiary?.name || handoff.beneficiary_name || detail.beneficiary_name || "Myself"}</strong></span>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
             <Clock size={14} />
-            <span>Submitted: {new Date(detail.submitted_at || detail.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", day: "numeric", month: "short" })}</span>
+            <span>{t("common.date", "Date")}: {new Date(detail.submitted_at || detail.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", day: "numeric", month: "short" })}</span>
           </div>
         </div>
       </div>
@@ -228,7 +228,7 @@ export const ServiceRequestDetailScreen: React.FC<ServiceRequestDetailScreenProp
         }}
       >
         <div style={{ fontSize: 14, fontWeight: 800, color: "#1E293B", marginBottom: 14 }}>
-          Care Progress Stepper
+          {t("case.timeline", "Care Progress Stepper")}
         </div>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           {steps.map((st, idx) => (
@@ -256,7 +256,7 @@ export const ServiceRequestDetailScreen: React.FC<ServiceRequestDetailScreenProp
         }}
       >
         <div style={{ fontSize: 14, fontWeight: 800, color: "#1E293B", marginBottom: 10 }}>
-          Assigned Healthcare Provider
+          {t("citizen.care_team", "Assigned Healthcare Provider")}
         </div>
         {detail.assigned_user_id || status !== "ASSIGNMENT_PENDING" ? (
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: 12, borderRadius: 14, backgroundColor: isDoc ? "#EFF6FF" : "#ECFDF5" }}>
@@ -269,7 +269,7 @@ export const ServiceRequestDetailScreen: React.FC<ServiceRequestDetailScreenProp
                   {detail.assigned_worker_name || (isDoc ? "Dr. Abhinav Sharma" : "Sita Patel (ASHA)")}
                 </div>
                 <div style={{ fontSize: 11, color: "#64748B" }}>
-                  {isDoc ? "PHC Medical Officer • Kalyanpur PHC" : "Accredited Social Health Activist • Kalyanpur"}
+                  {isDoc ? `${t("roles.PHC_DOCTOR", "PHC Medical Officer")} • Kalyanpur PHC` : `${t("roles.ASHA_WORKER", "Accredited Social Health Activist")} • Kalyanpur`}
                 </div>
               </div>
             </div>
@@ -289,12 +289,12 @@ export const ServiceRequestDetailScreen: React.FC<ServiceRequestDetailScreenProp
                 gap: 4
               }}
             >
-              <Phone size={14} /> Call
+              <Phone size={14} /> {t("common.speak", "Call")}
             </button>
           </div>
         ) : (
           <div style={{ padding: 12, borderRadius: 14, backgroundColor: "#FFFBEB", border: "1px solid #FDE68A", color: "#92400E", fontSize: 13, fontWeight: 700 }}>
-            ⏳ Assignment Pending: Matching available ASHA worker for your jurisdiction...
+            ⏳ {t("status.ASHA_ASSIGNED", "Matching available health worker for your jurisdiction...")}
           </div>
         )}
       </div>
@@ -310,7 +310,7 @@ export const ServiceRequestDetailScreen: React.FC<ServiceRequestDetailScreenProp
       >
         <div style={{ fontSize: 14, fontWeight: 800, color: "#1E293B", marginBottom: 10, display: "flex", alignItems: "center", gap: 6 }}>
           <ShieldCheck size={16} color="#059669" />
-          <span>Shared Clinical Summary (Consented)</span>
+          <span>{t("wizard.step5_title", "Shared Clinical Summary (Consented)")}</span>
         </div>
         <div style={{ fontSize: 13, color: "#334155", lineHeight: 1.5, backgroundColor: "#F8FAFC", padding: 12, borderRadius: 12, border: "1px solid #E2E8F0" }}>
           {detail.citizen_summary || handoff.citizen_summary || `${detail.chief_concern} reported by citizen.`}
@@ -318,24 +318,28 @@ export const ServiceRequestDetailScreen: React.FC<ServiceRequestDetailScreenProp
 
         {handoff.symptoms && handoff.symptoms.length > 0 && (
           <div style={{ marginTop: 12 }}>
-            <div style={{ fontSize: 12, fontWeight: 700, color: "#64748B", marginBottom: 6 }}>Confirmed Symptoms:</div>
+            <div style={{ fontSize: 12, fontWeight: 700, color: "#64748B", marginBottom: 6 }}>{t("wizard.step2_identified_symptoms", "Identified Symptoms")}:</div>
             <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-              {handoff.symptoms.map((sym: any, sIdx: number) => (
-                <span
-                  key={sIdx}
-                  style={{
-                    padding: "4px 10px",
-                    borderRadius: 12,
-                    backgroundColor: "#EFF6FF",
-                    color: "#1D4ED8",
-                    fontSize: 11,
-                    fontWeight: 700,
-                    border: "1px solid #BFDBFE"
-                  }}
-                >
-                  ✓ {typeof sym === "string" ? sym : (sym.display || sym.code)}
-                </span>
-              ))}
+              {handoff.symptoms.map((sym: any, sIdx: number) => {
+                const sStr = typeof sym === "string" ? sym : (sym.display || sym.code);
+                const sKey = sStr.toUpperCase().replace(/\s+/g, "_");
+                return (
+                  <span
+                    key={sIdx}
+                    style={{
+                      padding: "4px 10px",
+                      borderRadius: 12,
+                      backgroundColor: "#EFF6FF",
+                      color: "#1D4ED8",
+                      fontSize: 11,
+                      fontWeight: 700,
+                      border: "1px solid #BFDBFE"
+                    }}
+                  >
+                    ✓ {t(`symptoms.${sKey}`, sStr)}
+                  </span>
+                );
+              })}
             </div>
           </div>
         )}
@@ -353,9 +357,9 @@ export const ServiceRequestDetailScreen: React.FC<ServiceRequestDetailScreenProp
           }}
         >
           <div style={{ fontSize: 15, fontWeight: 900, color: "#1E3A8A", marginBottom: 12, display: "flex", alignItems: "center", gap: 6 }}>
-            <span>🩺 Doctor Consultation Outcome</span>
+            <span>🩺 {t("consultation.treatment_plan", "Doctor Consultation Outcome")}</span>
             <span style={{ fontSize: 10, fontWeight: 800, padding: "2px 8px", borderRadius: 8, backgroundColor: "#DBEAFE", color: "#1D4ED8" }}>
-              DOCTOR SIGNED
+              {t("common.saved", "DOCTOR SIGNED")}
             </span>
           </div>
 
@@ -365,11 +369,11 @@ export const ServiceRequestDetailScreen: React.FC<ServiceRequestDetailScreenProp
               {detail.consultation?.doctor_name || detail.assigned_worker_name || "Dr. Abhinav Sharma"} • {detail.consultation?.facility_name || "Kalyanpur PHC"}
             </div>
             <div style={{ fontSize: 13, color: "#0F172A", marginTop: 4 }}>
-              <strong>Doctor Confirmed Diagnosis:</strong> {detail.consultation?.confirmed_diagnosis || detail.consultation?.provisional_diagnosis || detail.details?.provisional_diagnosis || "Clinical evaluation completed"}
+              <strong>{t("consultation.clinical_notes", "Doctor Confirmed Diagnosis")}:</strong> {detail.consultation?.confirmed_diagnosis || detail.consultation?.provisional_diagnosis || detail.details?.provisional_diagnosis || "Clinical evaluation completed"}
             </div>
             {(detail.consultation?.care_plan_summary || detail.details?.patient_guidance) && (
               <div style={{ fontSize: 12, color: "#334155", marginTop: 6, lineHeight: 1.5 }}>
-                <strong>Care Guidance:</strong> {detail.consultation?.care_plan_summary || detail.details?.patient_guidance}
+                <strong>{t("consultation.patient_advice", "Care Guidance")}:</strong> {detail.consultation?.care_plan_summary || detail.details?.patient_guidance}
               </div>
             )}
           </div>
@@ -378,7 +382,7 @@ export const ServiceRequestDetailScreen: React.FC<ServiceRequestDetailScreenProp
           {detail.prescriptions && detail.prescriptions.length > 0 && (
             <div style={{ marginBottom: 12 }}>
               <div style={{ fontSize: 12, fontWeight: 800, color: "#1E293B", marginBottom: 6, display: "flex", alignItems: "center", gap: 4 }}>
-                💊 Prescribed Medicines ({detail.prescriptions.length})
+                💊 {t("navigation.medicines", "Prescribed Medicines")} ({detail.prescriptions.length})
               </div>
               <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                 {detail.prescriptions.map((rx: any, rxIdx: number) => (
@@ -399,12 +403,12 @@ export const ServiceRequestDetailScreen: React.FC<ServiceRequestDetailScreenProp
           {detail.investigations && detail.investigations.length > 0 && (
             <div style={{ marginBottom: 12 }}>
               <div style={{ fontSize: 12, fontWeight: 800, color: "#1E293B", marginBottom: 6, display: "flex", alignItems: "center", gap: 4 }}>
-                🔬 Lab Investigations ({detail.investigations.length})
+                🔬 {t("investigation.test_name", "Lab Investigations")} ({detail.investigations.length})
               </div>
               <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
                 {detail.investigations.map((inv: any, invIdx: number) => (
                   <span key={invIdx} style={{ padding: "4px 10px", borderRadius: 10, backgroundColor: "#FEF3C7", color: "#92400E", fontSize: 11, fontWeight: 700, border: "1px solid #FDE68A" }}>
-                    🧪 {inv.test_name} ({inv.status})
+                    🧪 {inv.test_name} ({t(`status.${inv.status}`, inv.status)})
                   </span>
                 ))}
               </div>
@@ -415,7 +419,7 @@ export const ServiceRequestDetailScreen: React.FC<ServiceRequestDetailScreenProp
           {detail.followups && detail.followups.length > 0 && (
             <div>
               <div style={{ fontSize: 12, fontWeight: 800, color: "#1E293B", marginBottom: 6, display: "flex", alignItems: "center", gap: 4 }}>
-                📅 Assigned Follow-up Plan ({detail.followups.length})
+                📅 {t("consultation.followup_required", "Assigned Follow-up Plan")} ({detail.followups.length})
               </div>
               <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                 {detail.followups.map((fu: any, fuIdx: number) => (

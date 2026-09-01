@@ -123,7 +123,7 @@ export const CitizenOnboardingScreen: React.FC<CitizenOnboardingScreenProps> = (
           >
             <User size={26} />
           </div>
-          <h2 style={{ fontSize: 20, fontWeight: 800, margin: "0 0 4px" }}>
+          <h2 id="title-citizen-onboarding" style={{ fontSize: 20, fontWeight: 800, margin: "0 0 4px" }}>
             {t("citizen.onboarding_title", "Complete Citizen Registration")}
           </h2>
           <p style={{ fontSize: 12, opacity: 0.9, margin: 0 }}>

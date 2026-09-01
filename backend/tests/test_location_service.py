@@ -48,6 +48,9 @@ def test_reverse_geocode_adapter_contract():
     assert res["latitude"] == 18.5204
     assert res["longitude"] == 73.8567
     assert "formatted_address" in res
+    assert "provider" in res
+    assert "state" in res
+    assert res["state"] is not None
 
 
 def test_authorized_jurisdictions_isolation_from_gps(db_session=None):
@@ -64,6 +67,31 @@ def test_authorized_jurisdictions_isolation_from_gps(db_session=None):
     assert dto.worker_name == "Sita Patel"
     assert len(dto.assigned_villages) == 1
     assert dto.assigned_villages[0]["name"] == "Kalyanpur"
+
+
+def test_reverse_geocode_endpoint_contract():
+    # Verifies the canonical HTTP POST endpoint contract and JSON envelope response
+    from fastapi.testclient import TestClient
+    from app.main import app
+
+    client = TestClient(app)
+    payload = {
+        "latitude": 19.1234,
+        "longitude": 72.8567,
+        "accuracy_m": 32.0,
+        "captured_at": "2026-08-31T14:30:00Z",
+        "language": "en"
+    }
+    response = client.post("/api/locations/reverse-geocode", json=payload)
+    assert response.status_code == 200
+    data = response.json().get("data", {})
+    assert data.get("latitude") == 19.1234
+    assert data.get("longitude") == 72.8567
+    assert data.get("accuracy_m") == 32.0
+    assert data.get("provider") in ["GOOGLE", "FALLBACK_COORDINATES"]
+    assert "formatted_address" in data
+    assert data.get("formatted_address") != "Address unavailable"
+    assert data.get("state") == "Maharashtra"
 
 
 def test_doctor_authorized_facilities_isolation_from_gps():

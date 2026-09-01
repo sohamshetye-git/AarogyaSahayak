@@ -149,6 +149,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
       {/* Primary Action Buttons */}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
         <button
+          id="btn-home-speak-to-doctor"
           onClick={onOpenDoctor}
           style={{
             padding: "16px",
@@ -218,6 +219,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
         </button>
 
         <button
+          id="btn-home-find-health-centre"
           onClick={() => onNavigate("facilities")}
           style={{
             padding: "14px",

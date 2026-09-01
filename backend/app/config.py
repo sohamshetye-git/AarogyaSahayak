@@ -16,6 +16,8 @@ class Settings(BaseSettings):
         "http://127.0.0.1:3000",
         "http://localhost:3001",
         "http://127.0.0.1:3001",
+        "http://localhost:3002",
+        "http://127.0.0.1:3002",
         "http://localhost:5173",
         "http://127.0.0.1:5173",
         "http://localhost:8080",
@@ -50,6 +52,9 @@ class Settings(BaseSettings):
     # API Credentials (Optional in mock mode)
     GEMINI_API_KEY: Optional[str] = None
     SARVAM_API_KEY: Optional[str] = None
+    SARVAM_TTS_MODEL: str = "bulbul:v3"
+    SARVAM_TTS_ENABLED: bool = True
+    SARVAM_TTS_SPEAKER: str = "ritu"
     LYZR_API_KEY: Optional[str] = None
     BHASHINI_API_KEY: Optional[str] = None
     BHASHINI_USER_ID: Optional[str] = None

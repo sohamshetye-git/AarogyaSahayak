@@ -36,7 +36,7 @@ class LocationServiceClass {
   };
 
   private listeners: Set<LocationListener> = new Set();
-  private reverseGeocodeProvider: ((lat: number, lng: number) => Promise<ReverseGeocodeResult | null>) | null = null;
+  private reverseGeocodeProvider: ((lat: number, lng: number, accuracy?: number | null, captured_at?: string | null) => Promise<ReverseGeocodeResult | null>) | null = null;
 
   constructor() {
     this.init();
@@ -69,7 +69,7 @@ class LocationServiceClass {
     this.notify();
   }
 
-  public setReverseGeocodeProvider(provider: (lat: number, lng: number) => Promise<ReverseGeocodeResult | null>) {
+  public setReverseGeocodeProvider(provider: (lat: number, lng: number, accuracy?: number | null, captured_at?: string | null) => Promise<ReverseGeocodeResult | null>) {
     this.reverseGeocodeProvider = provider;
   }
 
@@ -197,39 +197,55 @@ class LocationServiceClass {
 
           let finalLoc = baseLoc;
           let resolvedTime: string | null = null;
+          let addressResolved = false;
+
           if (this.reverseGeocodeProvider) {
             try {
-              const geo = await this.reverseGeocodeProvider(lat, lng);
-              resolvedTime = new Date().toISOString();
-              if (geo) {
+              const geo = await this.reverseGeocodeProvider(lat, lng, accuracy, capturedAt);
+              resolvedTime = geo?.resolved_at || new Date().toISOString();
+              if (geo && geo.formatted_address && !geo.formatted_address.includes("Address unavailable")) {
+                addressResolved = true;
                 finalLoc = {
                   ...baseLoc,
-                  formatted_address: geo.formatted_address || "Address unavailable",
-                  village: geo.village || null,
-                  pincode: geo.pincode || null,
+                  formatted_address: geo.formatted_address,
+                  village: geo.village || geo.locality || null,
+                  pincode: geo.postal_code || geo.pincode || null,
                   block: geo.block || null,
                   district: geo.district || null,
                   state: geo.state || null,
                   place_id: geo.place_id || null,
-                  provider: geo.source || "Google Reverse Geocoding"
+                  provider: geo.provider || geo.source || "Google Reverse Geocoding"
                 };
               } else {
                 finalLoc = {
                   ...baseLoc,
-                  formatted_address: "Address unavailable"
+                  formatted_address: `GPS (${lat.toFixed(4)}, ${lng.toFixed(4)})`,
+                  provider: "Device GPS Sensor"
                 };
+                if (reactiveState === "READY") {
+                  reactiveState = "REVERSE_GEOCODE_FAILED";
+                }
               }
             } catch (err) {
               console.warn("Reverse geocoding error:", err);
               finalLoc = {
                 ...baseLoc,
-                formatted_address: "Address unavailable"
+                formatted_address: `GPS (${lat.toFixed(4)}, ${lng.toFixed(4)})`,
+                provider: "Device GPS Sensor"
               };
+              if (reactiveState === "READY") {
+                reactiveState = "REVERSE_GEOCODE_FAILED";
+              }
             }
+          } else {
+            finalLoc = {
+              ...baseLoc,
+              formatted_address: `GPS (${lat.toFixed(4)}, ${lng.toFixed(4)})`,
+              provider: "Device GPS Sensor"
+            };
           }
 
           setCachedLocation(finalLoc, this.currentUserId, this.currentUserRole);
-
           this.updateDiagnostic(finalLoc, false, resolvedTime);
 
           this.updateState({

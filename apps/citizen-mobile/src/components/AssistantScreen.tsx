@@ -110,14 +110,7 @@ export const AssistantScreen: React.FC<AssistantScreenProps> = ({
           const sessionData = newSessionRes?.data || newSessionRes;
           if (isMounted && sessionData?.session_id) {
             setSessionId(sessionData.session_id);
-            // Add initial welcome assistant message with rich dynamic actions
-            const isHi = locale?.startsWith("hi");
-            const isEn = locale?.startsWith("en");
-            const welcomeText = isHi
-              ? "नमस्ते! मैं आपका आरोग्य सहायक हूँ। आप अपनी स्वास्थ्य समस्या, डॉक्टर परामर्श, नजदीकी स्वास्थ्य केंद्र या सरकारी योजनाओं के बारे में पूछ सकते हैं।"
-              : isEn
-              ? "Hello! I am Aarogya Sahayak. How can I help you today with health advice, doctors, health centres, or benefits?"
-              : "नमस्कार! मी आपला आरोग्य सहाय्यक आहे. मी आरोग्य मार्गदर्शन, डॉक्टर सल्ला, जवळचे आरोग्य केंद्र आणि शासकीय योजना याविषयी मदत करू शकतो.";
+            const welcomeText = t("chat.welcome_message");
 
             setMessages([
               {
@@ -130,16 +123,17 @@ export const AssistantScreen: React.FC<AssistantScreenProps> = ({
                 structured_payload: {
                   purpose: "GREETING",
                   actions: [
-                    { type: "HEALTH_HELP", action: "HEALTH_HELP", label: isHi ? "स्वास्थ्य समस्या बताएं" : (isEn ? "Health Help & Guidance" : "आरोग्य मार्गदर्शन मिळवा"), style: "PRIMARY" },
-                    { type: "SPEAK_TO_DOCTOR", action: "SPEAK_TO_DOCTOR", label: isHi ? "डॉक्टर से बात करें" : (isEn ? "Speak to Doctor" : "डॉक्टरांशी बोला"), style: "SECONDARY" },
-                    { type: "FIND_FACILITY", action: "FIND_FACILITY", label: isHi ? "स्वास्थ्य केंद्र खोजें" : (isEn ? "Find Health Centre" : "जवळचे आरोग्य केंद्र"), style: "OUTLINE" },
-                    { type: "CHECK_SCHEMES", action: "CHECK_SCHEMES", label: isHi ? "आयुष्मान भारत योजना" : (isEn ? "Ayushman Bharat Benefits" : "आयुष्यमान भारत योजना"), style: "OUTLINE" }
+                    { type: "HEALTH_HELP", action: "HEALTH_HELP", style: "PRIMARY" },
+                    { type: "SPEAK_TO_DOCTOR", action: "SPEAK_TO_DOCTOR", style: "SECONDARY" },
+                    { type: "FIND_FACILITY", action: "FIND_FACILITY", style: "OUTLINE" },
+                    { type: "CHECK_SCHEMES", action: "CHECK_SCHEMES", style: "OUTLINE" }
                   ],
-                  suggested_replies: isHi
-                    ? ["मुझे बुखार है", "डॉक्टर से बात करनी है", "नजदीकी अस्पताल खोजें", "आयुष्मान भारत योजना"]
-                    : isEn
-                    ? ["I have fever", "I want a doctor", "Find a hospital", "Check Ayushman Bharat"]
-                    : ["मला ताप आहे", "मला डॉक्टर हवे आहेत", "जवळचे रुग्णालय शोधा", "आयुष्यमान भारत योजना"]
+                  suggested_replies: [
+                    "HIGH_FEVER_2_DAYS",
+                    "SPEAK_TO_DOCTOR",
+                    "FIND_HEALTH_CENTRE",
+                    "CHECK_SCHEMES"
+                  ]
                 },
                 confirmation_status: "CONFIRMED",
                 created_at: new Date().toISOString()
@@ -151,13 +145,7 @@ export const AssistantScreen: React.FC<AssistantScreenProps> = ({
         console.error("Failed to load or initialize chat session:", err);
         // Local fallback session
         if (isMounted) {
-          const isHi = i18n.language?.startsWith("hi");
-          const isEn = i18n.language?.startsWith("en");
-          const welcomeText = isHi
-            ? "नमस्ते! मैं आपका आरोग्य सहायक हूँ। आप अपनी स्वास्थ्य समस्या, डॉक्टर परामर्श, नजदीकी स्वास्थ्य केंद्र या सरकारी योजनाओं के बारे में पूछ सकते हैं।"
-            : isEn
-            ? "Hello! I am Aarogya Sahayak. How can I help you today with health advice, doctors, health centres, or benefits?"
-            : "नमस्कार! मी आपला आरोग्य सहाय्यक आहे. मी आरोग्य मार्गदर्शन, डॉक्टर सल्ला, जवळचे आरोग्य केंद्र आणि शासकीय योजना याविषयी मदत करू शकतो.";
+          const welcomeText = t("chat.welcome_message");
 
           setSessionId(`local-${Date.now()}`);
           setMessages([
@@ -171,16 +159,17 @@ export const AssistantScreen: React.FC<AssistantScreenProps> = ({
               structured_payload: {
                 purpose: "GREETING",
                 actions: [
-                  { type: "HEALTH_HELP", action: "HEALTH_HELP", label: isHi ? "स्वास्थ्य समस्या बताएं" : (isEn ? "Health Help & Guidance" : "आरोग्य मार्गदर्शन मिळवा"), style: "PRIMARY" },
-                  { type: "SPEAK_TO_DOCTOR", action: "SPEAK_TO_DOCTOR", label: isHi ? "डॉक्टर से बात करें" : (isEn ? "Speak to Doctor" : "डॉक्टरांशी बोला"), style: "SECONDARY" },
-                  { type: "FIND_FACILITY", action: "FIND_FACILITY", label: isHi ? "स्वास्थ्य केंद्र खोजें" : (isEn ? "Find Health Centre" : "जवळचे आरोग्य केंद्र"), style: "OUTLINE" },
-                  { type: "CHECK_SCHEMES", action: "CHECK_SCHEMES", label: isHi ? "आयुष्मान भारत योजना" : (isEn ? "Ayushman Bharat Benefits" : "आयुष्यमान भारत योजना"), style: "OUTLINE" }
+                  { type: "HEALTH_HELP", action: "HEALTH_HELP", style: "PRIMARY" },
+                  { type: "SPEAK_TO_DOCTOR", action: "SPEAK_TO_DOCTOR", style: "SECONDARY" },
+                  { type: "FIND_FACILITY", action: "FIND_FACILITY", style: "OUTLINE" },
+                  { type: "CHECK_SCHEMES", action: "CHECK_SCHEMES", style: "OUTLINE" }
                 ],
-                suggested_replies: isHi
-                  ? ["मुझे बुखार है", "डॉक्टर से बात करनी है", "नजदीकी अस्पताल खोजें"]
-                  : isEn
-                  ? ["I have fever", "I want a doctor", "Find a hospital"]
-                  : ["मला ताप आहे", "मला डॉक्टर हवे आहेत", "जवळचे रुग्णालय शोधा"]
+                suggested_replies: [
+                  "HIGH_FEVER_2_DAYS",
+                  "SPEAK_TO_DOCTOR",
+                  "FIND_HEALTH_CENTRE",
+                  "CHECK_SCHEMES"
+                ]
               },
               confirmation_status: "CONFIRMED",
               created_at: new Date().toISOString()
@@ -1042,8 +1031,10 @@ export const AssistantScreen: React.FC<AssistantScreenProps> = ({
                         return (
                           <div key={bIdx} style={{ marginTop: 12, display: "flex", flexDirection: "column", gap: 6 }}>
                             {block.actions.map((act: any, idx: number) => {
-                              const isDanger = act.style === "DANGER" || act.type === "EMERGENCY_HELP";
-                              const isPrimary = act.style === "PRIMARY" || act.type === "SPEAK_TO_DOCTOR";
+                              const actCode = act.action || act.type || "";
+                              const isDanger = act.style === "DANGER" || actCode === "EMERGENCY_HELP" || actCode === "CALL_108" || actCode === "CALL_14416";
+                              const isPrimary = act.style === "PRIMARY" || actCode === "SPEAK_TO_DOCTOR";
+                              const translatedLabel = t(`chat.actions.${actCode}`, act.label || actCode);
 
                               return (
                                 <button
@@ -1065,15 +1056,15 @@ export const AssistantScreen: React.FC<AssistantScreenProps> = ({
                                     boxShadow: isDanger ? "0 2px 8px rgba(220,38,38,0.3)" : "none"
                                   }}
                                 >
-                                  {act.type === "EMERGENCY_HELP" && <Phone size={15} />}
-                                  {act.type === "SPEAK_TO_DOCTOR" && <Stethoscope size={15} />}
-                                  {act.type === "REQUEST_ASHA" && <HomeIcon size={15} />}
-                                  {act.type === "CALL_ASHA" && <Phone size={15} />}
-                                  {act.type === "FIND_FACILITY" && <MapPin size={15} />}
-                                  {act.type === "HEALTH_HELP" && <Activity size={15} />}
-                                  {act.type === "CHECK_SCHEMES" && <CheckCircle2 size={15} />}
-                                  {act.type === "VIEW_CARE_RECORD" && <Activity size={15} />}
-                                  <span>{act.label}</span>
+                                  {(actCode === "EMERGENCY_HELP" || actCode === "CALL_108" || actCode === "CALL_14416") && <Phone size={15} />}
+                                  {actCode === "SPEAK_TO_DOCTOR" && <Stethoscope size={15} />}
+                                  {actCode === "REQUEST_ASHA" && <HomeIcon size={15} />}
+                                  {actCode === "CALL_ASHA" && <Phone size={15} />}
+                                  {actCode === "FIND_FACILITY" && <MapPin size={15} />}
+                                  {actCode === "HEALTH_HELP" && <Activity size={15} />}
+                                  {actCode === "CHECK_SCHEMES" && <CheckCircle2 size={15} />}
+                                  {actCode === "VIEW_CARE_RECORD" && <Activity size={15} />}
+                                  <span>{translatedLabel}</span>
                                 </button>
                               );
                             })}
@@ -1088,8 +1079,10 @@ export const AssistantScreen: React.FC<AssistantScreenProps> = ({
                     {(!msg.structured_payload?.blocks || msg.structured_payload.blocks.length === 0) && msg.structured_payload?.actions && msg.structured_payload.actions.length > 0 && (
                       <div style={{ marginTop: 12, display: "flex", flexDirection: "column", gap: 6 }}>
                         {msg.structured_payload.actions.map((act: any, idx: number) => {
-                          const isDanger = act.style === "DANGER" || act.type === "EMERGENCY_HELP";
-                          const isPrimary = act.style === "PRIMARY" || act.type === "SPEAK_TO_DOCTOR";
+                          const actCode = act.action || act.type || "";
+                          const isDanger = act.style === "DANGER" || actCode === "EMERGENCY_HELP" || actCode === "CALL_108" || actCode === "CALL_14416";
+                          const isPrimary = act.style === "PRIMARY" || actCode === "SPEAK_TO_DOCTOR";
+                          const translatedLabel = t(`chat.actions.${actCode}`, act.label || actCode);
 
                           return (
                             <button
@@ -1111,15 +1104,15 @@ export const AssistantScreen: React.FC<AssistantScreenProps> = ({
                                 boxShadow: isDanger ? "0 2px 8px rgba(220,38,38,0.3)" : "none"
                               }}
                             >
-                              {act.type === "EMERGENCY_HELP" && <Phone size={15} />}
-                              {act.type === "SPEAK_TO_DOCTOR" && <Stethoscope size={15} />}
-                              {act.type === "REQUEST_ASHA" && <HomeIcon size={15} />}
-                              {act.type === "CALL_ASHA" && <Phone size={15} />}
-                              {act.type === "FIND_FACILITY" && <MapPin size={15} />}
-                              {act.type === "HEALTH_HELP" && <Activity size={15} />}
-                              {act.type === "CHECK_SCHEMES" && <CheckCircle2 size={15} />}
-                              {act.type === "VIEW_CARE_RECORD" && <Activity size={15} />}
-                              <span>{act.label}</span>
+                              {(actCode === "EMERGENCY_HELP" || actCode === "CALL_108" || actCode === "CALL_14416") && <Phone size={15} />}
+                              {actCode === "SPEAK_TO_DOCTOR" && <Stethoscope size={15} />}
+                              {actCode === "REQUEST_ASHA" && <HomeIcon size={15} />}
+                              {actCode === "CALL_ASHA" && <Phone size={15} />}
+                              {actCode === "FIND_FACILITY" && <MapPin size={15} />}
+                              {actCode === "HEALTH_HELP" && <Activity size={15} />}
+                              {actCode === "CHECK_SCHEMES" && <CheckCircle2 size={15} />}
+                              {actCode === "VIEW_CARE_RECORD" && <Activity size={15} />}
+                              <span>{translatedLabel}</span>
                             </button>
                           );
                         })}
@@ -1129,25 +1122,28 @@ export const AssistantScreen: React.FC<AssistantScreenProps> = ({
                     {/* Contextual Suggested Quick Replies Chips */}
                     {isAssistant && msg.structured_payload?.suggested_replies && msg.structured_payload.suggested_replies.length > 0 && (
                       <div style={{ marginTop: 10, display: "flex", flexWrap: "wrap", gap: 6 }}>
-                        {msg.structured_payload.suggested_replies.map((reply: string, rIdx: number) => (
-                          <button
-                            key={rIdx}
-                            onClick={() => handleQuickReply(reply)}
-                            style={{
-                              padding: "6px 12px",
-                              backgroundColor: "#EFF6FF",
-                              border: "1px solid #93C5FD",
-                              borderRadius: 16,
-                              color: "#1D4ED8",
-                              fontSize: 12,
-                              fontWeight: 700,
-                              cursor: "pointer",
-                              boxShadow: "0 1px 3px rgba(0,0,0,0.05)"
-                            }}
-                          >
-                            💬 {reply}
-                          </button>
-                        ))}
+                        {msg.structured_payload.suggested_replies.map((reply: string, rIdx: number) => {
+                          const translatedReply = t(`chat.quickReplies.${reply}`, reply);
+                          return (
+                            <button
+                              key={rIdx}
+                              onClick={() => handleQuickReply(translatedReply)}
+                              style={{
+                                padding: "6px 12px",
+                                backgroundColor: "#EFF6FF",
+                                border: "1px solid #93C5FD",
+                                borderRadius: 16,
+                                color: "#1D4ED8",
+                                fontSize: 12,
+                                fontWeight: 700,
+                                cursor: "pointer",
+                                boxShadow: "0 1px 3px rgba(0,0,0,0.05)"
+                              }}
+                            >
+                              💬 {translatedReply}
+                            </button>
+                          );
+                        })}
                       </div>
                     )}
 

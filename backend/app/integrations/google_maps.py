@@ -426,6 +426,7 @@ class GoogleMapsAdapter:
                         place_id = first.get("place_id")
                         
                         village = None
+                        locality = None
                         pincode = None
                         block = None
                         district = None
@@ -434,7 +435,9 @@ class GoogleMapsAdapter:
                         for comp in first.get("address_components", []):
                             types = comp.get("types", [])
                             if "locality" in types or "sublocality" in types:
-                                village = comp.get("long_name")
+                                if not village:
+                                    village = comp.get("long_name")
+                                locality = comp.get("long_name")
                             elif "postal_code" in types:
                                 pincode = comp.get("long_name")
                             elif "administrative_area_level_3" in types or "sublocality_level_1" in types:
@@ -447,13 +450,16 @@ class GoogleMapsAdapter:
                         res = {
                             "formatted_address": formatted_address,
                             "village": village,
+                            "locality": locality or village,
                             "pincode": pincode,
+                            "postal_code": pincode,
                             "block": block,
                             "district": district,
                             "state": state or "Maharashtra",
                             "latitude": lat,
                             "longitude": lng,
-                            "place_id": place_id
+                            "place_id": place_id,
+                            "provider": "GOOGLE"
                         }
                         self._set_cache(cache_key, res)
                         return res

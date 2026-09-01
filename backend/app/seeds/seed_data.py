@@ -9,6 +9,11 @@ from app.models import (
 from app.auth.security import get_password_hash
 
 def seed_database():
+    from app.config import settings
+    if settings.ENVIRONMENT.lower() == "production":
+        print("Database seeding is disabled in production environments.")
+        return
+
     db: Session = SessionLocal()
 
     try:
@@ -480,7 +485,7 @@ def seed_database():
             ),
             FollowUp(
                 id="FUP-006",
-                case_id="case-urgent-001",
+                case_id="case-canonical-001",
                 citizen_id="CP-004",
                 source="DOCTOR_ASSIGNED",
                 created_by_id=doctor_user.id,
