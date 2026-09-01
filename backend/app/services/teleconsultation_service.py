@@ -9,7 +9,8 @@ from app.models import (
     CasePriorityEnum, CaseStatusEnum, Consultation, Prescription, PrescriptionItem,
     InvestigationOrder, FollowUp, Notification, Facility, AuditLog, utc_now,
     TeleconsultationRequest, TeleconsultationConsent, TeleconsultationStatusHistory,
-    TeleconsultationMessage, TeleconsultationAttachment, InformationSourceEnum
+    TeleconsultationMessage, TeleconsultationAttachment, InformationSourceEnum,
+    DoctorChatThread, DoctorChatMessage
 )
 from app.schemas.teleconsultation import (
     TeleconsultationDraftCreateDTO, TeleconsultationIntakeUpdateDTO,
@@ -561,7 +562,24 @@ class TeleconsultationService:
         return return_msg
 
     @staticmethod
-    def mark_message_read(db: Session, message_id: str, reader_user_id: Optional[str] = None, reader_role: Optional[str] = None) -> Optional[TeleconsultationMessage]:
+    def mark_message_read(db: Session, message_id: str, reader_user_id: Optional[str] = None, reader_role: Optional[str] = None) -> Optional[Any]:
+        # 1. Check DoctorChatMessage
+        doc_msg = db.query(DoctorChatMessage).filter(DoctorChatMessage.id == message_id).first()
+        if doc_msg:
+            doc_msg.status = "READ"
+            doc_msg.read_at = datetime.now(timezone.utc)
+            db.commit()
+            db.refresh(doc_msg)
+            publish_domain_event("CHAT_MESSAGE_READ", {
+                "message_id": doc_msg.id,
+                "conversation_id": doc_msg.conversation_id,
+                "reader_user_id": reader_user_id,
+                "reader_role": reader_role,
+                "read_at": doc_msg.read_at.isoformat()
+            })
+            return doc_msg
+
+        # 2. Check TeleconsultationMessage
         msg = db.query(TeleconsultationMessage).filter(TeleconsultationMessage.id == message_id).first()
         if not msg:
             return None
@@ -573,7 +591,7 @@ class TeleconsultationService:
 
         publish_domain_event("CHAT_MESSAGE_READ", {
             "message_id": msg.id,
-            "conversation_id": msg.conversation_id or msg.request_id,
+            "conversation_id": getattr(msg, "conversation_id", None) or msg.request_id,
             "reader_user_id": reader_user_id,
             "reader_role": reader_role,
             "read_at": msg.read_at.isoformat()

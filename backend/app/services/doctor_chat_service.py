@@ -303,11 +303,16 @@ class DoctorChatService:
         Retrieves all messages for a thread, merging canonical doctor_chat_messages and any
         matching teleconsultation_messages seamlessly.
         """
-        thread = db.query(DoctorChatThread).filter(DoctorChatThread.id == thread_id).first()
-        srv_id = thread.service_request_id if thread else None
+        thread, srv_req, tele_req = DoctorChatService.resolve_canonical_thread(db, thread_id)
+        canonical_thread_id = thread.id if thread else thread_id
+        srv_id = srv_req.id if srv_req else (thread.service_request_id if thread else None)
+        tele_id = tele_req.id if tele_req else None
 
         # 1. Fetch canonical messages
-        q_canonical = db.query(DoctorChatMessage).filter(DoctorChatMessage.conversation_id == thread_id)
+        q_canonical = db.query(DoctorChatMessage).filter(
+            (DoctorChatMessage.conversation_id == canonical_thread_id) |
+            ((DoctorChatMessage.service_request_id == srv_id) if srv_id else False)
+        )
         if after:
             try:
                 after_dt = datetime.fromisoformat(after.replace("Z", "+00:00"))
@@ -318,13 +323,9 @@ class DoctorChatService:
 
         # 2. Fetch any legacy messages that may have been created directly in teleconsultation_messages
         legacy_msgs = []
-        tele_req = db.query(TeleconsultationRequest).filter(
-            (TeleconsultationRequest.id == thread_id) |
-            ((TeleconsultationRequest.service_request_id == srv_id) if srv_id else False)
-        ).first()
-        if tele_req:
+        if tele_id:
             q_leg = db.query(TeleconsultationMessage).filter(
-                TeleconsultationMessage.request_id == tele_req.id
+                TeleconsultationMessage.request_id == tele_id
             )
             if after:
                 try:
@@ -337,12 +338,16 @@ class DoctorChatService:
         # Deduplicate and combine by client_message_id or message body + timestamp
         seen_client_ids = set()
         seen_ids = set()
+        seen_texts = set()
         results: List[Dict[str, Any]] = []
 
         # Process canonical first
         for m in canonical_msgs:
-            seen_client_ids.add(m.client_message_id)
+            if m.client_message_id:
+                seen_client_ids.add(m.client_message_id)
             seen_ids.add(m.id)
+            if m.body:
+                seen_texts.add((m.body.strip(), m.sender_role))
             deliv_status = getattr(m, "delivery_status", None) or m.status or "DELIVERED"
             results.append({
                 "id": m.id,
@@ -366,12 +371,15 @@ class DoctorChatService:
         # Process legacy, adding any that are not already in canonical
         for lm in legacy_msgs:
             c_id = getattr(lm, "client_message_id", None) or lm.id
-            if c_id in seen_client_ids or lm.id in seen_ids:
-                continue
-            seen_client_ids.add(c_id)
-            seen_ids.add(lm.id)
-
             role = "PHC_DOCTOR" if lm.sender_type == "DOCTOR" else "CITIZEN"
+            text_sig = ((lm.message_text or "").strip(), role)
+            if (c_id and c_id in seen_client_ids) or (lm.id in seen_ids) or (text_sig in seen_texts):
+                continue
+            if c_id:
+                seen_client_ids.add(c_id)
+            seen_ids.add(lm.id)
+            if lm.message_text:
+                seen_texts.add(text_sig)
             results.append({
                 "id": lm.id,
                 "conversation_id": thread_id,

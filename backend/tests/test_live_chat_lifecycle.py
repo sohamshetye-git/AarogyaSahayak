@@ -14,8 +14,9 @@ def test_live_chat_canonical_flow(db_session, doctor_auth_headers, citizen_auth_
     client = TestClient(app)
     
     # 1. Create a Citizen Doctor Request (CHAT mode)
+    fresh_need_id = f"NEED-TEST-{uuid.uuid4().hex[:6]}"
     req_payload = {
-        "need_id": "NEED-1",
+        "need_id": fresh_need_id,
         "beneficiary_id": None,
         "language_code": "en",
         "chief_concern": "Persistent throat ache and mild fever",

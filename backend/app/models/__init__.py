@@ -1050,7 +1050,7 @@ class ServiceRequest(Base):
     id = Column(String(36), primary_key=True, default=generate_uuid)
     request_reference = Column(String(50), unique=True, index=True, nullable=False)
     citizen_id = Column(String(36), ForeignKey("citizen_profiles.id"), nullable=False, index=True)
-    beneficiary_id = Column(String(36), ForeignKey("household_members.id"), nullable=True, index=True)
+    beneficiary_id = Column(String(36), nullable=True, index=True)
     citizen_need_id = Column(String(36), ForeignKey("citizen_needs.id"), nullable=True, index=True)
     need_id = Column(String(36), ForeignKey("citizen_needs.id"), nullable=True, index=True)
     chat_session_id = Column(String(36), ForeignKey("citizen_chat_sessions.id"), nullable=True, index=True)
@@ -1074,7 +1074,7 @@ class ServiceRequest(Base):
     updated_at = Column(DateTime, default=utc_now, onupdate=utc_now)
 
     citizen = relationship("CitizenProfile", back_populates="service_requests")
-    beneficiary = relationship("HouseholdMember", foreign_keys=[beneficiary_id])
+    beneficiary = relationship("HouseholdMember", primaryjoin="ServiceRequest.beneficiary_id == HouseholdMember.id", foreign_keys=[beneficiary_id])
     need = relationship("CitizenNeed", foreign_keys=[need_id])
     case = relationship("Case", foreign_keys=[case_id])
     session = relationship("CitizenChatSession", foreign_keys=[chat_session_id])
@@ -1092,7 +1092,7 @@ class CareHandoff(Base):
     version = Column(Integer, default=1, nullable=False)
     service_request_id = Column(String(36), ForeignKey("service_requests.id"), nullable=True, index=True)
     citizen_id = Column(String(36), ForeignKey("citizen_profiles.id"), nullable=False, index=True)
-    beneficiary_id = Column(String(36), ForeignKey("household_members.id"), nullable=True, index=True)
+    beneficiary_id = Column(String(36), nullable=True, index=True)
     chat_session_id = Column(String(36), ForeignKey("citizen_chat_sessions.id"), nullable=True, index=True)
     citizen_need_id = Column(String(36), ForeignKey("citizen_needs.id"), nullable=True, index=True)
     case_id = Column(String(36), ForeignKey("cases.id"), nullable=True, index=True)
@@ -1110,7 +1110,7 @@ class CareHandoff(Base):
 
     service_request = relationship("ServiceRequest", back_populates="handoffs")
     citizen = relationship("CitizenProfile")
-    beneficiary = relationship("HouseholdMember")
+    beneficiary = relationship("HouseholdMember", primaryjoin="CareHandoff.beneficiary_id == HouseholdMember.id", foreign_keys=[beneficiary_id])
     consent = relationship("SharingConsent")
     case = relationship("Case")
 
@@ -1120,7 +1120,7 @@ class SharingConsent(Base):
 
     id = Column(String(36), primary_key=True, default=generate_uuid)
     citizen_id = Column(String(36), ForeignKey("citizen_profiles.id"), nullable=False, index=True)
-    beneficiary_id = Column(String(36), ForeignKey("household_members.id"), nullable=True, index=True)
+    beneficiary_id = Column(String(36), nullable=True, index=True)
     recipient_role = Column(String(50), nullable=False) # PHC_DOCTOR, ASHA_WORKER
     purpose = Column(String(100), default="CARE_HANDOFF")
     scope = Column(JSON, default=dict) # {share_structured_summary, share_profile, share_location, share_recent_messages, share_existing_health_records}
@@ -1130,7 +1130,7 @@ class SharingConsent(Base):
     revoked_at = Column(DateTime, nullable=True)
 
     citizen = relationship("CitizenProfile")
-    beneficiary = relationship("HouseholdMember")
+    beneficiary = relationship("HouseholdMember", primaryjoin="SharingConsent.beneficiary_id == HouseholdMember.id", foreign_keys=[beneficiary_id])
 
 
 class ServiceRequestStatusHistory(Base):

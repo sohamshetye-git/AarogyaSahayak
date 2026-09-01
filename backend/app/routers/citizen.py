@@ -727,40 +727,9 @@ def get_doctor_request_messages(
         if current_user and (tele_req.citizen and tele_req.citizen.user_id != current_user.id):
             raise HTTPException(status_code=403, detail="Forbidden: You do not have access to these messages")
 
-    q = db.query(TeleconsultationMessage).filter(
-        (TeleconsultationMessage.request_id == tele_req.id) |
-        (TeleconsultationMessage.conversation_id == tele_req.id) |
-        ((TeleconsultationMessage.service_request_id == tele_req.service_request_id) if tele_req.service_request_id else False)
-    )
-
-    if after:
-        try:
-            after_dt = datetime.fromisoformat(after)
-            q = q.filter(TeleconsultationMessage.created_at > after_dt)
-        except Exception:
-            pass
-
-    msgs = q.order_by(TeleconsultationMessage.created_at.asc()).all()
-    results = [
-        {
-            "id": m.id,
-            "conversation_id": m.conversation_id or tele_req.id,
-            "service_request_id": m.service_request_id or tele_req.service_request_id,
-            "sender_user_id": m.sender_user_id,
-            "sender_role": m.sender_role or ("PHC_DOCTOR" if m.sender_type == "DOCTOR" else "CITIZEN"),
-            "sender_type": m.sender_type or ("DOCTOR" if m.sender_role == "PHC_DOCTOR" else "CITIZEN"),
-            "sender_name": m.sender_name or ("Doctor" if m.sender_type == "DOCTOR" else profile.display_name),
-            "message_type": m.message_type or "TEXT",
-            "body": m.body or m.message_text or "",
-            "message_text": m.message_text or m.body or "",
-            "client_message_id": m.client_message_id,
-            "status": m.status or "DELIVERED",
-            "created_at": m.created_at.isoformat() if m.created_at else "",
-            "delivered_at": m.delivered_at.isoformat() if m.delivered_at else None,
-            "read_at": m.read_at.isoformat() if m.read_at else None
-        }
-        for m in msgs
-    ]
+    from app.services.doctor_chat_service import DoctorChatService
+    thread_id = tele_req.id
+    results = DoctorChatService.get_messages(db, thread_id, after=after)
     return StandardResponse(data=results)
 
 @router.post("/doctor/requests/{request_ref}/messages", response_model=StandardResponse)
@@ -800,22 +769,26 @@ def send_citizen_doctor_request_message(
         message_type=dto.message_type or "TEXT"
     )
 
+    s_role = getattr(msg, "sender_role", None) or ("PHC_DOCTOR" if getattr(msg, "sender_type", None) == "DOCTOR" else "CITIZEN")
+    s_type = getattr(msg, "sender_type", None) or ("DOCTOR" if s_role == "PHC_DOCTOR" else "CITIZEN")
+    body_val = getattr(msg, "body", None) or getattr(msg, "message_text", None) or ""
+
     return StandardResponse(data={
         "id": msg.id,
-        "conversation_id": msg.conversation_id or tele_req.id,
-        "service_request_id": msg.service_request_id or tele_req.service_request_id,
-        "sender_user_id": msg.sender_user_id,
-        "sender_role": msg.sender_role,
-        "sender_type": msg.sender_type,
-        "sender_name": msg.sender_name,
-        "message_type": msg.message_type,
-        "body": msg.body,
-        "message_text": msg.message_text,
-        "client_message_id": msg.client_message_id,
-        "status": msg.status,
-        "created_at": msg.created_at.isoformat() if msg.created_at else "",
-        "delivered_at": msg.delivered_at.isoformat() if msg.delivered_at else None,
-        "read_at": msg.read_at.isoformat() if msg.read_at else None
+        "conversation_id": getattr(msg, "conversation_id", None) or tele_req.id,
+        "service_request_id": getattr(msg, "service_request_id", None) or tele_req.service_request_id,
+        "sender_user_id": getattr(msg, "sender_user_id", None) or getattr(msg, "sender_id", None),
+        "sender_role": s_role,
+        "sender_type": s_type,
+        "sender_name": getattr(msg, "sender_name", None) or profile.display_name,
+        "message_type": getattr(msg, "message_type", "TEXT") or "TEXT",
+        "body": body_val,
+        "message_text": body_val,
+        "client_message_id": getattr(msg, "client_message_id", None) or dto.client_message_id,
+        "status": getattr(msg, "status", "DELIVERED"),
+        "created_at": msg.created_at.isoformat() if getattr(msg, "created_at", None) else "",
+        "delivered_at": msg.delivered_at.isoformat() if getattr(msg, "delivered_at", None) else None,
+        "read_at": msg.read_at.isoformat() if getattr(msg, "read_at", None) else None
     })
 
 @router.patch("/messages/{message_id}/read", response_model=StandardResponse)

@@ -8,6 +8,8 @@ import {
 } from "lucide-react";
 import { apiClient } from "@aarogya/api-client";
 
+import { useCitizenAuth } from "../context/CitizenAuthContext";
+
 export interface CareHandoffReviewSheetProps {
   isOpen: boolean;
   onClose: () => void;
@@ -26,6 +28,7 @@ export const CareHandoffReviewSheet: React.FC<CareHandoffReviewSheetProps> = ({
   onSuccess
 }) => {
   const { t, locale } = useLanguage();
+  const { user } = useCitizenAuth();
 
   // Wizard Steps: 1: Beneficiary -> 2: Preview Information -> 3: Channel / Delivery -> 4: Sharing Scope -> 5: Consent & Submit
   const [step, setStep] = useState<number>(1);
@@ -45,8 +48,11 @@ export const CareHandoffReviewSheet: React.FC<CareHandoffReviewSheetProps> = ({
 
   const selectedBeneficiary =
     beneficiaries.find((b) => b.beneficiary_id === selectedBeneficiaryId || b.beneficiaryId === selectedBeneficiaryId) ?? null;
-  const selectedBeneficiaryName =
-    selectedBeneficiary?.display_name || selectedBeneficiary?.displayName || "Myself";
+  const isSelfSelected = !selectedBeneficiary || selectedBeneficiary?.relationship === "SELF";
+  const selfDisplayName = user?.name || (user as any)?.display_name || "Myself";
+  const selectedBeneficiaryName = isSelfSelected
+    ? (selectedBeneficiary?.display_name && selectedBeneficiary.display_name !== "Sunita Devi" ? selectedBeneficiary.display_name : selfDisplayName)
+    : (selectedBeneficiary?.display_name || selectedBeneficiary?.displayName || "Family Member");
 
   // Duplicate match warning state
   const [potentialDuplicateMatch, setPotentialDuplicateMatch] = useState<any>(null);
