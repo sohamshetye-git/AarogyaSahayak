@@ -40,7 +40,7 @@ class Settings(BaseSettings):
     SARVAM_MODE: str = "mock"
     LYZR_MODE: str = "mock"
     GEMINI_MODE: str = "mock"
-    GEMINI_MODEL: str = "gemini-2.5-flash"
+    GEMINI_MODEL: str = "gemini-3.5-flash-lite"
     MILVUS_MODE: str = "mock"
     NEO4J_MODE: str = "mock"
     TAVILY_MODE: str = "mock"

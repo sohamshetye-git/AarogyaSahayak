@@ -375,14 +375,15 @@ class CitizenService:
         ]
 
         # Stage 1: Structured Understanding via Gemini / Rule Fallback
-        understanding, under_mode, parse_ok, fallback_reason = gemini_service.understand_citizen_turn(
+        understanding, under_mode, parse_ok, fallback_reason, req_model_u, succ_model_u, err_status_u = gemini_service.understand_citizen_turn(
             latest_message=confirmed_text,
             recent_messages=recent_msgs_list,
             current_topic=conv_state.current_topic,
             last_assistant_question=conv_state.last_assistant_question,
             confirmed_facts=conv_state.confirmed_facts or {},
             negated_facts=conv_state.negated_facts or [],
-            preferred_language=session.preferred_language or "mr-IN"
+            preferred_language=session.preferred_language or "mr-IN",
+            request_id=request_id
         )
 
         intent = understanding.intent
@@ -567,7 +568,7 @@ class CitizenService:
 
         # Stage 5: Dynamic Gemini Response Generation
         allowed_actions = [a["action"] for a in ConversationEngine.build_dynamic_actions(intent, session.preferred_language or "mr-IN")]
-        dyn_response, resp_mode = gemini_service.generate_dynamic_response(
+        dyn_response, resp_mode, req_model_r, succ_model_r, err_status_r = gemini_service.generate_dynamic_response(
             latest_message=confirmed_text,
             recent_messages=recent_msgs_list,
             understanding=understanding,
@@ -577,13 +578,15 @@ class CitizenService:
             safety_evaluation={"level": safety_level, "reason": reason, "triggered": triggered},
             verified_tool_data=verified_tool_data,
             allowed_action_types=allowed_actions,
-            preferred_language=session.preferred_language or "mr-IN"
+            preferred_language=session.preferred_language or "mr-IN",
+            request_id=request_id
         )
 
         final_text = dyn_response.text
         suggested_replies = dyn_response.suggested_replies or []
         provider_mode = under_mode if under_mode == "GEMINI_LIVE" else resp_mode
         fallback_used = provider_mode != "GEMINI_LIVE"
+        successful_model = succ_model_r or succ_model_u
 
         # Construct intent-tailored UI blocks
         blocks: List[Dict[str, Any]] = []
@@ -694,12 +697,16 @@ class CitizenService:
         telemetry = {
             "request_id": request_id,
             "session_id": session.id,
+            "provider": "GEMINI",
+            "requested_model": req_model_r or req_model_u or settings.GEMINI_MODEL,
+            "successful_model": successful_model,
             "provider_mode": provider_mode,
-            "model_called": provider_mode == "GEMINI_LIVE",
+            "http_status": 200 if provider_mode == "GEMINI_LIVE" else (err_status_r or err_status_u or 500),
+            "fallback_reason": fallback_reason,
+            "latency_ms": turn_latency_ms,
             "intent": intent.value,
             "context_transition": context_trans.value,
             "structured_parse_success": parse_ok,
-            "fallback_reason": fallback_reason,
             "response_strategy": dyn_response.response_type,
             "active_need_id": need.id if need else None
         }
@@ -746,7 +753,11 @@ class CitizenService:
             "provider": {
                 "name": "GEMINI",
                 "mode": provider_mode,
-                "fallback_used": fallback_used
+                "requested_model": req_model_r or req_model_u or settings.GEMINI_MODEL,
+                "successful_model": successful_model,
+                "fallback_used": fallback_used,
+                "fallback_reason": fallback_reason,
+                "latency_ms": turn_latency_ms
             }
         }
 

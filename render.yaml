@@ -30,6 +30,8 @@ services:
         value: "123456"
       - key: GEMINI_MODE
         value: live
+      - key: GEMINI_MODEL
+        value: gemini-3.5-flash-lite
       - key: SARVAM_MODE
         value: live
       - key: TAVILY_MODE

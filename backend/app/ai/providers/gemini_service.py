@@ -78,13 +78,11 @@ class GeminiService:
         configured = settings.GEMINI_MODEL
         candidates = [
             configured,
-            "gemini-3.5-flash",
             "gemini-3.5-flash-lite",
             "gemini-3.1-flash-lite",
-            "gemini-2.5-flash",
-            "gemini-flash-latest"
+            "gemini-3.5-flash"
         ]
-        # De-duplicate while preserving order
+        # De-duplicate while preserving pinned order
         return list(dict.fromkeys([m for m in candidates if m]))
 
     def understand_citizen_turn(
@@ -95,18 +93,23 @@ class GeminiService:
         last_assistant_question: Optional[str] = None,
         confirmed_facts: Optional[Dict[str, Any]] = None,
         negated_facts: Optional[List[str]] = None,
-        preferred_language: str = "mr-IN"
-    ) -> Tuple[CitizenUnderstandingOutput, str, bool, Optional[str]]:
+        preferred_language: str = "mr-IN",
+        request_id: Optional[str] = None
+    ) -> Tuple[CitizenUnderstandingOutput, str, bool, Optional[str], Optional[str], Optional[str], Optional[int]]:
         """
         Stage 1: Multi-turn Structured Understanding via Gemini with strict Pydantic validation.
         Classifies intent (33 intents), context transition (11 transitions), extracts facts/negations/goals.
-        Returns (understanding_output, provider_mode, structured_parse_success, fallback_reason)
+        Returns (understanding_output, provider_mode, structured_parse_success, fallback_reason, requested_model, successful_model, error_status)
         """
         masked_msg, _ = PIIMasker.mask_text(latest_message)
         masked_history = []
         for m in recent_messages[-8:]:
             masked_t, _ = PIIMasker.mask_text(m.get("text", "") or m.get("original_text", "") or "")
             masked_history.append({"sender": m.get("sender", "USER"), "text": masked_t})
+
+        req_id = request_id or f"req-{uuid.uuid4().hex[:8]}"
+        last_attempted_model = None
+        last_err_status = None
 
         if self._is_live and self._client:
             models = self._get_candidate_models()
@@ -138,6 +141,8 @@ class GeminiService:
             )
 
             for model_name in models:
+                last_attempted_model = model_name
+                t_call_start = time.time()
                 try:
                     resp = self._client.models.generate_content(
                         model=model_name,
@@ -147,11 +152,11 @@ class GeminiService:
                             temperature=0.0
                         )
                     )
+                    call_latency_ms = round((time.time() - t_call_start) * 1000, 2)
                     raw_text = resp.text.strip()
                     try:
                         understanding = CitizenUnderstandingOutput.model_validate_json(raw_text)
                     except Exception as parse_err:
-                        # Attempt 1 retry with JSON repair
                         repair_prompt = f"Repair this invalid JSON to match the CitizenUnderstandingOutput schema strictly:\n{raw_text}"
                         resp_repair = self._client.models.generate_content(
                             model=model_name,
@@ -164,7 +169,6 @@ class GeminiService:
                         understanding = CitizenUnderstandingOutput.model_validate_json(resp_repair.text)
 
                     # Post-process extract temperature if present in utterance and missed by LLM
-                    import re
                     m_temp = re.search(r'\b(9\d(?:\.\d+)?|10\d(?:\.\d+)?)\s*(?:°|deg|degree|f|fahrenheit)?\b', masked_msg, re.IGNORECASE)
                     if m_temp and not understanding.new_facts.temperature_f:
                         try:
@@ -174,20 +178,85 @@ class GeminiService:
                         except Exception:
                             pass
 
-                    return understanding, "GEMINI_LIVE", True, None
+                    # Safe structured telemetry (Zero PII)
+                    logger.info(json.dumps({
+                        "event": "gemini_provider_call",
+                        "stage": "UNDERSTANDING",
+                        "request_id": req_id,
+                        "provider": "GEMINI",
+                        "requested_model": models[0],
+                        "successful_model": model_name,
+                        "provider_mode": "GEMINI_LIVE",
+                        "http_status": 200,
+                        "fallback_reason": None,
+                        "latency_ms": call_latency_ms
+                    }))
+
+                    return understanding, "GEMINI_LIVE", True, None, models[0], model_name, 200
+
                 except Exception as e:
+                    call_latency_ms = round((time.time() - t_call_start) * 1000, 2)
                     err_str = str(e).lower()
-                    if "429" in err_str or "quota" in err_str:
+                    status_code = 500
+                    if "401" in err_str or "unauthenticated" in err_str:
+                        status_code = 401
+                        self._last_error_category = "UNAUTHENTICATED"
+                    elif "403" in err_str or "permission_denied" in err_str:
+                        status_code = 403
+                        self._last_error_category = "PERMISSION_DENIED"
+                    elif "404" in err_str or "not_found" in err_str:
+                        status_code = 404
+                        self._last_error_category = "MODEL_NOT_FOUND"
+                    elif "429" in err_str or "quota" in err_str or "resource_exhausted" in err_str:
+                        status_code = 429
                         self._last_error_category = "RATE_LIMITED"
-                    elif "503" in err_str:
+                    elif "503" in err_str or "unavailable" in err_str:
+                        status_code = 503
                         self._last_error_category = "SERVICE_UNAVAILABLE"
+                    elif "timeout" in err_str or "timed out" in err_str:
+                        status_code = 504
+                        self._last_error_category = "TIMEOUT"
                     else:
                         self._last_error_category = "API_ERROR"
+
+                    last_err_status = status_code
+
+                    logger.warning(json.dumps({
+                        "event": "gemini_provider_error",
+                        "stage": "UNDERSTANDING",
+                        "request_id": req_id,
+                        "provider": "GEMINI",
+                        "requested_model": model_name,
+                        "provider_mode": "FALLBACK_ATTEMPT",
+                        "http_status": status_code,
+                        "error_category": self._last_error_category,
+                        "fallback_reason": f"Model {model_name} failed: HTTP {status_code}",
+                        "latency_ms": call_latency_ms
+                    }))
+
+                    # Non-retryable auth/permission errors should break immediately without calling all fallback models
+                    if status_code in (401, 403):
+                        break
                     continue
+
+        # Safe fallback telemetry
+        fallback_reason = self._last_error_category or "GEMINI_UNAVAILABLE"
+        logger.info(json.dumps({
+            "event": "gemini_provider_fallback",
+            "stage": "UNDERSTANDING",
+            "request_id": req_id,
+            "provider": "GEMINI",
+            "requested_model": last_attempted_model or settings.GEMINI_MODEL,
+            "successful_model": None,
+            "provider_mode": "LIMITED_FALLBACK",
+            "http_status": last_err_status,
+            "fallback_reason": fallback_reason,
+            "latency_ms": 0.0
+        }))
 
         # Rule fallback understanding when Gemini unavailable
         fallback_understanding = self._fallback_understand(masked_msg, last_assistant_question, current_topic, preferred_language)
-        return fallback_understanding, "LIMITED_FALLBACK", False, self._last_error_category or "GEMINI_UNAVAILABLE"
+        return fallback_understanding, "LIMITED_FALLBACK", False, fallback_reason, (last_attempted_model or settings.GEMINI_MODEL), None, last_err_status
 
     def _fallback_understand(
         self,
@@ -282,17 +351,23 @@ class GeminiService:
         safety_evaluation: Dict[str, Any],
         verified_tool_data: Optional[Dict[str, Any]],
         allowed_action_types: List[str],
-        preferred_language: str = "mr-IN"
-    ) -> Tuple[CitizenDynamicResponseOutput, str]:
+        preferred_language: str = "mr-IN",
+        request_id: Optional[str] = None
+    ) -> Tuple[CitizenDynamicResponseOutput, str, Optional[str], Optional[str], Optional[int]]:
         """
         Stage 2: Multilingual Contextual Response Generation with Gemini.
         Genuinely understands and answers the citizen's actual message in context.
+        Returns (dynamic_response, provider_mode, requested_model, successful_model, http_status)
         """
         masked_msg, _ = PIIMasker.mask_text(latest_message)
         masked_history = []
         for m in recent_messages[-8:]:
             masked_t, _ = PIIMasker.mask_text(m.get("text", "") or m.get("original_text", "") or "")
             masked_history.append({"sender": m.get("sender", "USER"), "text": masked_t})
+
+        req_id = request_id or f"req-{uuid.uuid4().hex[:8]}"
+        last_attempted_model = None
+        last_err_status = None
 
         if self._is_live and self._client:
             models = self._get_candidate_models()
@@ -349,6 +424,8 @@ class GeminiService:
             )
 
             for model_name in models:
+                last_attempted_model = model_name
+                t_call_start = time.time()
                 try:
                     resp = self._client.models.generate_content(
                         model=model_name,
@@ -358,6 +435,7 @@ class GeminiService:
                             temperature=0.2
                         )
                     )
+                    call_latency_ms = round((time.time() - t_call_start) * 1000, 2)
                     raw_text = resp.text.strip()
                     try:
                         dyn_resp = CitizenDynamicResponseOutput.model_validate_json(raw_text)
@@ -393,18 +471,81 @@ class GeminiService:
                         )
                         dyn_retry = CitizenDynamicResponseOutput.model_validate_json(resp_retry.text.strip())
                         if self._validate_response_script(dyn_retry.text, preferred_language):
-                            return dyn_retry, "GEMINI_LIVE"
+                            dyn_resp = dyn_retry
 
-                    return dyn_resp, "GEMINI_LIVE"
+                    logger.info(json.dumps({
+                        "event": "gemini_provider_call",
+                        "stage": "DYNAMIC_RESPONSE",
+                        "request_id": req_id,
+                        "provider": "GEMINI",
+                        "requested_model": models[0],
+                        "successful_model": model_name,
+                        "provider_mode": "GEMINI_LIVE",
+                        "http_status": 200,
+                        "fallback_reason": None,
+                        "latency_ms": call_latency_ms
+                    }))
+
+                    return dyn_resp, "GEMINI_LIVE", models[0], model_name, 200
+
                 except Exception as e:
+                    call_latency_ms = round((time.time() - t_call_start) * 1000, 2)
                     err_str = str(e).lower()
-                    if "429" in err_str or "quota" in err_str:
+                    status_code = 500
+                    if "401" in err_str or "unauthenticated" in err_str:
+                        status_code = 401
+                        self._last_error_category = "UNAUTHENTICATED"
+                    elif "403" in err_str or "permission_denied" in err_str:
+                        status_code = 403
+                        self._last_error_category = "PERMISSION_DENIED"
+                    elif "404" in err_str or "not_found" in err_str:
+                        status_code = 404
+                        self._last_error_category = "MODEL_NOT_FOUND"
+                    elif "429" in err_str or "quota" in err_str or "resource_exhausted" in err_str:
+                        status_code = 429
                         self._last_error_category = "RATE_LIMITED"
-                    elif "503" in err_str:
+                    elif "503" in err_str or "unavailable" in err_str:
+                        status_code = 503
                         self._last_error_category = "SERVICE_UNAVAILABLE"
+                    elif "timeout" in err_str or "timed out" in err_str:
+                        status_code = 504
+                        self._last_error_category = "TIMEOUT"
                     else:
                         self._last_error_category = "API_ERROR"
+
+                    last_err_status = status_code
+
+                    logger.warning(json.dumps({
+                        "event": "gemini_provider_error",
+                        "stage": "DYNAMIC_RESPONSE",
+                        "request_id": req_id,
+                        "provider": "GEMINI",
+                        "requested_model": model_name,
+                        "provider_mode": "FALLBACK_ATTEMPT",
+                        "http_status": status_code,
+                        "error_category": self._last_error_category,
+                        "fallback_reason": f"Model {model_name} failed: HTTP {status_code}",
+                        "latency_ms": call_latency_ms
+                    }))
+
+                    # Non-retryable auth/permission errors should break immediately without calling all fallback models
+                    if status_code in (401, 403):
+                        break
                     continue
+
+        fallback_reason = self._last_error_category or "GEMINI_UNAVAILABLE"
+        logger.info(json.dumps({
+            "event": "gemini_provider_fallback",
+            "stage": "DYNAMIC_RESPONSE",
+            "request_id": req_id,
+            "provider": "GEMINI",
+            "requested_model": last_attempted_model or settings.GEMINI_MODEL,
+            "successful_model": None,
+            "provider_mode": "LIMITED_FALLBACK",
+            "http_status": last_err_status,
+            "fallback_reason": fallback_reason,
+            "latency_ms": 0.0
+        }))
 
         # Honest Limited Fallback Mode (does NOT pretend to be AI text)
         fallback_resp = self._fallback_dynamic_response(
@@ -414,7 +555,7 @@ class GeminiService:
             verified_tool_data=verified_tool_data,
             language=preferred_language
         )
-        return fallback_resp, "LIMITED_FALLBACK"
+        return fallback_resp, "LIMITED_FALLBACK", (last_attempted_model or settings.GEMINI_MODEL), None, last_err_status
 
     def _validate_response_script(self, text: str, locale: str) -> bool:
         """Validates that text matches expected native script ranges for the requested locale."""
