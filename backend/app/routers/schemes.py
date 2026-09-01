@@ -478,21 +478,20 @@ def record_verification(
     db.commit()
     return {'status': 'SUCCESS', 'verification_id': v.verification_id, 'message': 'Official verification recorded successfully'}
 
-@router.get('/admin/source-health')
-def get_source_health(db: Session = Depends(get_db)):
-    sources = db.query(SourceDocumentModel).all()
-    return {
-        'status': 'SUCCESS',
-        'total_sources': len(sources),
-        'sources': [
-            {
-                'source_code': s.source_code,
-                'title': s.title,
-                'authority_name': s.authority_name,
-                'official_url': s.official_url,
-                'review_state': s.review_state,
-                'last_verified': s.last_verified
-            }
-            for s in sources
-        ]
-    }
+@router.post('/admin/populate-catalog')
+def populate_schemes_catalog(db: Session = Depends(get_db)):
+    """
+    Admin maintenance endpoint to populate / sync the government health schemes catalog knowledge base into PostgreSQL.
+    """
+    from app.schemes.import_kb import import_knowledge_base
+    try:
+        import_knowledge_base(db_session=db)
+        count = db.query(SchemeModel).count()
+        return {
+            'status': 'SUCCESS',
+            'message': f'Successfully populated government schemes knowledge base. Total schemes: {count}',
+            'total_schemes': count
+        }
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f'Failed to populate schemes catalog: {e}')
