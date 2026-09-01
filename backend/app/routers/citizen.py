@@ -250,10 +250,17 @@ def submit_citizen_onboarding(
             detail={"code": "ONBOARDING_FAILED", "message": str(e)}
         )
     except Exception as e:
+        req_id = generate_uuid()
+        logger.exception("Unexpected error during citizen onboarding [req_id=%s]: %s", req_id, str(e))
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail={"code": "INTERNAL_ERROR", "message": str(e)}
+            detail={
+                "code": "ONBOARDING_ERROR",
+                "message": "Registration could not be completed. Please try again.",
+                "request_id": req_id
+            }
         )
+
 
 @router.get("/authorized-beneficiaries", response_model=StandardResponse)
 def get_authorized_beneficiaries(

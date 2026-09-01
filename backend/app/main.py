@@ -102,7 +102,7 @@ async def add_request_id_middleware(request: Request, call_next):
 @app.exception_handler(Exception)
 async def generic_exception_handler(request: Request, exc: Exception):
     request_id = getattr(request.state, "request_id", str(uuid.uuid4()))
-    logger.error(f"Unhandled Exception on {request.method} {request.url.path}: {exc}", exc_info=True)
+    logger.error(f"Unhandled Exception on {request.method} {request.url.path} [request_id={request_id}]: {exc}", exc_info=True)
     origin = request.headers.get("origin", "*")
     return JSONResponse(
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -115,12 +115,12 @@ async def generic_exception_handler(request: Request, exc: Exception):
         content={
             "error": {
                 "code": "SERVER_ERROR",
-                "message": "An internal error occurred. Please retry.",
-                "detail": str(exc)
+                "message": "Registration or service request could not be completed. Please try again."
             },
             "request_id": request_id
         }
     )
+
 
 from app.routers import auth, citizen, asha, doctor, doctor_chat, doctor_prescriptions, doctor_alerts, admin, reports, websocket, ai, schemes, locations, voice
 
