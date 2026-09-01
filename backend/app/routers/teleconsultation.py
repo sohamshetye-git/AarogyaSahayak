@@ -98,6 +98,19 @@ def cancel_request(
     res = TeleconsultationService.cancel_request(db, request_id, profile.id)
     return StandardResponse(data=res)
 
+@router.get("/{request_id}/conversation", response_model=StandardResponse)
+def get_request_conversation(
+    request_id: str,
+    db: Session = Depends(get_db),
+    current_user: Optional[User] = Depends(get_optional_user)
+):
+    profile = CitizenService.get_or_create_default_profile(db, current_user)
+    tele_req, _ = TeleconsultationService.resolve_canonical_request(db, request_id)
+    if not tele_req:
+        raise HTTPException(status_code=404, detail="Request not found")
+    detail = TeleconsultationService.get_request_detail(db, tele_req.id, profile.id)
+    return StandardResponse(data=detail)
+
 @router.post("/{request_id}/messages", response_model=StandardResponse)
 def send_message(
     request_id: str,
@@ -106,17 +119,34 @@ def send_message(
     current_user: Optional[User] = Depends(get_optional_user)
 ):
     profile = CitizenService.get_or_create_default_profile(db, current_user)
+    body_text = dto.body or dto.message_text or ""
+    if not body_text.strip():
+        raise HTTPException(status_code=400, detail="Message text cannot be empty")
+
     msg = TeleconsultationService.send_message(
-        db, request_id,
+        db=db,
+        request_id=request_id,
         sender_type="CITIZEN",
+        sender_role="CITIZEN",
         sender_name=profile.display_name,
-        message_text=dto.message_text,
-        sender_id=profile.id
+        message_text=body_text,
+        sender_id=profile.id,
+        client_message_id=dto.client_message_id,
+        message_type=dto.message_type or "TEXT"
     )
     return StandardResponse(data={
         "id": msg.id,
-        "message_text": msg.message_text,
-        "created_at": msg.created_at.isoformat()
+        "conversation_id": getattr(msg, "conversation_id", None) or getattr(msg, "request_id", None),
+        "service_request_id": getattr(msg, "service_request_id", None),
+        "sender_user_id": getattr(msg, "sender_user_id", None) or getattr(msg, "sender_id", None),
+        "sender_role": getattr(msg, "sender_role", None) or getattr(msg, "sender_type", None),
+        "sender_name": getattr(msg, "sender_name", None),
+        "message_type": getattr(msg, "message_type", "TEXT"),
+        "body": getattr(msg, "body", None) or getattr(msg, "message_text", None),
+        "message_text": getattr(msg, "message_text", None),
+        "client_message_id": getattr(msg, "client_message_id", None),
+        "status": getattr(msg, "status", "SENT"),
+        "created_at": msg.created_at.isoformat() if getattr(msg, "created_at", None) else ""
     })
 
 @router.post("/{request_id}/update-symptoms", response_model=StandardResponse)

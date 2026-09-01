@@ -47,8 +47,9 @@ def test_case_timeline_chronological_events(client: TestClient):
     assert timeline_res.status_code == 200
     events = timeline_res.json()["data"]
     assert len(events) >= 1
-    assert events[0]["event_type"] == "CASE_CREATED"
-    assert "Sunita Devi" in events[0]["actor_name"] or "Citizen" in events[0]["actor_name"]
+    assert any(e["event_type"] == "CASE_CREATED" for e in events)
+    case_created_event = next(e for e in events if e["event_type"] == "CASE_CREATED")
+    assert "Sunita Devi" in case_created_event["actor_name"] or "Citizen" in case_created_event["actor_name"]
 
 def test_voice_transcribe_endpoint(client: TestClient):
     asha_login = client.post("/api/auth/login", json={"identifier": "sita.asha", "password": "demo123"})

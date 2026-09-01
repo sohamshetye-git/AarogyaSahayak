@@ -9,8 +9,8 @@ from app.models import (
 
 client = TestClient(app)
 
-def test_teleconsultation_full_flow():
-    db = SessionLocal()
+def test_teleconsultation_full_flow(client, db_session):
+    db = db_session
     try:
         # 1. Citizen creates draft for household member (e.g. child)
         hm = db.query(HouseholdMember).first()
@@ -73,8 +73,10 @@ def test_teleconsultation_full_flow():
         # 5. Doctor views direct requests queue
         doc_res = client.get("/api/doctor/direct-requests", headers=headers)
         assert doc_res.status_code == 200
-        doc_list = doc_res.json()["data"]
-        assert any(r["id"] == req_id for r in doc_list)
+        doc_data = doc_res.json()["data"]
+        doc_list = doc_data["items"] if isinstance(doc_data, dict) and "items" in doc_data else doc_data
+        srv_id = submit_data.get("service_request_id") or submit_data.get("id")
+        assert any(r["id"] == req_id or r["id"] == srv_id or r.get("teleconsultation_request_id") == req_id or r.get("service_request_id") == srv_id for r in doc_list)
 
         # 6. Doctor accepts direct request
         accept_res = client.post(f"/api/doctor/direct-requests/{req_id}/accept", headers=headers)

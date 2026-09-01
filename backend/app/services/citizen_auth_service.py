@@ -153,7 +153,7 @@ class CitizenAuthService:
         p_hash = hash_phone(phone_normalized)
         now = utc_now()
 
-        # 1. Check Resend Cooldown
+        # 1. Check Resend Cooldown (only for unconsumed active OTP challenges)
         cooldown_threshold = now - timedelta(seconds=settings.OTP_RESEND_COOLDOWN_SECONDS)
         challenges = db.query(OtpChallenge).filter(
             OtpChallenge.phone_hash == p_hash
@@ -161,11 +161,12 @@ class CitizenAuthService:
 
         if challenges:
             latest = challenges[0]
-            latest_created = _ensure_utc(latest.created_at)
-            if latest_created >= cooldown_threshold:
-                seconds_left = int((latest_created + timedelta(seconds=settings.OTP_RESEND_COOLDOWN_SECONDS) - now).total_seconds())
-                if seconds_left > 0:
-                    raise ValueError(f"Please wait {seconds_left} seconds before requesting a new OTP")
+            if latest.consumed_at is None:
+                latest_created = _ensure_utc(latest.created_at)
+                if latest_created >= cooldown_threshold:
+                    seconds_left = int((latest_created + timedelta(seconds=settings.OTP_RESEND_COOLDOWN_SECONDS) - now).total_seconds())
+                    if seconds_left > 0:
+                        raise ValueError(f"Please wait {seconds_left} seconds before requesting a new OTP")
 
         # 2. Rate limiting check (max 5 requests per hour)
         hour_threshold = now - timedelta(hours=1)
@@ -179,7 +180,7 @@ class CitizenAuthService:
         # 3. Generate 6-digit OTP code
         otp_mode = (settings.OTP_MODE or "MOCK").upper()
         env = (settings.ENVIRONMENT or "").lower()
-        if otp_mode == "MOCK" and env in ["development", "test"]:
+        if otp_mode == "MOCK" and env in ["development", "test", "staging"]:
             otp_code = settings.OTP_TEST_CODE or "123456"
         else:
             # Cryptographically secure 6-digit random number
@@ -223,8 +224,8 @@ class CitizenAuthService:
             "provider": provider_res.get("provider", "SMS")
         }
 
-        # ONLY return mock_code in dev/test when OTP_MODE=MOCK for local testing ease
-        if otp_mode == "MOCK" and env in ["development", "test"]:
+        # ONLY return mock_code in dev/test/staging when OTP_MODE=MOCK for local/demo testing ease
+        if otp_mode == "MOCK" and env in ["development", "test", "staging"]:
             response_data["mock_code"] = otp_code
 
         return response_data

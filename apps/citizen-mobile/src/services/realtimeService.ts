@@ -19,6 +19,16 @@ class RealtimeService {
     };
   }
 
+  private notifySubscribers(event: string, data: any) {
+    this.subscribers.forEach((handler) => {
+      try {
+        handler(event, data);
+      } catch (err) {
+        console.error("Error in realtime event handler:", err);
+      }
+    });
+  }
+
   public async connect(userId?: string) {
     if (this.isConnecting || (this.ws && this.ws.readyState === WebSocket.OPEN)) {
       return;
@@ -33,7 +43,7 @@ class RealtimeService {
     try {
       // Step 1: Request short-lived one-time ticket from backend
       const res = await apiClient.request<any>("/realtime/ticket", { method: "POST" });
-      const { ticket } = res;
+      const { ticket } = res?.data || res || {};
 
       if (!ticket) {
         throw new Error("No ticket returned from realtime ticket endpoint");
@@ -47,7 +57,7 @@ class RealtimeService {
       } else {
         const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
         const host = window.location.hostname;
-        const port = "8000"; // Backend port
+        const port = "8000";
         baseWsUrl = `${protocol}//${host}:${port}`;
       }
       const wsUrl = `${baseWsUrl}/api/ws?ticket=${ticket}`;
@@ -64,16 +74,14 @@ class RealtimeService {
         try {
           const msg = JSON.parse(event.data);
           const eventName = msg.event;
-          const eventData = msg.data;
+          const eventData = msg.data || msg;
 
-          // Event deduplication check
-          const eventKey = `${eventName}_${eventData?.case_id || ""}_${msg.timestamp || Date.now()}`;
+          const eventKey = `${eventName}_${eventData?.id || eventData?.message_id || eventData?.client_message_id || msg.timestamp || Math.random()}`;
           if (this.processedEventIds.has(eventKey)) {
             return;
           }
           this.processedEventIds.add(eventKey);
-          if (this.processedEventIds.size > 200) {
-            // Trim set
+          if (this.processedEventIds.size > 300) {
             const first = this.processedEventIds.values().next().value;
             if (first) this.processedEventIds.delete(first);
           }
@@ -104,14 +112,11 @@ class RealtimeService {
   private scheduleReconnect() {
     if (this.reconnectTimeout) clearTimeout(this.reconnectTimeout);
     
-    // Exponential backoff with jitter
     const delay = Math.min(1000 * Math.pow(2, this.reconnectAttempts) + Math.random() * 500, this.maxReconnectDelay);
     this.reconnectAttempts++;
 
     this.reconnectTimeout = setTimeout(() => {
-      if (this.currentUserId) {
-        this.connect(this.currentUserId);
-      }
+      this.connect(this.currentUserId || undefined);
     }, delay);
   }
 
@@ -125,18 +130,7 @@ class RealtimeService {
       this.ws.close();
       this.ws = null;
     }
-    this.processedEventIds.clear();
     this.notifySubscribers("REALTIME_STATE", { status: "DISCONNECTED" });
-  }
-
-  private notifySubscribers(event: string, data: any) {
-    this.subscribers.forEach((handler) => {
-      try {
-        handler(event, data);
-      } catch (err) {
-        console.error("Error in realtime subscriber:", err);
-      }
-    });
   }
 }
 

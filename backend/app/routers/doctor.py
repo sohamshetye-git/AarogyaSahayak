@@ -15,6 +15,7 @@ from app.schemas import (
     StartOrResumeConsultationRequest, InvestigationOrderCreateInput, SampleCollectInput,
     ResultEntryInput, CriticalAcknowledgeInput, DoctorReviewInput, RecollectionRequestInput
 )
+from app.schemas.teleconsultation import TeleconsultationMessageCreateDTO
 from app.dependencies import get_current_user, require_doctor, require_staff
 from app.services.consultation_service import ConsultationService
 from app.services.referral_service import ReferralService
@@ -3490,29 +3491,75 @@ def request_doctor_demographic_update(
 # DIRECT CITIZEN REQUESTS (Teleconsultations)
 # =========================================================================
 
+def _get_doctor_facility_id(current_user: User) -> Optional[str]:
+    if current_user and current_user.worker_profile and current_user.worker_profile.facility_id:
+        return current_user.worker_profile.facility_id
+    return None
+
+def _is_doctor_authorized_for_request(current_user: User, srv_req: Any) -> bool:
+    doc_fac = _get_doctor_facility_id(current_user)
+    if srv_req.assigned_user_id == current_user.id:
+        return True
+    if doc_fac and srv_req.assigned_facility_id == doc_fac:
+        return True
+    return False
+
 @router.get("/direct-requests", response_model=StandardResponse)
 def get_doctor_direct_requests(
     status: Optional[str] = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_staff)
 ):
-    from app.models import ServiceRequest, CareHandoff, CitizenProfile, TeleconsultationRequest
-    from app.services.teleconsultation_service import TeleconsultationService
+    from app.models import (
+        ServiceRequest, CareHandoff, CitizenProfile, TeleconsultationRequest,
+        TeleconsultationMessage, DoctorChatThread, DoctorChatMessage
+    )
 
-    # 1. Fetch from TeleconsultationRequest
-    tele_items = TeleconsultationService.list_doctor_requests(db, status_filter=status, doctor_id=current_user.id)
+    doc_facility_id = _get_doctor_facility_id(current_user)
 
-    # 2. Fetch from ServiceRequest
-    srv_query = db.query(ServiceRequest).filter(
+    # 1. Base query scoped by doctor's facility or assigned user
+    base_query = db.query(ServiceRequest).filter(
         ServiceRequest.request_type == "DOCTOR_CONSULTATION"
     )
 
+    if doc_facility_id:
+        base_query = base_query.filter(
+            (ServiceRequest.assigned_facility_id == doc_facility_id) |
+            (ServiceRequest.assigned_facility_id.is_(None)) |
+            (ServiceRequest.assigned_user_id == current_user.id)
+        )
+    else:
+        # Isolated doctor without assigned facility can only see directly assigned requests
+        base_query = base_query.filter(ServiceRequest.assigned_user_id == current_user.id)
+
+    # Fetch all facility requests for accurate aggregate summary counts
+    all_facility_reqs = base_query.all()
+
+    waiting_cnt = sum(1 for r in all_facility_reqs if r.status in ["WAITING_FOR_DOCTOR", "SUBMITTED", "PENDING"])
+    urgent_cnt = sum(1 for r in all_facility_reqs if r.priority in ["EMERGENCY", "URGENT", "HIGH"] and r.status not in ["COMPLETED", "CANCELLED"])
+    accepted_cnt = sum(1 for r in all_facility_reqs if r.status == "DOCTOR_ACCEPTED")
+    in_consultation_cnt = sum(1 for r in all_facility_reqs if r.status == "IN_CONSULTATION")
+    completed_cnt = sum(1 for r in all_facility_reqs if r.status == "COMPLETED")
+
+    counts_payload = {
+        "waiting": waiting_cnt,
+        "urgent": urgent_cnt,
+        "accepted": accepted_cnt,
+        "in_consultation": in_consultation_cnt,
+        "completed": completed_cnt
+    }
+
+    # 2. Apply status filtering for list items
+    srv_query = base_query
     if status and status.upper() != "ALL":
         sf = status.upper()
-        if sf == "NEW":
-            srv_query = srv_query.filter(ServiceRequest.status.in_(["SUBMITTED", "WAITING_FOR_DOCTOR"]))
+        if sf in ["NEW", "WAITING"]:
+            srv_query = srv_query.filter(ServiceRequest.status.in_(["WAITING_FOR_DOCTOR", "SUBMITTED", "PENDING"]))
         elif sf == "URGENT":
-            srv_query = srv_query.filter(ServiceRequest.priority.in_(["EMERGENCY", "URGENT", "HIGH"]))
+            srv_query = srv_query.filter(
+                ServiceRequest.priority.in_(["EMERGENCY", "URGENT", "HIGH"]),
+                ~ServiceRequest.status.in_(["COMPLETED", "CANCELLED"])
+            )
         elif sf == "ACCEPTED":
             srv_query = srv_query.filter(ServiceRequest.status == "DOCTOR_ACCEPTED")
         elif sf == "IN_CONSULTATION":
@@ -3525,19 +3572,59 @@ def get_doctor_direct_requests(
             srv_query = srv_query.filter(ServiceRequest.status == sf)
 
     requests = srv_query.order_by(ServiceRequest.created_at.desc()).all()
-    srv_items = []
-    seen_ids = set(t["id"] for t in tele_items)
+    items = []
 
     for r in requests:
-        if r.id in seen_ids:
-            continue
         handoff = db.query(CareHandoff).filter(CareHandoff.service_request_id == r.id).order_by(CareHandoff.version.desc()).first()
         citizen = r.citizen
         bm = r.beneficiary
         patient_profile_id = citizen.id if citizen else None
-        srv_items.append({
+
+        # Fetch messages if any
+        messages_data = []
+        chat_msgs = db.query(DoctorChatMessage).filter(
+            (DoctorChatMessage.service_request_id == r.id) |
+            (DoctorChatMessage.conversation_id.in_(
+                db.query(DoctorChatThread.id).filter(DoctorChatThread.service_request_id == r.id)
+            ))
+        ).order_by(DoctorChatMessage.created_at.asc()).all()
+
+        for m in chat_msgs:
+            messages_data.append({
+                "id": m.id,
+                "sender_type": "DOCTOR" if m.sender_role == "PHC_DOCTOR" else "CITIZEN",
+                "sender_role": m.sender_role,
+                "sender_name": m.sender_name,
+                "message_text": m.body,
+                "body": m.body,
+                "created_at": m.created_at.isoformat() if m.created_at else ""
+            })
+
+        tele_req_ids = [t[0] for t in db.query(TeleconsultationRequest.id).filter(
+            (TeleconsultationRequest.service_request_id == r.id) |
+            (TeleconsultationRequest.public_reference == r.request_reference)
+        ).all()]
+        if tele_req_ids:
+            t_msgs = db.query(TeleconsultationMessage).filter(
+                TeleconsultationMessage.request_id.in_(tele_req_ids)
+            ).order_by(TeleconsultationMessage.created_at.asc()).all()
+            for m in t_msgs:
+                messages_data.append({
+                    "id": m.id,
+                    "sender_type": m.sender_type or "CITIZEN",
+                    "sender_role": "PHC_DOCTOR" if m.sender_type == "DOCTOR" else "CITIZEN",
+                    "sender_name": m.sender_name or "Participant",
+                    "message_text": m.message_text,
+                    "body": m.message_text,
+                    "created_at": m.created_at.isoformat() if m.created_at else ""
+                })
+
+        chief = handoff.chief_concern if handoff else (r.details or {}).get("chief_complaint") or "Teleconsultation Request"
+
+        items.append({
             "id": r.id,
             "service_request_id": r.id,
+            "teleconsultation_request_id": tele_req_ids[0] if tele_req_ids else None,
             "request_reference": r.request_reference,
             "public_reference": r.request_reference,
             "patient_id": patient_profile_id,
@@ -3545,27 +3632,34 @@ def get_doctor_direct_requests(
             "citizen_id": citizen.id if citizen else None,
             "beneficiary_id": bm.id if bm else None,
             "citizen_name": citizen.display_name if citizen else "Citizen",
-            "beneficiary_name": bm.full_name if bm else (citizen.display_name if citizen else "Citizen"),
+            "beneficiary_name": bm.full_name if (bm and bm.full_name and bm.full_name.strip().lower() not in ["self", "myself"]) else (citizen.display_name if (citizen and citizen.display_name and citizen.display_name.strip().lower() not in ["self", "myself"]) else "Patient"),
             "beneficiary_relationship": bm.relationship_type if bm else "SELF",
             "citizen_phone": citizen.phone if citizen else None,
             "village_name": citizen.village_name if citizen else "Kalyanpur",
             "priority": r.priority,
             "status": r.status,
-            "requested_channel": r.requested_channel,
-            "mode": r.requested_channel,
-            "chief_complaint": handoff.chief_concern if handoff else r.details.get("chief_complaint"),
-            "chief_concern": handoff.chief_concern if handoff else r.details.get("chief_complaint"),
+            "requested_channel": r.requested_channel or "CALLBACK",
+            "mode": r.requested_channel or "CALLBACK",
+            "facility_id": r.assigned_facility_id,
+            "assigned_doctor_id": r.assigned_user_id,
+            "assigned_doctor_name": r.assigned_user.name if r.assigned_user else (current_user.name if r.assigned_user_id == current_user.id else None),
+            "messages": messages_data,
+            "chief_complaint": chief,
+            "chief_concern": chief,
             "citizen_summary": handoff.citizen_summary if handoff else None,
             "handoff_version": handoff.version if handoff else 1,
             "handoff_packet": handoff.structured_payload if handoff else {},
-            "assigned_doctor_name": current_user.name if r.assigned_user_id == current_user.id else None,
             "case_id": r.case_id,
             "case_reference": r.case.reference if r.case else None,
-            "submitted_at": r.submitted_at.isoformat() if r.submitted_at else r.created_at.isoformat(),
-            "created_at": r.created_at.isoformat()
+            "submitted_at": r.submitted_at.isoformat() if r.submitted_at else (r.created_at.isoformat() if r.created_at else ""),
+            "created_at": r.created_at.isoformat() if r.created_at else ""
         })
 
-    return StandardResponse(data=[*tele_items, *srv_items])
+    return StandardResponse(data={
+        "items": items,
+        "total": len(items),
+        "counts": counts_payload
+    })
 
 @router.get("/direct-requests/summary", response_model=StandardResponse)
 def get_doctor_direct_requests_summary(
@@ -3573,22 +3667,96 @@ def get_doctor_direct_requests_summary(
     current_user: User = Depends(require_staff)
 ):
     from app.models import ServiceRequest
-    all_reqs = db.query(ServiceRequest).filter(ServiceRequest.request_type == "DOCTOR_CONSULTATION").all()
-    new_count = len([r for r in all_reqs if r.status in ["SUBMITTED", "WAITING_FOR_DOCTOR"]])
-    urgent_count = len([r for r in all_reqs if r.priority in ["EMERGENCY", "URGENT", "HIGH"]])
-    waiting_count = len([r for r in all_reqs if r.status == "WAITING_FOR_DOCTOR"])
+    doc_facility_id = _get_doctor_facility_id(current_user)
+
+    base_query = db.query(ServiceRequest).filter(
+        ServiceRequest.request_type == "DOCTOR_CONSULTATION"
+    )
+
+    if doc_facility_id:
+        base_query = base_query.filter(
+            (ServiceRequest.assigned_facility_id == doc_facility_id) |
+            (ServiceRequest.assigned_user_id == current_user.id)
+        )
+    else:
+        base_query = base_query.filter(ServiceRequest.assigned_user_id == current_user.id)
+
+    all_reqs = base_query.all()
+    waiting_count = len([r for r in all_reqs if r.status in ["WAITING_FOR_DOCTOR", "SUBMITTED", "PENDING"]])
+    urgent_count = len([r for r in all_reqs if r.priority in ["EMERGENCY", "URGENT", "HIGH"] and r.status not in ["COMPLETED", "CANCELLED"]])
     accepted_count = len([r for r in all_reqs if r.status == "DOCTOR_ACCEPTED"])
     in_consultation_count = len([r for r in all_reqs if r.status == "IN_CONSULTATION"])
     completed_count = len([r for r in all_reqs if r.status == "COMPLETED"])
 
     return StandardResponse(data={
         "total": len(all_reqs),
-        "new": new_count,
-        "urgent": urgent_count,
         "waiting": waiting_count,
+        "urgent": urgent_count,
         "accepted": accepted_count,
         "in_consultation": in_consultation_count,
         "completed": completed_count
+    })
+
+@router.post("/direct-requests/{request_id}/messages", response_model=StandardResponse)
+def send_doctor_chat_message(
+    request_id: str,
+    dto: TeleconsultationMessageCreateDTO,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_staff)
+):
+    from app.services.teleconsultation_service import TeleconsultationService
+    tele_req, srv_req = TeleconsultationService.resolve_canonical_request(db, request_id)
+    if not tele_req and not srv_req:
+        raise HTTPException(status_code=404, detail="Direct request not found")
+
+    target_srv = srv_req or (tele_req.service_request if tele_req else None)
+    if target_srv and not _is_doctor_authorized_for_request(current_user, target_srv):
+        raise HTTPException(status_code=403, detail="Forbidden: You are not authorized to message on this request")
+
+    body_text = dto.body or dto.message_text or ""
+    if not body_text.strip():
+        raise HTTPException(status_code=400, detail="Message text cannot be empty")
+
+    target_req_id = tele_req.id if tele_req else target_srv.id
+    msg = TeleconsultationService.send_message(
+        db=db,
+        request_id=target_req_id,
+        sender_type="DOCTOR",
+        sender_role="PHC_DOCTOR",
+        sender_name=f"Dr. {current_user.name}",
+        message_text=body_text,
+        sender_id=current_user.id,
+        client_message_id=dto.client_message_id,
+        message_type=dto.message_type or "TEXT"
+    )
+
+    msg_body = getattr(msg, "body", None) or getattr(msg, "message_text", None) or body_text
+    msg_sender_role = getattr(msg, "sender_role", "PHC_DOCTOR")
+    msg_sender_type = getattr(msg, "sender_type", "DOCTOR")
+    msg_cli_id = getattr(msg, "client_message_id", dto.client_message_id)
+    msg_conv_id = getattr(msg, "conversation_id", target_req_id)
+    msg_srv_id = getattr(msg, "service_request_id", target_srv.id if target_srv else target_req_id)
+    msg_status = getattr(msg, "status", "DELIVERED")
+    created_at_dt = getattr(msg, "created_at", None)
+    delivered_at_dt = getattr(msg, "delivered_at", None)
+    read_at_dt = getattr(msg, "read_at", None)
+
+    return StandardResponse(data={
+        "id": msg.id,
+        "conversation_id": msg_conv_id,
+        "service_request_id": msg_srv_id,
+        "sender_user_id": getattr(msg, "sender_user_id", current_user.id),
+        "sender_role": msg_sender_role,
+        "sender_type": msg_sender_type,
+        "sender_name": getattr(msg, "sender_name", f"Dr. {current_user.name}"),
+        "message_type": getattr(msg, "message_type", "TEXT"),
+        "body": msg_body,
+        "message_text": msg_body,
+        "client_message_id": msg_cli_id,
+        "status": msg_status,
+        "created_at": created_at_dt.isoformat() if created_at_dt else "",
+        "delivered_at": delivered_at_dt.isoformat() if delivered_at_dt else None,
+        "read_at": read_at_dt.isoformat() if read_at_dt else None
     })
 
 @router.get("/direct-requests/{request_id}", response_model=StandardResponse)
@@ -3597,34 +3765,110 @@ def get_doctor_direct_request_detail(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_staff)
 ):
-    from app.models import ServiceRequest, CareHandoff, ServiceRequestStatusHistory, CitizenProfile
-    r = db.query(ServiceRequest).filter(
-        (ServiceRequest.id == request_id) | (ServiceRequest.request_reference == request_id),
-        ServiceRequest.request_type == "DOCTOR_CONSULTATION"
-    ).first()
-    if not r:
+    from app.models import (
+        ServiceRequest, CareHandoff, ServiceRequestStatusHistory, CitizenProfile,
+        TeleconsultationRequest, TeleconsultationMessage, DoctorChatThread, DoctorChatMessage
+    )
+    from app.services.teleconsultation_service import TeleconsultationService
+    tele_req, r = TeleconsultationService.resolve_canonical_request(db, request_id)
+    if not r and not tele_req:
         raise HTTPException(status_code=404, detail="Direct citizen request not found")
+
+    target_srv = r or (tele_req.service_request if tele_req else None)
+    if target_srv and not _is_doctor_authorized_for_request(current_user, target_srv):
+        raise HTTPException(status_code=403, detail="Forbidden: You are not authorized to view this request")
+
+    if not r and tele_req:
+        return StandardResponse(data=TeleconsultationService.get_request_detail(db, tele_req.id))
 
     handoff = db.query(CareHandoff).filter(CareHandoff.service_request_id == r.id).order_by(CareHandoff.version.desc()).first()
     history = db.query(ServiceRequestStatusHistory).filter(ServiceRequestStatusHistory.service_request_id == r.id).order_by(ServiceRequestStatusHistory.occurred_at.asc()).all()
     citizen = r.citizen
     bm = r.beneficiary
 
+    # Fetch messages
+    messages_data = []
+    chat_msgs = db.query(DoctorChatMessage).filter(
+        (DoctorChatMessage.service_request_id == r.id) |
+        (DoctorChatMessage.conversation_id.in_(
+            db.query(DoctorChatThread.id).filter(DoctorChatThread.service_request_id == r.id)
+        ))
+    ).order_by(DoctorChatMessage.created_at.asc()).all()
+
+    for m in chat_msgs:
+        messages_data.append({
+            "id": m.id,
+            "conversation_id": m.conversation_id,
+            "service_request_id": m.service_request_id or r.id,
+            "sender_user_id": m.sender_user_id,
+            "sender_role": m.sender_role,
+            "sender_type": "DOCTOR" if m.sender_role == "PHC_DOCTOR" else "CITIZEN",
+            "sender_name": m.sender_name or (f"Dr. {current_user.name}" if m.sender_role == "PHC_DOCTOR" else "Patient"),
+            "message_type": "TEXT",
+            "body": m.body,
+            "message_text": m.body,
+            "client_message_id": m.client_message_id,
+            "status": m.status or "DELIVERED",
+            "created_at": m.created_at.isoformat() if m.created_at else "",
+            "delivered_at": m.delivered_at.isoformat() if m.delivered_at else None,
+            "read_at": m.read_at.isoformat() if m.read_at else None
+        })
+
+    tele_req_ids = [t[0] for t in db.query(TeleconsultationRequest.id).filter(
+        (TeleconsultationRequest.service_request_id == r.id) |
+        (TeleconsultationRequest.public_reference == r.request_reference)
+    ).all()]
+    if tele_req_ids:
+        t_msgs = db.query(TeleconsultationMessage).filter(
+            TeleconsultationMessage.request_id.in_(tele_req_ids)
+        ).order_by(TeleconsultationMessage.created_at.asc()).all()
+        for m in t_msgs:
+            messages_data.append({
+                "id": m.id,
+                "conversation_id": tele_req.id if tele_req else r.id,
+                "service_request_id": r.id,
+                "sender_user_id": m.sender_id,
+                "sender_role": "PHC_DOCTOR" if m.sender_type == "DOCTOR" else "CITIZEN",
+                "sender_type": m.sender_type,
+                "sender_name": m.sender_name or "Participant",
+                "message_type": "TEXT",
+                "body": m.message_text,
+                "message_text": m.message_text,
+                "client_message_id": None,
+                "status": "DELIVERED",
+                "created_at": m.created_at.isoformat() if m.created_at else "",
+                "delivered_at": None,
+                "read_at": None
+            })
+
+    chief = handoff.chief_concern if handoff else (r.details or {}).get("chief_complaint") or "Care Handoff Request"
+
     return StandardResponse(data={
         "id": r.id,
+        "conversation_id": tele_req.id if tele_req else r.id,
+        "service_request_id": r.id,
         "request_reference": r.request_reference,
+        "public_reference": r.request_reference,
         "patient_id": citizen.id if citizen else None,
+        "patient_profile_id": citizen.id if citizen else None,
         "citizen_id": citizen.id if citizen else None,
+        "beneficiary_id": bm.id if bm else None,
         "citizen_name": citizen.display_name if citizen else "Citizen",
-        "beneficiary_name": bm.full_name if bm else (citizen.display_name if citizen else "Citizen"),
+        "beneficiary_name": bm.full_name if (bm and bm.full_name and bm.full_name.strip().lower() not in ["self", "myself"]) else (citizen.display_name if (citizen and citizen.display_name and citizen.display_name.strip().lower() not in ["self", "myself"]) else "Patient"),
         "beneficiary_relationship": bm.relationship_type if bm else "SELF",
         "citizen_phone": citizen.phone if citizen else None,
         "village_name": citizen.village_name if citizen else "Kalyanpur",
         "priority": r.priority,
         "status": r.status,
         "requested_channel": r.requested_channel,
+        "mode": r.requested_channel,
+        "facility_id": r.assigned_facility_id,
+        "assigned_doctor_id": r.assigned_user_id,
+        "assigned_doctor_name": r.assigned_user.name if r.assigned_user else (current_user.name if r.assigned_user_id == current_user.id else None),
+        "messages": messages_data,
         "details": r.details,
-        "chief_complaint": handoff.chief_concern if handoff else r.details.get("chief_complaint"),
+        "chief_complaint": chief,
+        "chief_concern": chief,
         "citizen_summary": handoff.citizen_summary if handoff else None,
         "handoff_version": handoff.version if handoff else 1,
         "handoff_packet": handoff.structured_payload if handoff else {},
@@ -3640,8 +3884,8 @@ def get_doctor_direct_request_detail(
             }
             for h in history
         ],
-        "submitted_at": r.submitted_at.isoformat() if r.submitted_at else r.created_at.isoformat(),
-        "created_at": r.created_at.isoformat()
+        "submitted_at": r.submitted_at.isoformat() if r.submitted_at else (r.created_at.isoformat() if r.created_at else ""),
+        "created_at": r.created_at.isoformat() if r.created_at else ""
     })
 
 @router.patch("/direct-requests/{request_id}/status", response_model=StandardResponse)
@@ -3653,77 +3897,96 @@ def patch_doctor_direct_request_status(
 ):
     from app.models import (
         ServiceRequest, ServiceRequestStatusHistory, Case, Consultation,
-        Prescription, PrescriptionItem, MedicineCatalog, FollowUp
+        Prescription, PrescriptionItem, MedicineCatalog, FollowUp, InvestigationOrder,
+        TeleconsultationRequest, TeleconsultationStatusHistory, DoctorChatThread
     )
     from app.services.event_bus import publish_domain_event
+    from app.services.teleconsultation_service import TeleconsultationService
 
-    r = db.query(ServiceRequest).filter(
-        (ServiceRequest.id == request_id) | (ServiceRequest.request_reference == request_id),
-        ServiceRequest.request_type == "DOCTOR_CONSULTATION"
-    ).first()
-    if not r:
-        from app.models import TeleconsultationRequest
-        from app.services.teleconsultation_service import TeleconsultationService
-        from app.schemas.teleconsultation import DoctorCompleteTeleconsultationDTO
-        tele = db.query(TeleconsultationRequest).filter(TeleconsultationRequest.id == request_id).first()
-        if tele:
-            action = payload.get("action", "").upper()
-            if action == "ACCEPT":
-                res = TeleconsultationService.doctor_accept_request(db, request_id, current_user)
-                return StandardResponse(data=res)
-            elif action == "START_CONSULTATION":
-                res = TeleconsultationService.doctor_start_consultation(db, request_id, current_user)
-                return StandardResponse(data=res)
-            elif action == "COMPLETE":
-                cdto = DoctorCompleteTeleconsultationDTO(**{k: v for k, v in payload.items() if k != "action"})
-                res = TeleconsultationService.doctor_complete_consultation(db, request_id, current_user, cdto)
-                return StandardResponse(data=res)
+    tele_req, r = TeleconsultationService.resolve_canonical_request(db, request_id)
+    if not r and not tele_req:
         raise HTTPException(status_code=404, detail="Direct request not found")
+
+    target_srv = r or (tele_req.service_request if tele_req else None)
+    if target_srv and not _is_doctor_authorized_for_request(current_user, target_srv):
+        raise HTTPException(status_code=403, detail="Forbidden: You are not authorized to update this request")
 
     action = payload.get("action", "").upper()
     notes = payload.get("notes") or payload.get("reason")
-    old_status = r.status
+    old_status = target_srv.status if target_srv else (tele_req.status if tele_req else "WAITING_FOR_DOCTOR")
     new_status = old_status
 
     if action == "ACCEPT" or action == "REVIEW":
         new_status = "DOCTOR_ACCEPTED"
-        r.assigned_user_id = current_user.id
-        r.acknowledged_at = datetime.now(timezone.utc)
+        if target_srv:
+            target_srv.assigned_user_id = current_user.id
+            target_srv.acknowledged_at = datetime.now(timezone.utc)
+        if tele_req:
+            tele_req.assigned_doctor_id = current_user.id
+            tele_req.accepted_at = datetime.now(timezone.utc)
     elif action == "START_CONSULTATION":
         new_status = "IN_CONSULTATION"
-        r.assigned_user_id = current_user.id
-        r.details["consultation_started_at"] = datetime.now(timezone.utc).isoformat()
+        if target_srv:
+            target_srv.assigned_user_id = current_user.id
+            if not target_srv.details:
+                target_srv.details = {}
+            target_srv.details["consultation_started_at"] = datetime.now(timezone.utc).isoformat()
+        if tele_req:
+            tele_req.assigned_doctor_id = current_user.id
+            tele_req.started_at = datetime.now(timezone.utc)
     elif action == "REQUEST_INFO":
         new_status = "INFORMATION_REQUESTED"
-        r.details["info_request_notes"] = notes
+        if target_srv and target_srv.details:
+            target_srv.details["info_request_notes"] = notes
     elif action == "RECOMMEND_IN_PERSON":
         new_status = "REFERRED_IN_PERSON"
-        r.details["in_person_guidance"] = notes or "Please visit Kalyanpur PHC for physical examination."
+        if target_srv and target_srv.details:
+            target_srv.details["in_person_guidance"] = notes or "Please visit Kalyanpur PHC for physical examination."
     elif action == "ESCALATE_EMERGENCY":
         new_status = "EMERGENCY_ESCALATED"
-        r.priority = "EMERGENCY"
-        r.details["emergency_notes"] = notes or "Critical red flags detected. Immediate emergency transport advised."
+        if target_srv:
+            target_srv.priority = "EMERGENCY"
+            if target_srv.details:
+                target_srv.details["emergency_notes"] = notes or "Critical red flags detected. Immediate emergency transport advised."
+        if tele_req:
+            tele_req.priority = "EMERGENCY"
     elif action == "DECLINE":
         new_status = "CANCELLED"
-        r.cancellation_reason = notes or "Declined by Doctor"
+        if target_srv:
+            target_srv.cancellation_reason = notes or "Declined by Doctor"
+        if tele_req:
+            tele_req.cancellation_reason = notes or "Declined by Doctor"
     elif action == "COMPLETE":
         new_status = "COMPLETED"
-        r.completed_at = datetime.now(timezone.utc)
+        now_dt = datetime.now(timezone.utc)
         diag = payload.get("provisional_diagnosis", "Clinical Assessment Complete")
         guidance = payload.get("patient_guidance", "Take prescribed medicines and rest.")
-        r.details["provisional_diagnosis"] = diag
-        r.details["patient_guidance"] = guidance
+
+        if target_srv:
+            target_srv.completed_at = now_dt
+            if not target_srv.details:
+                target_srv.details = {}
+            target_srv.details["provisional_diagnosis"] = diag
+            target_srv.details["patient_guidance"] = guidance
+        if tele_req:
+            tele_req.completed_at = now_dt
+            tele_req.disposition = payload.get("disposition", "COMPLETED")
+            tele_req.patient_guidance = guidance
 
         # Create Consultation record
+        cid = target_srv.case_id if target_srv else (tele_req.case_id if tele_req else None)
+        cit_id = target_srv.citizen_id if target_srv else (tele_req.citizen_id if tele_req else None)
+        fac_id = target_srv.assigned_facility_id if target_srv else (tele_req.facility_id if tele_req else "PHC-09")
+
         cons = Consultation(
             reference=f"CONS-{uuid.uuid4().hex[:8].upper()}",
-            case_id=r.case_id,
+            case_id=cid,
             doctor_id=current_user.id,
             doctor_name=current_user.name,
-            facility_id="PHC-09",
+            facility_id=fac_id or "PHC-09",
             consultation_type="TELECONSULTATION",
             started_at=datetime.now(timezone.utc) - timedelta(minutes=15),
-            completed_at=datetime.now(timezone.utc),
+            completed_at=now_dt,
             provisional_diagnosis=diag,
             confirmed_diagnosis=diag,
             clinical_summary=f"{diag}. Direct consultation with Dr. {current_user.name}.",
@@ -3733,19 +3996,22 @@ def patch_doctor_direct_request_status(
         db.add(cons)
         db.flush()
 
+        if tele_req:
+            tele_req.consultation_id = cons.id
+
         # Create Prescription if prescribed
         rx_items = payload.get("prescriptions", [])
         if rx_items:
             rx = Prescription(
                 reference=f"RX-{uuid.uuid4().hex[:8].upper()}",
-                case_id=r.case_id,
+                case_id=cid,
                 consultation_id=cons.id,
-                citizen_id=r.citizen_id,
+                citizen_id=cit_id,
                 prescriber_doctor_id=current_user.id,
-                facility_id="PHC-09",
+                facility_id=fac_id or "PHC-09",
                 clinical_context=diag,
                 status="SIGNED",
-                signed_at=datetime.now(timezone.utc)
+                signed_at=now_dt
             )
             db.add(rx)
             db.flush()
@@ -3757,7 +4023,7 @@ def patch_doctor_direct_request_status(
                     medicine=item.get("medicine_name", "Paracetamol 500mg"),
                     formulation=item.get("formulation", "Tablet"),
                     strength=item.get("strength", "500mg"),
-                    dose="1 tablet",
+                    dose=item.get("dosage", "1 tablet"),
                     frequency=item.get("frequency", "1-0-1"),
                     duration_value=item.get("duration_days", 3),
                     duration_unit="days",
@@ -3765,31 +4031,52 @@ def patch_doctor_direct_request_status(
                 )
                 db.add(p_item)
 
+        # Create Investigation Orders if requested
+        inv_items = payload.get("investigation_orders", [])
+        for inv_dto in inv_items:
+            inv = InvestigationOrder(
+                reference=f"LAB-{datetime.now().strftime('%Y%m%d%H%M%S')}-{uuid.uuid4().hex[:4].upper()}",
+                citizen_id=cit_id,
+                case_id=cid,
+                consultation_id=cons.id,
+                ordered_by_doctor_id=current_user.id,
+                facility_id=fac_id or "PHC-09",
+                test_name=inv_dto.get("test_name", "Complete Blood Count (CBC)"),
+                category=inv_dto.get("category", "PATHOLOGY"),
+                priority=inv_dto.get("urgency", "ROUTINE"),
+                clinical_reason=diag,
+                status="ORDERED",
+                ordered_at=now_dt
+            )
+            db.add(inv)
+
         # Create ASHA FollowUp if requested
         if payload.get("assign_asha_followup", True) or payload.get("follow_up_plan"):
             asha_user_id = None
-            if r.citizen and r.citizen.assigned_asha_id:
-                asha_user_id = r.citizen.assigned_asha_id
-            elif r.case and r.case.assigned_asha_id:
-                asha_user_id = r.case.assigned_asha_id
+            if target_srv and target_srv.citizen and target_srv.citizen.assigned_asha_id:
+                asha_user_id = target_srv.citizen.assigned_asha_id
+            elif target_srv and target_srv.case and target_srv.case.assigned_asha_id:
+                asha_user_id = target_srv.case.assigned_asha_id
             else:
                 sita = db.query(User).filter(User.role == UserRoleEnum.ASHA_WORKER).first()
                 if sita:
                     asha_user_id = sita.id
 
+            fu_task_type = payload.get("asha_task_type") or payload.get("task_type") or "POST_CONSULTATION_CHECK"
+            due_days = int(payload.get("asha_due_days") or 3)
             fu = FollowUp(
-                case_id=r.case_id,
+                case_id=cid,
                 consultation_id=cons.id,
-                citizen_id=r.citizen_id,
+                citizen_id=cit_id,
                 assigned_user_id=asha_user_id,
                 created_by_role="DOCTOR",
                 source="DOCTOR_DIRECTIVE",
-                task_type="POST_CONSULTATION_CHECK",
+                task_type=fu_task_type,
                 reason=f"Follow-up for {diag}",
                 assigned_role=UserRoleEnum.ASHA_WORKER,
                 instructions=payload.get("asha_instructions", f"Visit patient at home and verify recovery from {diag}"),
                 priority=CasePriorityEnum.ROUTINE,
-                due_at=datetime.now(timezone.utc) + timedelta(days=3),
+                due_at=now_dt + timedelta(days=due_days),
                 status="PENDING"
             )
             db.add(fu)
@@ -3798,20 +4085,44 @@ def patch_doctor_direct_request_status(
     else:
         raise HTTPException(status_code=400, detail=f"Invalid action '{action}'")
 
-    r.status = new_status
+    if target_srv:
+        target_srv.status = new_status
+        hist = ServiceRequestStatusHistory(
+            service_request_id=target_srv.id,
+            from_status=old_status,
+            to_status=new_status,
+            actor_role="PHC_DOCTOR",
+            actor_id=current_user.id,
+            reason=notes or f"Status updated via action {action} by Dr. {current_user.name}"
+        )
+        db.add(hist)
 
-    hist = ServiceRequestStatusHistory(
-        service_request_id=r.id,
-        from_status=old_status,
-        to_status=new_status,
-        actor_role="PHC_DOCTOR",
-        actor_id=current_user.id,
-        reason=notes or f"Status updated via action {action} by Dr. {current_user.name}"
-    )
-    db.add(hist)
+    if tele_req:
+        tele_req.status = new_status
+        thist = TeleconsultationStatusHistory(
+            request_id=tele_req.id,
+            from_status=old_status,
+            to_status=new_status,
+            changed_by_user_id=current_user.id,
+            changed_by_role="DOCTOR",
+            notes=notes or f"Status updated via action {action} by Dr. {current_user.name}"
+        )
+        db.add(thist)
 
-    if r.case_id:
-        case = db.query(Case).filter(Case.id == r.case_id).first()
+    # Sync companion DoctorChatThread
+    thread = db.query(DoctorChatThread).filter(
+        (DoctorChatThread.service_request_id == (target_srv.id if target_srv else "")) |
+        (DoctorChatThread.id == (tele_req.id if tele_req else ""))
+    ).first()
+    if thread:
+        thread.status = new_status
+        if current_user.id:
+            thread.doctor_id = current_user.id
+
+    # Sync Case status
+    cid = target_srv.case_id if target_srv else (tele_req.case_id if tele_req else None)
+    if cid:
+        case = db.query(Case).filter(Case.id == cid).first()
         if case:
             if new_status in ["DOCTOR_ACCEPTED", "IN_CONSULTATION"]:
                 case.status = CaseStatusEnum.DOCTOR_ACKNOWLEDGED
@@ -3819,10 +4130,10 @@ def patch_doctor_direct_request_status(
                 case.status = CaseStatusEnum.COMPLETED
 
     publish_domain_event("DOCTOR_DIRECT_REQUEST_STATUS_UPDATED", {
-        "service_request_id": r.id,
-        "request_reference": r.request_reference,
-        "case_id": r.case_id,
-        "citizen_id": r.citizen_id,
+        "service_request_id": target_srv.id if target_srv else (tele_req.service_request_id if tele_req else None),
+        "request_reference": target_srv.request_reference if target_srv else (tele_req.public_reference if tele_req else None),
+        "case_id": cid,
+        "citizen_id": target_srv.citizen_id if target_srv else (tele_req.citizen_id if tele_req else None),
         "action": action,
         "from_status": old_status,
         "to_status": new_status,
@@ -3831,13 +4142,21 @@ def patch_doctor_direct_request_status(
     })
 
     db.commit()
-    db.refresh(r)
+    if target_srv:
+        db.refresh(target_srv)
+    if tele_req:
+        db.refresh(tele_req)
+
+    res_id = target_srv.id if target_srv else tele_req.id
+    res_ref = target_srv.request_reference if target_srv else tele_req.public_reference
+
     return StandardResponse(data={
-        "id": r.id,
-        "request_reference": r.request_reference,
-        "status": r.status,
+        "id": res_id,
+        "service_request_id": res_id,
+        "request_reference": res_ref,
+        "status": new_status,
         "action": action,
-        "message": f"Status updated to {r.status}"
+        "message": f"Status updated to {new_status}"
     })
 
 @router.post("/direct-requests/{request_id}/accept", response_model=StandardResponse)
@@ -3874,6 +4193,7 @@ def doctor_decline_direct_request(
     current_user: User = Depends(require_staff)
 ):
     return patch_doctor_direct_request_status(request_id, {"action": "DECLINE", **payload}, db, current_user)
+
 
 
 

@@ -1,0 +1,57 @@
+services:
+  # Aarogya Sahayak - Backend API (FastAPI)
+  - type: web
+    name: aarogya-sahayak-backend
+    env: python
+    region: singapore
+    plan: starter
+    rootDir: backend
+    buildCommand: "pip install -r requirements.txt"
+    preDeployCommand: "alembic upgrade head"
+    startCommand: "uvicorn app.main:app --host 0.0.0.0 --port $PORT"
+    healthCheckPath: /health
+    envVars:
+      - key: ENVIRONMENT
+        value: staging
+      - key: DATABASE_URL
+        fromDatabase:
+          name: aarogya-sahayak-db
+          property: connectionString
+      - key: JWT_SECRET
+        generateValue: true
+      - key: JWT_REFRESH_SECRET
+        generateValue: true
+      - key: INTEGRATION_MODE
+        value: mock
+      - key: OTP_MODE
+        value: MOCK
+      - key: GEMINI_MODE
+        value: mock
+      - key: SARVAM_MODE
+        value: mock
+      - key: TAVILY_MODE
+        value: mock
+      - key: NEO4J_MODE
+        value: mock
+      - key: MILVUS_MODE
+        value: mock
+      - key: N8N_MODE
+        value: mock
+      - key: ABDM_MODE
+        value: mock
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: SARVAM_API_KEY
+        sync: false
+      - key: TAVILY_API_KEY
+        sync: false
+      - key: GOOGLE_MAPS_SERVER_KEY
+        sync: false
+
+databases:
+  # Managed PostgreSQL 16 in Singapore
+  - name: aarogya-sahayak-db
+    region: singapore
+    plan: starter
+    databaseName: aarogya_db
+    user: aarogya_user

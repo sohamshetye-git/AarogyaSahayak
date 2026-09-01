@@ -202,6 +202,7 @@ class TeleconsultationService:
             citizen_id=citizen_id,
             need_id=need.id,
             case_id=case.id,
+            assigned_facility_id=req.facility_id or "FAC-PHC-001",
             request_type="DOCTOR_CONSULTATION",
             status="PENDING",
             priority=req.priority,
@@ -257,31 +258,38 @@ class TeleconsultationService:
             raise ValueError("Teleconsultation request not found")
 
         # Patient Info
-        patient_name = "Self"
+        patient_name = "Patient"
         patient_relation = "SELF"
         patient_age = None
         patient_gender = None
         patient_context = "GENERAL"
 
-        if req.household_member_id:
+        hm = None
+        if req.household_member_id and req.household_member_id != req.citizen_id:
             hm = db.query(HouseholdMember).filter(HouseholdMember.id == req.household_member_id).first()
-            if hm:
-                patient_name = hm.full_name
-                patient_relation = hm.relationship_type
-                patient_age = hm.age
-                patient_gender = hm.sex
-                if hm.is_pregnant:
-                    patient_context = "MATERNAL"
-                elif hm.age and hm.age <= 12:
-                    patient_context = "CHILD"
+
+        if hm:
+            patient_name = hm.full_name
+            patient_relation = hm.relationship_type or "FAMILY"
+            patient_age = hm.age
+            patient_gender = hm.sex
+            if hm.is_pregnant:
+                patient_context = "MATERNAL"
+            elif hm.age and hm.age <= 12:
+                patient_context = "CHILD"
         else:
             profile = db.query(CitizenProfile).filter(CitizenProfile.id == req.citizen_id).first()
             if profile:
-                patient_name = profile.display_name
+                patient_name = profile.display_name or "Citizen"
                 patient_age = profile.age_estimate
                 patient_gender = profile.sex
                 if profile.is_pregnant:
                     patient_context = "MATERNAL"
+
+        if patient_name.strip().lower() in ["self", "myself", ""] and req.citizen_id:
+            profile = db.query(CitizenProfile).filter(CitizenProfile.id == req.citizen_id).first()
+            if profile and profile.display_name:
+                patient_name = profile.display_name
 
         # Doctor Info
         doc_name = "Kalyanpur PHC Doctor"
@@ -297,10 +305,14 @@ class TeleconsultationService:
 
         return {
             "id": req.id,
+            "conversation_id": req.id,
             "public_reference": req.public_reference,
+            "request_reference": req.public_reference,
             "status": req.status,
             "priority": req.priority,
             "mode": req.mode,
+            "requested_channel": req.mode,
+            "channel": req.mode,
             "language_code": req.language_code,
             "chief_complaint": req.chief_complaint,
             "symptoms": req.symptoms or [],
@@ -313,11 +325,20 @@ class TeleconsultationService:
             "submitted_at": req.submitted_at.isoformat() if req.submitted_at else None,
             "accepted_at": req.accepted_at.isoformat() if req.accepted_at else None,
             "started_at": req.started_at.isoformat() if req.started_at else None,
-            "service_request_id": req.id,
+            "service_request_id": req.service_request_id or req.id,
             "patient_profile_id": req.citizen_id,
             "patient_id": req.citizen_id,
             "citizen_id": req.citizen_id,
             "beneficiary_id": req.household_member_id,
+            "beneficiary_name": patient_name,
+            "beneficiary": {
+                "id": req.household_member_id or req.citizen_id,
+                "name": patient_name,
+                "displayName": patient_name,
+                "relationship": patient_relation,
+                "age": patient_age,
+                "gender": patient_gender
+            },
             "chief_concern": req.chief_complaint,
             "facility_name": "Kalyanpur Primary Health Centre (PHC-09)",
             "patient": {
@@ -337,10 +358,20 @@ class TeleconsultationService:
             "messages": [
                 {
                     "id": m.id,
-                    "sender_type": m.sender_type,
-                    "sender_name": m.sender_name,
-                    "message_text": m.message_text,
-                    "created_at": m.created_at.isoformat() if m.created_at else ""
+                    "conversation_id": getattr(m, "conversation_id", None) or getattr(m, "request_id", None) or req.id,
+                    "service_request_id": getattr(m, "service_request_id", None) or req.service_request_id,
+                    "sender_user_id": getattr(m, "sender_user_id", None) or getattr(m, "sender_id", None),
+                    "sender_role": getattr(m, "sender_role", None) or ("PHC_DOCTOR" if getattr(m, "sender_type", None) == "DOCTOR" else "CITIZEN"),
+                    "sender_type": getattr(m, "sender_type", None) or ("DOCTOR" if getattr(m, "sender_role", None) == "PHC_DOCTOR" else "CITIZEN"),
+                    "sender_name": getattr(m, "sender_name", None) or (doc_name if (getattr(m, "sender_role", None) == "PHC_DOCTOR" or getattr(m, "sender_type", None) == "DOCTOR") else patient_name),
+                    "message_type": getattr(m, "message_type", None) or "TEXT",
+                    "body": getattr(m, "body", None) or getattr(m, "message_text", None) or "",
+                    "message_text": getattr(m, "message_text", None) or getattr(m, "body", None) or "",
+                    "client_message_id": getattr(m, "client_message_id", None),
+                    "status": getattr(m, "status", None) or "DELIVERED",
+                    "created_at": m.created_at.isoformat() if getattr(m, "created_at", None) else "",
+                    "delivered_at": m.delivered_at.isoformat() if getattr(m, "delivered_at", None) else None,
+                    "read_at": m.read_at.isoformat() if getattr(m, "read_at", None) else None
                 }
                 for m in msgs
             ]
@@ -371,17 +402,182 @@ class TeleconsultationService:
         return {"status": "CANCELLED", "id": req.id}
 
     @staticmethod
-    def send_message(db: Session, request_id: str, sender_type: str, sender_name: str, message_text: str, sender_id: Optional[str] = None) -> TeleconsultationMessage:
-        msg = TeleconsultationMessage(
-            request_id=request_id,
-            sender_type=sender_type,
-            sender_id=sender_id,
-            sender_name=sender_name,
-            message_text=message_text
-        )
-        db.add(msg)
+    def resolve_canonical_request(db: Session, request_ref: str) -> tuple[Optional[TeleconsultationRequest], Optional[ServiceRequest]]:
+        """
+        Canonical resolver that resolves UUID, public reference (DOCREQ-..., TR-..., REQ-DOC-...),
+        case_id, or service_request_id to both TeleconsultationRequest and ServiceRequest.
+        Always ensures a persistent canonical TeleconsultationRequest conversation exists.
+        """
+        # 1. Search TeleconsultationRequest directly
+        tele_req = db.query(TeleconsultationRequest).filter(
+            (TeleconsultationRequest.id == request_ref) |
+            (TeleconsultationRequest.public_reference == request_ref) |
+            (TeleconsultationRequest.service_request_id == request_ref) |
+            (TeleconsultationRequest.case_id == request_ref)
+        ).first()
+
+        # 2. Search ServiceRequest directly
+        srv_req = db.query(ServiceRequest).filter(
+            (ServiceRequest.id == request_ref) |
+            (ServiceRequest.request_reference == request_ref) |
+            (ServiceRequest.case_id == request_ref)
+        ).first()
+
+        # Cross-link if only one was found
+        if tele_req and not srv_req and tele_req.service_request_id:
+            srv_req = db.query(ServiceRequest).filter(ServiceRequest.id == tele_req.service_request_id).first()
+
+        if srv_req and not tele_req:
+            tele_req = db.query(TeleconsultationRequest).filter(
+                (TeleconsultationRequest.service_request_id == srv_req.id) |
+                (TeleconsultationRequest.case_id == srv_req.case_id) |
+                (TeleconsultationRequest.public_reference == srv_req.request_reference)
+            ).first()
+
+        # If ServiceRequest exists without a canonical TeleconsultationRequest conversation, create it now
+        if srv_req and not tele_req:
+            tele_req = TeleconsultationRequest(
+                public_reference=srv_req.request_reference,
+                citizen_id=srv_req.citizen_id,
+                household_member_id=srv_req.beneficiary_id,
+                citizen_need_id=srv_req.need_id or srv_req.citizen_need_id,
+                service_request_id=srv_req.id,
+                case_id=srv_req.case_id,
+                mode=srv_req.requested_channel or "CHAT",
+                status=srv_req.status or "WAITING_FOR_DOCTOR",
+                priority=srv_req.priority or "ROUTINE",
+                facility_id="PHC-09",
+                chief_complaint=srv_req.details.get("chief_complaint", "Doctor consultation requested") if srv_req.details else "Doctor consultation requested"
+            )
+            db.add(tele_req)
+            db.flush()
+
+        return tele_req, srv_req
+
+    @staticmethod
+    def send_message(
+        db: Session,
+        request_id: str,
+        sender_type: str,
+        sender_name: str,
+        message_text: str,
+        sender_id: Optional[str] = None,
+        sender_role: Optional[str] = None,
+        client_message_id: Optional[str] = None,
+        message_type: str = "TEXT"
+    ) -> TeleconsultationMessage:
+        # Sanitize and truncate message length
+        clean_text = (message_text or "").strip()
+        if not clean_text:
+            raise ValueError("Message body cannot be empty")
+        if len(clean_text) > 4000:
+            clean_text = clean_text[:4000]
+
+        tele_req, srv_req = TeleconsultationService.resolve_canonical_request(db, request_id)
+        if not tele_req and not srv_req:
+            raise ValueError(f"Could not resolve request '{request_id}'")
+
+        role = sender_role or ("PHC_DOCTOR" if sender_type.upper() in ["DOCTOR", "PHC_DOCTOR"] else "CITIZEN")
+        srv_id = srv_req.id if srv_req else (tele_req.service_request_id if tele_req else None)
+        tele_id = tele_req.id if tele_req else None
+        cli_id = client_message_id or f"msg-{uuid.uuid4().hex[:12]}"
+
+        # 1. Check idempotency in DoctorChatMessage if client_message_id provided
+        if client_message_id:
+            from app.models import DoctorChatMessage
+            existing_doc_msg = db.query(DoctorChatMessage).filter(DoctorChatMessage.client_message_id == client_message_id).first()
+            if existing_doc_msg:
+                return existing_doc_msg
+
+        # 2. Insert into DoctorChatMessage if thread exists
+        from app.models import DoctorChatThread, DoctorChatMessage
+        doc_msg = None
+        thread = None
+        if srv_id:
+            thread = db.query(DoctorChatThread).filter(DoctorChatThread.service_request_id == srv_id).first()
+        if not thread and tele_id:
+            thread = db.query(DoctorChatThread).filter(DoctorChatThread.id == tele_id).first()
+
+        if thread:
+            doc_msg = DoctorChatMessage(
+                id=str(uuid.uuid4()),
+                conversation_id=thread.id,
+                service_request_id=srv_id,
+                sender_role=role,
+                sender_user_id=sender_id,
+                sender_id=sender_id,
+                sender_name=sender_name,
+                body=clean_text,
+                client_message_id=cli_id,
+                status="DELIVERED",
+                delivery_status="DELIVERED",
+                created_at=datetime.now(timezone.utc),
+                delivered_at=datetime.now(timezone.utc)
+            )
+            db.add(doc_msg)
+
+        # 3. Insert into TeleconsultationMessage if tele_req exists
+        tele_msg = None
+        if tele_id:
+            tele_msg = TeleconsultationMessage(
+                id=str(uuid.uuid4()),
+                request_id=tele_id,
+                sender_type="DOCTOR" if role == "PHC_DOCTOR" else "CITIZEN",
+                sender_id=sender_id,
+                sender_name=sender_name,
+                message_text=clean_text,
+                created_at=datetime.now(timezone.utc)
+            )
+            db.add(tele_msg)
+
+        db.commit()
+
+        return_msg = doc_msg or tele_msg
+
+        # Broadcast realtime domain events for both naming conventions
+        event_payload = {
+            "id": return_msg.id if return_msg else str(uuid.uuid4()),
+            "message_id": return_msg.id if return_msg else str(uuid.uuid4()),
+            "conversation_id": thread.id if thread else (tele_id or srv_id),
+            "request_id": tele_id or srv_id,
+            "service_request_id": srv_id,
+            "request_reference": srv_req.request_reference if srv_req else (tele_req.public_reference if tele_req else ""),
+            "sender_user_id": sender_id,
+            "sender_role": role,
+            "sender_type": "DOCTOR" if role == "PHC_DOCTOR" else "CITIZEN",
+            "sender_name": sender_name,
+            "message_type": message_type,
+            "body": clean_text,
+            "message_text": clean_text,
+            "client_message_id": cli_id,
+            "status": "DELIVERED",
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "delivered_at": datetime.now(timezone.utc).isoformat()
+        }
+
+        publish_domain_event("CHAT_MESSAGE_CREATED", event_payload)
+        publish_domain_event("DOCTOR_REQUEST_MESSAGE_SENT", event_payload)
+
+        return return_msg
+
+    @staticmethod
+    def mark_message_read(db: Session, message_id: str, reader_user_id: Optional[str] = None, reader_role: Optional[str] = None) -> Optional[TeleconsultationMessage]:
+        msg = db.query(TeleconsultationMessage).filter(TeleconsultationMessage.id == message_id).first()
+        if not msg:
+            return None
+
+        msg.status = "READ"
+        msg.read_at = datetime.now(timezone.utc)
         db.commit()
         db.refresh(msg)
+
+        publish_domain_event("CHAT_MESSAGE_READ", {
+            "message_id": msg.id,
+            "conversation_id": msg.conversation_id or msg.request_id,
+            "reader_user_id": reader_user_id,
+            "reader_role": reader_role,
+            "read_at": msg.read_at.isoformat()
+        })
         return msg
 
     @staticmethod
@@ -408,7 +604,7 @@ class TeleconsultationService:
 
     @staticmethod
     def doctor_accept_request(db: Session, request_id: str, doctor_user: User) -> Dict[str, Any]:
-        req = db.query(TeleconsultationRequest).filter(TeleconsultationRequest.id == request_id).first()
+        req, srv = TeleconsultationService.resolve_canonical_request(db, request_id)
         if not req:
             raise ValueError("Teleconsultation request not found")
 
@@ -417,6 +613,12 @@ class TeleconsultationService:
         req.assigned_doctor_id = doctor_user.id
         req.accepted_at = datetime.now(timezone.utc)
         req.version += 1
+
+        if srv:
+            srv.status = "DOCTOR_ACCEPTED"
+            srv.assigned_user_id = doctor_user.id
+            srv.acknowledged_at = datetime.now(timezone.utc)
+            db.add(srv)
 
         # Update linked case if exists
         if req.case_id:
@@ -436,16 +638,23 @@ class TeleconsultationService:
         db.commit()
         db.refresh(req)
 
-        publish_domain_event("DOCTOR_REQUEST_ACCEPTED", {
+        event_payload = {
             "request_id": req.id,
+            "conversation_id": req.id,
+            "service_request_id": srv.id if srv else req.service_request_id,
+            "request_reference": srv.request_reference if srv else req.public_reference,
+            "status": "DOCTOR_ACCEPTED",
+            "doctor_id": doctor_user.id,
             "doctor_name": doctor_user.name
-        })
+        }
+        publish_domain_event("DOCTOR_REQUEST_ACCEPTED", event_payload)
+        publish_domain_event("DOCTOR_DIRECT_REQUEST_STATUS_UPDATED", event_payload)
 
         return TeleconsultationService.get_request_detail(db, req.id)
 
     @staticmethod
     def doctor_start_consultation(db: Session, request_id: str, doctor_user: User) -> Dict[str, Any]:
-        req = db.query(TeleconsultationRequest).filter(TeleconsultationRequest.id == request_id).first()
+        req, srv = TeleconsultationService.resolve_canonical_request(db, request_id)
         if not req:
             raise ValueError("Teleconsultation request not found")
 
@@ -454,6 +663,12 @@ class TeleconsultationService:
         req.started_at = datetime.now(timezone.utc)
         req.assigned_doctor_id = doctor_user.id
         req.version += 1
+
+        if srv:
+            srv.status = "IN_CONSULTATION"
+            srv.assigned_user_id = doctor_user.id
+            srv.details["consultation_started_at"] = datetime.now(timezone.utc).isoformat()
+            db.add(srv)
 
         # Update linked case
         if req.case_id:
@@ -473,12 +688,23 @@ class TeleconsultationService:
         db.commit()
         db.refresh(req)
 
-        publish_domain_event("CONSULTATION_STARTED", {"request_id": req.id})
+        event_payload = {
+            "request_id": req.id,
+            "conversation_id": req.id,
+            "service_request_id": srv.id if srv else req.service_request_id,
+            "request_reference": srv.request_reference if srv else req.public_reference,
+            "status": "IN_CONSULTATION",
+            "doctor_id": doctor_user.id,
+            "doctor_name": doctor_user.name
+        }
+        publish_domain_event("CONSULTATION_STARTED", event_payload)
+        publish_domain_event("DOCTOR_DIRECT_REQUEST_STATUS_UPDATED", event_payload)
+
         return TeleconsultationService.get_request_detail(db, req.id)
 
     @staticmethod
     def doctor_complete_consultation(db: Session, request_id: str, doctor_user: User, dto: DoctorCompleteTeleconsultationDTO) -> Dict[str, Any]:
-        req = db.query(TeleconsultationRequest).filter(TeleconsultationRequest.id == request_id).first()
+        req, srv = TeleconsultationService.resolve_canonical_request(db, request_id)
         if not req:
             raise ValueError("Teleconsultation request not found")
 
@@ -489,6 +715,14 @@ class TeleconsultationService:
         req.disposition = dto.disposition
         req.patient_guidance = dto.patient_guidance or "Follow the prescribed care plan and take rest."
         req.version += 1
+
+        if srv:
+            srv.status = "COMPLETED"
+            srv.completed_at = datetime.now(timezone.utc)
+            srv.details["provisional_diagnosis"] = dto.provisional_diagnosis
+            srv.details["patient_guidance"] = dto.patient_guidance
+            srv.details["clinical_summary"] = dto.clinical_summary
+            db.add(srv)
 
         # 1. Create Consultation Record
         cons_ref = f"CONS-{datetime.now().strftime('%Y%m%d%H%M%S')}"
