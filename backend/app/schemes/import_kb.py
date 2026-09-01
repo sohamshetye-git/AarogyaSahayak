@@ -16,12 +16,28 @@ def compute_hash(data: Any) -> str:
     s = json.dumps(data, sort_keys=True)
     return hashlib.sha256(s.encode('utf-8')).hexdigest()
 
-def import_knowledge_base(pkg_path: str, validate_only: bool = False, dry_run: bool = False, db_session: Any = None):
-    sources_file = os.path.join(pkg_path, 'sources.json')
-    schemes_file = os.path.join(pkg_path, 'schemes.json')
+def import_knowledge_base(pkg_path: str = None, validate_only: bool = False, dry_run: bool = False, db_session: Any = None):
+    # Candidate paths for schemes data
+    possible_paths = []
+    if pkg_path:
+        possible_paths.append(pkg_path)
+    
+    # 1. backend package data dir
+    possible_paths.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../data/schemes")))
+    # 2. repo root schemes dir
+    possible_paths.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../schemes")))
+    
+    resolved_path = None
+    for p in possible_paths:
+        if os.path.exists(os.path.join(p, 'sources.json')) and os.path.exists(os.path.join(p, 'schemes.json')):
+            resolved_path = p
+            break
+            
+    if not resolved_path:
+        raise FileNotFoundError(f'Package files not found in any candidate paths: {possible_paths}')
 
-    if not os.path.exists(sources_file) or not os.path.exists(schemes_file):
-        raise FileNotFoundError(f'Package files not found at {pkg_path}')
+    sources_file = os.path.join(resolved_path, 'sources.json')
+    schemes_file = os.path.join(resolved_path, 'schemes.json')
 
     with open(sources_file, 'r', encoding='utf-8') as f:
         sources_data = json.load(f).get('sources', [])

@@ -1,0 +1,347 @@
+{
+  "dataset_version": "2026-08-25.1",
+  "last_checked": "2026-08-25",
+  "capability_values": ["YES", "PARTIAL", "NO", "AUTH_REQUIRED", "NOT_VERIFIED"],
+  "sources": [
+    {
+      "source_id": "SRC-MYSCHEME",
+      "name": "myScheme",
+      "authority": "National e-Governance Division / Digital India Corporation, Ministry of Electronics and Information Technology",
+      "government_level": "CENTRAL_AGGREGATOR",
+      "official_url": "https://www.myscheme.gov.in/",
+      "scope": "Central and State/UT scheme discovery, personalized screening, scheme detail pages and official application link-outs",
+      "capabilities": {
+        "eligibility_criteria": "YES",
+        "benefits": "YES",
+        "required_documents": "YES",
+        "application_procedure": "YES",
+        "official_application_links": "YES",
+        "official_beneficiary_verification": "NO",
+        "api_or_download": "NOT_VERIFIED"
+      },
+      "access_and_reuse": "Public browsing and official hyperlinks are supported subject to the URL-hosting terms. Do not frame, shorten or imply endorsement. No unrestricted public data API was verified; seek documented authorization/API access.",
+      "update_observation": "Portal reports continuous onboarding; About/FAQ pages showed Last Updated 20 August 2026.",
+      "reliability": "MEDIUM_HIGH",
+      "recommended_use": "Primary national discovery and secondary cross-check; never override a newer scheme-owner source.",
+      "terms_url": "https://www.myscheme.gov.in/url-hosting-tc",
+      "disclaimer_url": "https://www.myscheme.gov.in/disclaimer"
+    },
+    {
+      "source_id": "SRC-INDIA-GOV",
+      "name": "National Portal of India - Schemes",
+      "authority": "National Informatics Centre, Ministry of Electronics and Information Technology",
+      "government_level": "CENTRAL_AGGREGATOR",
+      "official_url": "https://www.india.gov.in/my-government/schemes",
+      "scope": "Government scheme and service directory, official links, health and wellness discovery",
+      "capabilities": {
+        "eligibility_criteria": "PARTIAL",
+        "benefits": "PARTIAL",
+        "required_documents": "PARTIAL",
+        "application_procedure": "PARTIAL",
+        "official_application_links": "YES",
+        "official_beneficiary_verification": "NO",
+        "api_or_download": "NOT_VERIFIED"
+      },
+      "access_and_reuse": "Use public pages for discovery and linking. The portal states content is owned by the respective ministries/departments; confirm material rules with them.",
+      "update_observation": "Pages display reviewed/updated timestamps; scheme search content may be sourced from myScheme.",
+      "reliability": "MEDIUM_HIGH",
+      "recommended_use": "Secondary discovery, official directory and source cross-check."
+    },
+    {
+      "source_id": "SRC-NHA-PMJAY",
+      "name": "National Health Authority - PM-JAY",
+      "authority": "National Health Authority, Ministry of Health and Family Welfare",
+      "government_level": "CENTRAL",
+      "official_url": "https://lms.nha.gov.in/local/staticpage/view.php?page=aboutpmjay",
+      "scope": "PM-JAY program definition, entitlement basis, benefit cover, portability and coverage features",
+      "capabilities": {
+        "eligibility_criteria": "YES",
+        "benefits": "YES",
+        "required_documents": "PARTIAL",
+        "application_procedure": "PARTIAL",
+        "official_application_links": "YES",
+        "official_beneficiary_verification": "NO",
+        "api_or_download": "NOT_VERIFIED"
+      },
+      "access_and_reuse": "Public informational source. Link and cite; use beneficiary systems only through authorized access.",
+      "update_observation": "NHA pages are actively maintained; material rules must be versioned and rechecked monthly.",
+      "reliability": "HIGH",
+      "recommended_use": "Primary source for PM-JAY structured program facts."
+    },
+    {
+      "source_id": "SRC-NHA-BIS",
+      "name": "PM-JAY Beneficiary Identification System / Ayushman beneficiary portal",
+      "authority": "National Health Authority and State Health Agencies",
+      "government_level": "CENTRAL_STATE",
+      "official_url": "https://beneficiary.nha.gov.in/",
+      "scope": "Search existing entitled-family list, authenticate family membership, e-KYC and Ayushman Card",
+      "capabilities": {
+        "eligibility_criteria": "NO",
+        "benefits": "NO",
+        "required_documents": "PARTIAL",
+        "application_procedure": "YES",
+        "official_application_links": "YES",
+        "official_beneficiary_verification": "YES",
+        "api_or_download": "AUTH_REQUIRED"
+      },
+      "access_and_reuse": "Authenticated official system. Do not scrape, store credentials or automate without a documented NHA/SHA integration agreement.",
+      "update_observation": "Transactional system; verification is point-in-time.",
+      "reliability": "HIGH",
+      "recommended_use": "Only source in this package permitted to promote PM-JAY from screened/relevant to officially verified, subject to authorized response evidence."
+    },
+    {
+      "source_id": "SRC-NHA-HEM",
+      "name": "PM-JAY Hospital Empanelment Management",
+      "authority": "National Health Authority and State Health Agencies",
+      "government_level": "CENTRAL_STATE",
+      "official_url": "https://hem.nha.gov.in/",
+      "scope": "Empanelled-hospital administration and provider-network confirmation",
+      "capabilities": {
+        "eligibility_criteria": "NO",
+        "benefits": "PARTIAL",
+        "required_documents": "NO",
+        "application_procedure": "NO",
+        "official_application_links": "NO",
+        "official_beneficiary_verification": "NO",
+        "api_or_download": "AUTH_REQUIRED"
+      },
+      "access_and_reuse": "Use public/provider information only as allowed; no open bulk API was verified.",
+      "update_observation": "Operational registry; provider status can change and should be checked at time of referral.",
+      "reliability": "HIGH",
+      "recommended_use": "Confirm PM-JAY network status; do not confuse with ABDM HFR registration."
+    },
+    {
+      "source_id": "SRC-ABDM",
+      "name": "Ayushman Bharat Digital Mission",
+      "authority": "National Health Authority",
+      "government_level": "CENTRAL",
+      "official_url": "https://abdm.gov.in/",
+      "scope": "ABHA identity, consented health-record exchange and digital-health ecosystem",
+      "capabilities": {
+        "eligibility_criteria": "NO",
+        "benefits": "NO",
+        "required_documents": "PARTIAL",
+        "application_procedure": "YES",
+        "official_application_links": "YES",
+        "official_beneficiary_verification": "NO",
+        "api_or_download": "AUTH_REQUIRED"
+      },
+      "access_and_reuse": "Sandbox and production integrations require onboarding/approval; health data access requires consent and security compliance.",
+      "update_observation": "Versioned sandbox documentation and platform releases.",
+      "reliability": "HIGH_FOR_IDENTITY",
+      "recommended_use": "ABHA identity and health-record interoperability only; never infer health-scheme eligibility."
+    },
+    {
+      "source_id": "SRC-ABDM-HFR",
+      "name": "ABDM Health Facility Registry",
+      "authority": "National Health Authority",
+      "government_level": "CENTRAL",
+      "official_url": "https://abdm.gov.in/health-facilities",
+      "scope": "Updated comprehensive registry of verified health facilities across systems of medicine",
+      "capabilities": {
+        "eligibility_criteria": "NO",
+        "benefits": "NO",
+        "required_documents": "NO",
+        "application_procedure": "NO",
+        "official_application_links": "NO",
+        "official_beneficiary_verification": "NO",
+        "api_or_download": "AUTH_REQUIRED"
+      },
+      "access_and_reuse": "Use through documented ABDM onboarding/sandbox. Registry presence is not PM-JAY empanelment.",
+      "update_observation": "Operational registry; verify facility status near time of use.",
+      "reliability": "HIGH_FOR_FACILITY_IDENTITY",
+      "recommended_use": "Facility identity, type and address; join separately to scheme-specific network status."
+    },
+    {
+      "source_id": "SRC-NHM-CENTRAL",
+      "name": "National Health Mission",
+      "authority": "Ministry of Health and Family Welfare",
+      "government_level": "CENTRAL",
+      "official_url": "https://nhm.gov.in/",
+      "scope": "Maternal, newborn, child, adolescent, communicable and non-communicable health program pages and guidelines",
+      "capabilities": {
+        "eligibility_criteria": "YES",
+        "benefits": "YES",
+        "required_documents": "PARTIAL",
+        "application_procedure": "PARTIAL",
+        "official_application_links": "PARTIAL",
+        "official_beneficiary_verification": "NO",
+        "api_or_download": "PARTIAL"
+      },
+      "access_and_reuse": "Public pages and PDFs can be cited and linked. Check copyright policy before reproducing entire works.",
+      "update_observation": "Portal displayed updated date 20 August 2026; guideline updates are notification-driven.",
+      "reliability": "HIGH",
+      "recommended_use": "Primary rules and service-entitlement source for JSY, JSSK, RBSK and maternal/child programs."
+    },
+    {
+      "source_id": "SRC-MOHFW-DGHS",
+      "name": "MoHFW and Directorate General of Health Services",
+      "authority": "Ministry of Health and Family Welfare / DGHS",
+      "government_level": "CENTRAL",
+      "official_url": "https://dghs.mohfw.gov.in/",
+      "scope": "National programs, technical guidance and citizen service information",
+      "capabilities": {
+        "eligibility_criteria": "PARTIAL",
+        "benefits": "YES",
+        "required_documents": "PARTIAL",
+        "application_procedure": "PARTIAL",
+        "official_application_links": "PARTIAL",
+        "official_beneficiary_verification": "NO",
+        "api_or_download": "PARTIAL"
+      },
+      "access_and_reuse": "Public official material; link/cite and retain exact page/document version. Program-specific systems govern transactions.",
+      "update_observation": "Program pages and guidelines are updated irregularly; monitor change hashes.",
+      "reliability": "HIGH",
+      "recommended_use": "Primary program/service descriptions and controlling guidance where available."
+    },
+    {
+      "source_id": "SRC-MWCD-PMMVY",
+      "name": "SPNIWCD PMMVY information and FAQ",
+      "authority": "Ministry of Women and Child Development",
+      "government_level": "CENTRAL",
+      "official_url": "https://www.spniwcd.wcd.gov.in/pradhan-mantri-matru-vandana-yojna",
+      "scope": "PMMVY eligibility categories, benefit milestones, documents, application and official portal",
+      "capabilities": {
+        "eligibility_criteria": "YES",
+        "benefits": "YES",
+        "required_documents": "YES",
+        "application_procedure": "YES",
+        "official_application_links": "YES",
+        "official_beneficiary_verification": "PARTIAL",
+        "api_or_download": "NOT_VERIFIED"
+      },
+      "access_and_reuse": "Public official information. Application/approval remains in the PMMVY portal and State Nodal Officer process.",
+      "update_observation": "Page showed last update 25 August 2026; monitor FAQ and documents page monthly.",
+      "reliability": "HIGH",
+      "recommended_use": "Primary PMMVY structured-rule and document source."
+    },
+    {
+      "source_id": "SRC-PHD-MH",
+      "name": "Maharashtra Public Health Department",
+      "authority": "Government of Maharashtra",
+      "government_level": "STATE",
+      "official_url": "https://phd.maharashtra.gov.in/en/",
+      "scope": "State health schemes/programs, government orders, facilities, helplines and grievances",
+      "capabilities": {
+        "eligibility_criteria": "YES",
+        "benefits": "YES",
+        "required_documents": "PARTIAL",
+        "application_procedure": "YES",
+        "official_application_links": "YES",
+        "official_beneficiary_verification": "PARTIAL",
+        "api_or_download": "NOT_VERIFIED"
+      },
+      "access_and_reuse": "Website policy requires permission for reproduction, accurate use and prominent acknowledgement; link to official originals.",
+      "update_observation": "Active 2025-2026 pages; schemes and helplines should be reviewed monthly.",
+      "reliability": "HIGH",
+      "recommended_use": "Primary Maharashtra policy, service, helpline and state-program source.",
+      "terms_url": "https://phd.maharashtra.gov.in/en/website-policies/"
+    },
+    {
+      "source_id": "SRC-NHM-MH",
+      "name": "National Health Mission Maharashtra",
+      "authority": "Government of Maharashtra",
+      "government_level": "STATE",
+      "official_url": "https://nhm.maharashtra.gov.in/en/schemes-programmes/",
+      "scope": "Maharashtra implementation of maternal, child, tribal and national health programs",
+      "capabilities": {
+        "eligibility_criteria": "YES",
+        "benefits": "YES",
+        "required_documents": "PARTIAL",
+        "application_procedure": "YES",
+        "official_application_links": "PARTIAL",
+        "official_beneficiary_verification": "PARTIAL",
+        "api_or_download": "NOT_VERIFIED"
+      },
+      "access_and_reuse": "Public official source; cite/link and apply Government of Maharashtra website policies.",
+      "update_observation": "Many scheme pages dated April 2025; recheck against new orders and NHM PIPs.",
+      "reliability": "HIGH",
+      "recommended_use": "Primary state implementation source for ASHA workflows and local access."
+    },
+    {
+      "source_id": "SRC-SHAS-MH",
+      "name": "State Health Assurance Society Maharashtra",
+      "authority": "Maharashtra Public Health Department",
+      "government_level": "STATE",
+      "official_url": "https://phd.maharashtra.gov.in/en/organization/state-health-assurance-society_1/",
+      "scope": "Governance and official contact for integrated MJPJAY/PM-JAY assurance",
+      "capabilities": {
+        "eligibility_criteria": "PARTIAL",
+        "benefits": "PARTIAL",
+        "required_documents": "PARTIAL",
+        "application_procedure": "PARTIAL",
+        "official_application_links": "PARTIAL",
+        "official_beneficiary_verification": "YES",
+        "api_or_download": "AUTH_REQUIRED"
+      },
+      "access_and_reuse": "Use official channels and approved integration for beneficiary/network data.",
+      "update_observation": "Operational authority; contact and rules can change.",
+      "reliability": "HIGH",
+      "recommended_use": "MJPJAY official escalation and verification authority."
+    },
+    {
+      "source_id": "SRC-APISETU",
+      "name": "API Setu",
+      "authority": "NeGD / Digital India Corporation, Ministry of Electronics and Information Technology",
+      "government_level": "CENTRAL_INFRASTRUCTURE",
+      "official_url": "https://apisetu.gov.in/",
+      "scope": "Directory and controlled access to documented government APIs",
+      "capabilities": {
+        "eligibility_criteria": "NO",
+        "benefits": "NO",
+        "required_documents": "NO",
+        "application_procedure": "NO",
+        "official_application_links": "NO",
+        "official_beneficiary_verification": "PARTIAL",
+        "api_or_download": "AUTH_REQUIRED"
+      },
+      "access_and_reuse": "Valid credentials and authorized, documented use are required. Availability is issuer and API specific.",
+      "update_observation": "API directory and documentation are versioned by publishers.",
+      "reliability": "HIGH_WHEN_ISSUER_API_EXISTS",
+      "recommended_use": "Preferred route for any documented government API; absence from the directory means do not invent an API.",
+      "terms_url": "https://docs.apisetu.gov.in/document-central/terms-of-use/Permitted%20Use%20and%20Access.html"
+    },
+    {
+      "source_id": "SRC-DATA-GOV-IN",
+      "name": "Open Government Data Platform India",
+      "authority": "Government of India",
+      "government_level": "CENTRAL_OPEN_DATA",
+      "official_url": "https://www.data.gov.in/",
+      "scope": "Published non-sensitive datasets, resources and APIs",
+      "capabilities": {
+        "eligibility_criteria": "PARTIAL",
+        "benefits": "NO",
+        "required_documents": "NO",
+        "application_procedure": "NO",
+        "official_application_links": "NO",
+        "official_beneficiary_verification": "NO",
+        "api_or_download": "YES"
+      },
+      "access_and_reuse": "Dataset-specific terms and metadata apply; non-sensitive open data may be reusable under the published license.",
+      "update_observation": "Dataset-specific update frequency.",
+      "reliability": "HIGH_FOR_PUBLISHED_DATASET",
+      "recommended_use": "Facilities and aggregate analytics only unless an authoritative dataset explicitly supports another use."
+    },
+    {
+      "source_id": "SRC-CMRF-MH",
+      "name": "Chief Minister Relief Fund Maharashtra",
+      "authority": "Government of Maharashtra",
+      "government_level": "STATE",
+      "official_url": "https://cmrf.maharashtra.gov.in/",
+      "scope": "Medical-assistance application materials, hospital list and application status",
+      "capabilities": {
+        "eligibility_criteria": "PARTIAL",
+        "benefits": "PARTIAL",
+        "required_documents": "YES",
+        "application_procedure": "YES",
+        "official_application_links": "YES",
+        "official_beneficiary_verification": "YES",
+        "api_or_download": "NOT_VERIFIED"
+      },
+      "access_and_reuse": "Use official application/status pages; do not automate applicant data without authorization and consent.",
+      "update_observation": "Operational portal; procedure and assistance amounts are decision/version dependent.",
+      "reliability": "HIGH",
+      "recommended_use": "Discovery and assisted application. Keep deterministic eligibility disabled until the current controlling procedure is reviewed."
+    }
+  ]
+}

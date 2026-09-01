@@ -17,12 +17,35 @@ def seed_database():
     db: Session = SessionLocal()
 
     try:
-        if db.query(User).filter(User.identifier == "sita.asha").first():
-            print("Database already seeded. Skipping.")
-            return
+        ensure_schemes_knowledge_base(db)
+        ensure_facilities_and_staff(db)
+    except Exception as e:
+        db.rollback()
+        print(f"Error seeding database: {e}")
+        raise
+    finally:
+        db.close()
 
-        print("Seeding comprehensive synthetic healthcare fixtures for Aarogya Sahayak...")
+def ensure_schemes_knowledge_base(db: Session):
+    # Seed Government Health Schemes Knowledge Base idempotently
+    try:
+        from app.models import SchemeModel
+        if db.query(SchemeModel).count() == 0:
+            import os
+            from app.schemes.import_kb import import_knowledge_base
+            import_knowledge_base(db_session=db)
+            print("Government Schemes knowledge base seeded successfully.")
+    except Exception as e:
+        print(f"Warning: Could not auto-seed schemes KB: {e}")
 
+def ensure_facilities_and_staff(db: Session):
+    if db.query(User).filter(User.identifier == "sita.asha").first():
+        print("Staff users and cases already exist. Skipping case seeding.")
+        return
+
+    print("Seeding comprehensive synthetic healthcare fixtures for Aarogya Sahayak...")
+
+    try:
         # 1. Facilities
         phc = Facility(
             id="PHC-09",
@@ -861,18 +884,5 @@ def seed_prescriptions_data(db: Session, doctor_user: User, asha_user: User):
         ])
 
     db.flush()
-
-    # Seed Government Health Schemes Knowledge Base
-    try:
-        from app.models import SchemeModel
-        if db.query(SchemeModel).count() == 0:
-            import os
-            from app.schemes.import_kb import import_knowledge_base
-            kb_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../schemes"))
-            if os.path.exists(kb_path):
-                import_knowledge_base(kb_path, db_session=db)
-                print("Government Schemes knowledge base seeded successfully.")
-    except Exception as e:
-        print(f"Warning: Could not auto-seed schemes KB: {e}")
 
 

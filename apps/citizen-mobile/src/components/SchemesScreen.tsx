@@ -10,6 +10,7 @@ import {
   Navigation, Navigation2, Compass, Radio, Map
 } from "lucide-react";
 import { apiClient } from "@aarogya/api-client";
+import { useCitizenAuth } from "../context/CitizenAuthContext";
 import {
   SchemeCategoryDTO, SchemeListItemDTO, SchemeDetailDTO, SchemeApplicationGuidanceDTO,
   SchemeHelpRequirementsDTO, SchemeHelpCentreItemDTO, SchemeHelpCentresResponseDTO, SchemeFacilityDetailDTO
@@ -75,6 +76,8 @@ export const SchemesScreen: React.FC<SchemesScreenProps> = ({
     return { type: "categories" };
   });
 
+  const { user, activeBeneficiary: authActiveBeneficiary } = useCitizenAuth();
+
   // Data States
   const [categories, setCategories] = useState<SchemeCategoryDTO[]>([]);
   const [categorySchemes, setCategorySchemes] = useState<SchemeListItemDTO[]>([]);
@@ -105,18 +108,18 @@ export const SchemesScreen: React.FC<SchemesScreenProps> = ({
   const [authorityFilter, setAuthorityFilter] = useState<"ALL" | "Central" | "Maharashtra">("ALL");
   const [typeFilter, setTypeFilter] = useState<string>("ALL");
 
-  // Single / Batch Eligibility States
-  const [selectedBeneficiary, setSelectedBeneficiary] = useState<any>({
+  // Single / Batch Eligibility States - dynamically bound to logged in citizen
+  const [selectedBeneficiary, setSelectedBeneficiary] = useState<any>(() => ({
     type: "MYSELF",
-    name: "Sunita Devi",
-    age: 24,
+    name: user?.name || "मी स्वतः (Self)",
+    age: 28,
     gender: "FEMALE",
     state: "Maharashtra",
     district: "District 04",
     is_pregnant: true,
     gestational_weeks: 26,
     social_category: "BPL"
-  });
+  }));
   const [singleSchemeEligibility, setSingleSchemeEligibility] = useState<any>(null);
   const [missingFactsInput, setMissingFactsInput] = useState<Record<string, any>>({});
   const [allScreeningResults, setAllScreeningResults] = useState<any[]>([]);
@@ -124,10 +127,28 @@ export const SchemesScreen: React.FC<SchemesScreenProps> = ({
 
   // Status & Feedback
   const [loading, setLoading] = useState(false);
+  const [categoriesLoading, setCategoriesLoading] = useState(true);
+  const [categoriesError, setCategoriesError] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [actionSuccessMsg, setActionSuccessMsg] = useState<string | null>(null);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [isOffline, setIsOffline] = useState(!navigator.onLine);
+
+  // Keep selectedBeneficiary in sync with logged in user or auth active beneficiary
+  useEffect(() => {
+    if (user?.name) {
+      setSelectedBeneficiary((prev: any) => {
+        if (prev.type === "MYSELF") {
+          return {
+            ...prev,
+            name: user.name,
+            village_name: user.village_name || prev.village_name
+          };
+        }
+        return prev;
+      });
+    }
+  }, [user]);
 
   // Navigation Sync Helper
   const navigateTo = useCallback((route: SchemeRoute, replace = false) => {
@@ -220,6 +241,8 @@ export const SchemesScreen: React.FC<SchemesScreenProps> = ({
   // 1. Load Initial Categories & Data with Offline Fallback Cache
   const loadInitialData = async () => {
     setLoading(true);
+    setCategoriesLoading(true);
+    setCategoriesError(null);
     setErrorMsg(null);
     try {
       const [catRes, homeRes, savedRes, appRes, centresRes, householdRes] = await Promise.allSettled([
@@ -234,10 +257,15 @@ export const SchemesScreen: React.FC<SchemesScreenProps> = ({
       if (catRes.status === "fulfilled") {
         const catData = catRes.value?.data || catRes.value || [];
         setCategories(catData);
+        setCategoriesError(null);
         try { localStorage.setItem("aarogya_cached_categories", JSON.stringify(catData)); } catch (e) {}
       } else {
         const cached = localStorage.getItem("aarogya_cached_categories");
-        if (cached) setCategories(JSON.parse(cached));
+        if (cached) {
+          setCategories(JSON.parse(cached));
+        } else {
+          setCategoriesError("योजना वर्गवारी लोड करताना त्रुटी आली. कृपया पुन्हा प्रयत्न करा.");
+        }
       }
 
       if (homeRes.status === "fulfilled") setHomeSummary(homeRes.value?.data || homeRes.value);
@@ -255,9 +283,10 @@ export const SchemesScreen: React.FC<SchemesScreenProps> = ({
     } catch (err: any) {
       console.error("Failed to load schemes initial data", err);
       setErrorMsg("माहिती लोड करण्यात अडचण आली. कृपया पुन्हा प्रयत्न करा.");
+      setCategoriesError("योजना माहिती लोड करता आली नाही.");
     } finally {
-
       setLoading(false);
+      setCategoriesLoading(false);
     }
   };
 
@@ -650,25 +679,19 @@ export const SchemesScreen: React.FC<SchemesScreenProps> = ({
           <button
             id="btn-check-for-me"
             onClick={() => {
-              setSelectedBeneficiary({
+              const selfBeneficiary = {
                 type: "MYSELF",
-                name: "Sunita Devi",
-                age: 24,
+                name: user?.name || "मी स्वतः (Self)",
+                age: 28,
                 gender: "FEMALE",
                 state: "Maharashtra",
                 district: "District 04",
                 is_pregnant: true,
                 gestational_weeks: 26,
                 social_category: "BPL"
-              });
-              runFullScreening({
-                name: "Sunita Devi",
-                age: 24,
-                gender: "FEMALE",
-                is_pregnant: true,
-                gestational_weeks: 26,
-                social_category: "BPL"
-              });
+              };
+              setSelectedBeneficiary(selfBeneficiary);
+              runFullScreening(selfBeneficiary);
             }}
             style={{
               backgroundColor: "#1D4ED8",
@@ -794,79 +817,134 @@ export const SchemesScreen: React.FC<SchemesScreenProps> = ({
             </h2>
           </div>
 
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-            {categories.map((cat) => {
-              const count = cat.active_scheme_count ?? cat.count ?? 0;
-              const countLabel = getPlanCountText(count);
-
-              return (
-                <button
-                  key={cat.category_id || cat.category_code}
-                  id={`scheme-category-card-${cat.category_id || cat.category_code}`}
-                  onClick={() => {
-                    setActiveCategory(cat);
-                    navigateTo({ type: "category_list", categoryId: cat.category_id || cat.category_code });
-                  }}
-
+          {categoriesLoading ? (
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+              {[1, 2, 3, 4, 5, 6].map((i) => (
+                <div
+                  key={i}
                   style={{
                     backgroundColor: "#FFFFFF",
                     border: "1.5px solid #E2E8F0",
                     borderRadius: 16,
                     padding: "16px 14px",
+                    minHeight: 120,
                     display: "flex",
                     flexDirection: "column",
                     gap: 10,
-                    cursor: "pointer",
-                    boxShadow: "0 2px 8px rgba(0,0,0,0.03)",
-                    textAlign: "left",
-                    minHeight: 120,
-                    width: "100%",
-                    outline: "none",
-                    transition: "all 0.15s ease"
+                    animation: "pulse 1.5s infinite"
                   }}
-                  onFocus={(e) => (e.currentTarget.style.borderColor = "#1D4ED8")}
-                  onBlur={(e) => (e.currentTarget.style.borderColor = "#E2E8F0")}
                 >
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", width: "100%" }}>
-                    <div
-                      style={{
-                        width: 44,
-                        height: 44,
-                        borderRadius: 12,
-                        backgroundColor: "#EFF6FF",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center"
-                      }}
-                    >
-                      {renderCategoryIcon(cat.icon)}
-                    </div>
-                    <span
-                      style={{
-                        fontSize: 11,
-                        fontWeight: 800,
-                        color: "#1D4ED8",
-                        backgroundColor: "#DBEAFE",
-                        padding: "3px 8px",
-                        borderRadius: 10
-                      }}
-                    >
-                      {countLabel}
-                    </span>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <div style={{ width: 44, height: 44, borderRadius: 12, backgroundColor: "#F1F5F9" }} />
+                    <div style={{ width: 50, height: 20, borderRadius: 10, backgroundColor: "#F1F5F9" }} />
                   </div>
+                  <div style={{ width: "70%", height: 16, backgroundColor: "#F1F5F9", borderRadius: 4, marginTop: 4 }} />
+                  <div style={{ width: "90%", height: 12, backgroundColor: "#F1F5F9", borderRadius: 4 }} />
+                </div>
+              ))}
+            </div>
+          ) : categoriesError ? (
+            <div style={{ textAlign: "center", padding: "32px 16px", backgroundColor: "#FEF2F2", borderRadius: 16, border: "1.5px solid #FCA5A5" }}>
+              <AlertCircle size={36} color="#DC2626" style={{ margin: "0 auto 8px auto" }} />
+              <div style={{ fontSize: 14, fontWeight: 800, color: "#991B1B" }}>
+                {categoriesError}
+              </div>
+              <button
+                id="btn-retry-categories"
+                onClick={() => loadInitialData()}
+                style={{
+                  marginTop: 12,
+                  backgroundColor: "#DC2626",
+                  color: "#FFFFFF",
+                  border: "none",
+                  borderRadius: 10,
+                  padding: "8px 16px",
+                  fontSize: 13,
+                  fontWeight: 700,
+                  cursor: "pointer",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 6,
+                  minHeight: 40
+                }}
+              >
+                <RefreshCw size={14} /> {t("common.retry", "पुन्हा प्रयत्न करा")}
+              </button>
+            </div>
+          ) : (
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+              {categories.map((cat) => {
+                const count = cat.active_scheme_count ?? cat.count ?? 0;
+                const countLabel = getPlanCountText(count);
 
-                  <div>
-                    <div style={{ fontSize: 14, fontWeight: 800, color: "#0F172A", lineHeight: 1.3 }}>
-                      {getCategoryTitle(cat)}
+                return (
+                  <button
+                    key={cat.category_id || cat.category_code}
+                    id={`scheme-category-card-${cat.category_id || cat.category_code}`}
+                    onClick={() => {
+                      setActiveCategory(cat);
+                      navigateTo({ type: "category_list", categoryId: cat.category_id || cat.category_code });
+                    }}
+                    style={{
+                      backgroundColor: "#FFFFFF",
+                      border: "1.5px solid #E2E8F0",
+                      borderRadius: 16,
+                      padding: "16px 14px",
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: 10,
+                      cursor: "pointer",
+                      boxShadow: "0 2px 8px rgba(0,0,0,0.03)",
+                      textAlign: "left",
+                      minHeight: 120,
+                      width: "100%",
+                      outline: "none",
+                      transition: "all 0.15s ease"
+                    }}
+                    onFocus={(e) => (e.currentTarget.style.borderColor = "#1D4ED8")}
+                    onBlur={(e) => (e.currentTarget.style.borderColor = "#E2E8F0")}
+                  >
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", width: "100%" }}>
+                      <div
+                        style={{
+                          width: 44,
+                          height: 44,
+                          borderRadius: 12,
+                          backgroundColor: "#EFF6FF",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center"
+                        }}
+                      >
+                        {renderCategoryIcon(cat.icon)}
+                      </div>
+                      <span
+                        style={{
+                          fontSize: 11,
+                          fontWeight: 800,
+                          color: "#1D4ED8",
+                          backgroundColor: "#DBEAFE",
+                          padding: "3px 8px",
+                          borderRadius: 10
+                        }}
+                      >
+                        {countLabel}
+                      </span>
                     </div>
-                    <div style={{ fontSize: 11, color: "#64748B", marginTop: 4, lineHeight: 1.35 }}>
-                      {getCategoryDesc(cat)}
+
+                    <div>
+                      <div style={{ fontSize: 14, fontWeight: 800, color: "#0F172A", lineHeight: 1.3 }}>
+                        {getCategoryTitle(cat)}
+                      </div>
+                      <div style={{ fontSize: 11, color: "#64748B", marginTop: 4, lineHeight: 1.35 }}>
+                        {getCategoryDesc(cat)}
+                      </div>
                     </div>
-                  </div>
-                </button>
-              );
-            })}
-          </div>
+                  </button>
+                );
+              })}
+            </div>
+          )}
         </div>
       </div>
     );
@@ -1770,22 +1848,22 @@ const renderEligibilityView = (schemeId: string) => {
       {
         id: "myself",
         type: "MYSELF",
-        name: "Sunita Devi (मी स्वतः)",
+        name: `${user?.name || "मी स्वतः"} (Self)`,
         relation: "Self",
-        age: 24,
+        age: 28,
         gender: "FEMALE",
-        context: "गरोदर (26 आठवडे), BPL शिधापत्रिका धारक",
+        context: user?.village_name ? `गाव: ${user.village_name}` : "मुख्य लाभार्थी (Primary Beneficiary)",
         is_pregnant: true
       },
       ...householdMembers.map(m => ({
         id: m.id,
         type: "MEMBER",
-        name: `${m.full_name || m.name} (${m.relationship_type})`,
-        relation: m.relationship_type,
+        name: `${m.full_name || m.name} (${m.relationship_type || "Family Member"})`,
+        relation: m.relationship_type || "Family",
         age: m.age || 30,
-        gender: m.gender || "FEMALE",
-        context: m.context || "कुटुंब सदस्य",
-        is_pregnant: false
+        gender: m.sex || m.gender || "FEMALE",
+        context: m.health_notes || `${m.relationship_type || "सदस्य"} • ${m.age ? m.age + ' वर्षे' : ''}`,
+        is_pregnant: Boolean(m.is_pregnant)
       }))
     ];
 
@@ -1856,7 +1934,7 @@ const renderEligibilityView = (schemeId: string) => {
           </button>
           <div>
             <h2 style={{ fontSize: 16, fontWeight: 800, color: "#0F172A", margin: 0 }}>
-              पात्रता निकाल ({selectedBeneficiary?.name || "Sunita Devi"})
+              पात्रता निकाल ({selectedBeneficiary?.name || user?.name || "लाभार्थी"})
             </h2>
           </div>
         </div>
