@@ -1044,6 +1044,49 @@ export const SchemesScreen: React.FC<SchemesScreenProps> = ({
               <div key={i} style={{ backgroundColor: '#F1F5F9', height: 110, borderRadius: 16, animation: 'pulse 1.5s infinite' }} />
             ))}
           </div>
+        ) : errorMsg ? (
+          <div style={{ textAlign: 'center', padding: '32px 16px', backgroundColor: '#FEF2F2', borderRadius: 16, border: '1.5px solid #FCA5A5' }}>
+            <AlertCircle size={36} color="#DC2626" style={{ margin: '0 auto 8px auto' }} />
+            <div style={{ fontSize: 14, fontWeight: 800, color: '#991B1B' }}>
+              {errorMsg}
+            </div>
+            <button
+              onClick={() => {
+                setLoading(true);
+                setErrorMsg(null);
+                apiClient.getCitizenSchemes({
+                  category_id: (routeState as any).categoryId,
+                  state: authorityFilter === "Maharashtra" ? "Maharashtra" : undefined,
+                  query: searchQuery || undefined,
+                  status: "ACTIVE"
+                }).then((res: any) => {
+                  const payload = res?.data || res || {};
+                  const items = payload.items || payload || [];
+                  setCategorySchemes(items);
+                  setCategoryTotal(payload.total || items.length);
+                }).catch((err: any) => {
+                  setErrorMsg("या वर्गवारीतील योजना लोड करताना त्रुटी आली. कृपया पुन्हा प्रयत्न करा.");
+                }).finally(() => setLoading(false));
+              }}
+              style={{
+                marginTop: 12,
+                backgroundColor: '#DC2626',
+                color: '#FFFFFF',
+                border: 'none',
+                borderRadius: 10,
+                padding: '8px 16px',
+                fontSize: 13,
+                fontWeight: 700,
+                cursor: 'pointer',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 6,
+                minHeight: 40
+              }}
+            >
+              <RefreshCw size={14} /> {t('common.retry', 'पुन्हा प्रयत्न करा')}
+            </button>
+          </div>
         ) : categorySchemes.length === 0 ? (
           <div style={{ textAlign: 'center', padding: '40px 16px', backgroundColor: '#F8FAFC', borderRadius: 16, border: '1px dashed #CBD5E1' }}>
             <Award size={40} color='#94A3B8' style={{ margin: '0 auto 10px auto' }} />
