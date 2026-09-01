@@ -1207,17 +1207,9 @@ def scheme_matches_category(scheme_cats: list, cat_def: dict, scheme_text: str =
 def get_citizen_scheme_categories(db: Session = Depends(get_db)):
     """
     12 rural-friendly category cards with database-derived active scheme counts.
+    Strictly read-only query against the populated catalog.
     """
     schemes = db.query(SchemeModel).all()
-    if len(schemes) == 0:
-        try:
-            from app.schemes.import_kb import import_knowledge_base
-            import_knowledge_base(db_session=db)
-            db.commit()
-            schemes = db.query(SchemeModel).all()
-        except Exception as e:
-            import logging
-            logging.getLogger("aarogya-backend").error(f"Error auto-importing schemes: {e}")
     categories_data = []
 
     for cat in CATEGORY_DEFINITIONS:
@@ -1264,15 +1256,9 @@ def get_all_schemes(
 ):
     """
     Authoritative list of schemes imported from PostgreSQL/SQLite with category filtering & envelope.
+    Strictly read-only query against the populated catalog.
     """
     schemes = db.query(SchemeModel).all()
-    if len(schemes) == 0:
-        try:
-            from app.schemes.import_kb import import_knowledge_base
-            import_knowledge_base(db_session=db)
-            schemes = db.query(SchemeModel).all()
-        except Exception as e:
-            pass
     results = []
 
     filter_cat_id = category_id or category
