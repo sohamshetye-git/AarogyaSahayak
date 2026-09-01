@@ -10,14 +10,18 @@ from app.auth.security import get_password_hash
 
 def seed_database():
     from app.config import settings
-    if settings.ENVIRONMENT.lower() == "production":
-        print("Database seeding is disabled in production environments.")
-        return
 
     db: Session = SessionLocal()
 
     try:
+        # 1. Always ensure government schemes knowledge base catalog is populated idempotently
         ensure_schemes_knowledge_base(db)
+
+        # 2. Skip demo users/cases in production if configured
+        if settings.ENVIRONMENT.lower() == "production":
+            print("Demo database fixtures seeding is disabled in production environments.")
+            return
+
         ensure_facilities_and_staff(db)
     except Exception as e:
         db.rollback()
