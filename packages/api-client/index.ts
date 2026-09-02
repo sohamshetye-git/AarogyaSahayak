@@ -52,11 +52,78 @@ export class AarogyaApiClient {
   private onTokenRefreshedCallback?: (token: string, user?: any) => void;
 
   constructor(baseUrl?: string) {
-    const envUrl =
+    const isBrowser = typeof window !== "undefined";
+    const isProductionBrowser =
+      isBrowser &&
+      window.location.hostname !== "localhost" &&
+      window.location.hostname !== "127.0.0.1";
+
+    const defaultFallback = isProductionBrowser
+      ? "https://aarogya-sahayak-backend.onrender.com/api"
+      : "http://localhost:8000/api";
+
+    const rawUrl =
+      baseUrl ||
       (typeof import.meta !== "undefined" && (import.meta as any).env?.VITE_API_BASE_URL) ||
       (typeof process !== "undefined" && process.env?.VITE_API_BASE_URL) ||
-      "http://localhost:8000/api";
-    this.baseUrl = baseUrl || envUrl;
+      defaultFallback;
+
+    this.baseUrl = this.normalizeBaseUrl(rawUrl, defaultFallback);
+  }
+
+  private normalizeBaseUrl(url: string, fallback: string): string {
+    let clean = (url || "").trim();
+    if (!clean) return fallback;
+    // Strip trailing slashes
+    clean = clean.replace(/\/+$/, "");
+    // If url does not end with /api and does not point directly to an API subpath, append /api
+    if (!clean.endsWith("/api")) {
+      // Check if it's just origin e.g. https://domain.com
+      try {
+        const parsed = new URL(clean);
+        if (parsed.pathname === "" || parsed.pathname === "/") {
+          clean = `${parsed.origin}/api`;
+        }
+      } catch {
+        // Keep as is if invalid URL format
+      }
+    }
+    return clean;
+  }
+
+  getBaseUrl(): string {
+    return this.baseUrl;
+  }
+
+  getOrigin(): string {
+    try {
+      return new URL(this.baseUrl).origin;
+    } catch {
+      return "https://aarogya-sahayak-backend.onrender.com";
+    }
+  }
+
+  async checkHealth(timeoutMs: number = 5000): Promise<{ status: string; ok: boolean; data?: any }> {
+    const healthUrl = `${this.getOrigin()}/health`;
+    try {
+      const controller = typeof AbortController !== "undefined" ? new AbortController() : null;
+      const timeoutId = controller ? setTimeout(() => controller.abort(), timeoutMs) : null;
+      try {
+        const res = await fetch(healthUrl, {
+          method: "GET",
+          signal: controller ? controller.signal : undefined,
+        });
+        if (res.ok) {
+          const data = await res.json().catch(() => ({}));
+          return { status: "ONLINE", ok: true, data };
+        }
+        return { status: "DEGRADED", ok: false };
+      } finally {
+        if (timeoutId) clearTimeout(timeoutId);
+      }
+    } catch {
+      return { status: "OFFLINE", ok: false };
+    }
   }
 
   setToken(token: string | null) {
@@ -205,12 +272,20 @@ export class AarogyaApiClient {
       }
 
       if (response.status === 401 || response.status === 403) {
-        const msg = (typeof rawErrorData?.detail === "string" ? rawErrorData.detail : rawErrorData?.detail?.message) || rawErrorData?.error?.message || "Sign-in details incorrect. Please check your credentials.";
-        throw new ApiError(msg, response.status === 401 ? "UNAUTHORIZED" : "FORBIDDEN", rawErrorData?.error?.fields, rawErrorData?.request_id, response.status);
+        const msg =
+          (typeof rawErrorData?.detail === "string" ? rawErrorData.detail : rawErrorData?.detail?.message) ||
+          rawErrorData?.error?.message ||
+          "Sign-in details incorrect. Please check your credentials.";
+        const isAuth = this.isAuthEndpoint(endpoint);
+        const code = isAuth ? "INVALID_CREDENTIALS" : (response.status === 401 ? "UNAUTHORIZED" : "FORBIDDEN");
+        throw new ApiError(msg, code, rawErrorData?.error?.fields, rawErrorData?.request_id, response.status);
       }
 
       if (response.status >= 500) {
-        const msg = (typeof rawErrorData?.detail === "string" ? rawErrorData.detail : rawErrorData?.detail?.message) || rawErrorData?.error?.message || "Server error occurred. Please try again later.";
+        const msg =
+          (typeof rawErrorData?.detail === "string" ? rawErrorData.detail : rawErrorData?.detail?.message) ||
+          rawErrorData?.error?.message ||
+          "Server error occurred. Please try again later.";
         throw new ApiError(msg, "SERVER_ERROR", rawErrorData?.error?.fields, rawErrorData?.request_id, response.status);
       }
 

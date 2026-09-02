@@ -1,3 +1,5 @@
+import { apiClient } from '@aarogya/api-client';
+
 export type ConnectivityState = 'ONLINE' | 'DEGRADED' | 'OFFLINE' | 'CHECKING' | 'SYNCING' | 'AUTH_REQUIRED';
 
 type Listener = (state: ConnectivityState) => void;
@@ -43,17 +45,13 @@ class ConnectivityService {
     }
     
     try {
-      const res = await fetch('http://localhost:8000/health', { 
-        method: 'GET',
-        signal: AbortSignal.timeout(3000) 
-      });
-      
-      if (res.ok) {
+      const result = await apiClient.checkHealth(5000);
+      if (result.ok) {
         this.setState('ONLINE');
       } else {
         this.setState('DEGRADED');
       }
-    } catch (err) {
+    } catch {
       this.setState('DEGRADED');
     }
   }

@@ -26,6 +26,7 @@ import {
 import { OnlineStatusBadge } from "../components/StatusBadge";
 import { UnsavedOfflineDataModal } from "../components/UnsavedOfflineDataModal";
 import { LocationChip } from "../components/LocationChip";
+import { connectivityService } from "../services/ConnectivityService";
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -39,11 +40,17 @@ export function AppLayout({ children, pageTitle, onBack }: LayoutProps) {
   const location = useLocation();
   const navigate = useNavigate();
   const [isMobile, setIsMobile] = useState(() => window.innerWidth < 900);
-  const [isOnline] = useState(true);
+  const [isOnline, setIsOnline] = useState(() => !connectivityService.isOffline());
   const [showLogoutModal, setShowLogoutModal] = useState(false);
   const [pendingStats, setPendingStats] = useState({ pendingCount: 0, draftsCount: 0 });
   const [isSyncingLogout, setIsSyncingLogout] = useState(false);
 
+  useEffect(() => {
+    const unsub = connectivityService.subscribe((state) => {
+      setIsOnline(state === "ONLINE" || state === "SYNCING");
+    });
+    return unsub;
+  }, []);
 
   const handleSignOutClick = async () => {
     const stats = await checkPendingOfflineData();

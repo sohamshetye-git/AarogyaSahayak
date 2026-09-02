@@ -101,9 +101,10 @@ export function LoginScreen() {
 
         {error && (
           <div
+            data-testid="login-error-banner"
             style={{
               display: "flex",
-              alignItems: "center",
+              alignItems: "flex-start",
               justifyContent: "space-between",
               gap: 10,
               padding: "12px 16px",
@@ -115,22 +116,33 @@ export function LoginScreen() {
               border: "1px solid #F5C6CB",
             }}
           >
-            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              <WarningIcon size={18} color="var(--urgent)" />
-              <span>{error}</span>
+            <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
+              <span style={{ marginTop: 2, flexShrink: 0, display: "inline-flex" }}>
+                <WarningIcon size={18} color="var(--urgent)" />
+              </span>
+              <div>
+                <div style={{ fontWeight: 700 }}>{error}</div>
+                {errorCode === "BACKEND_UNREACHABLE" && (
+                  <div style={{ fontSize: 11, color: "var(--text-secondary)", marginTop: 4 }}>
+                    If the cloud server was idle, Render free tier may take up to 30 seconds to wake up.
+                  </div>
+                )}
+              </div>
             </div>
             <button
               type="button"
+              data-testid="btn-login-retry"
               onClick={() => handleLogin()}
               style={{
-                padding: "4px 8px",
-                fontSize: 11,
+                padding: "4px 10px",
+                fontSize: 12,
                 fontWeight: 700,
                 backgroundColor: "var(--surface)",
                 border: "1px solid var(--urgent)",
                 color: "var(--urgent)",
                 borderRadius: 4,
                 cursor: "pointer",
+                flexShrink: 0,
               }}
             >
               Retry
@@ -146,6 +158,7 @@ export function LoginScreen() {
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
             <button
               type="button"
+              data-testid="demo-role-asha"
               onClick={() => selectDemoRole("sita.asha")}
               style={{
                 padding: "10px",
@@ -162,6 +175,7 @@ export function LoginScreen() {
 
             <button
               type="button"
+              data-testid="demo-role-doctor"
               onClick={() => selectDemoRole("dr.sharma")}
               style={{
                 padding: "10px",
@@ -178,6 +192,7 @@ export function LoginScreen() {
 
             <button
               type="button"
+              data-testid="demo-role-admin"
               onClick={() => selectDemoRole("dho.admin")}
               style={{
                 padding: "10px",
@@ -203,6 +218,7 @@ export function LoginScreen() {
             </label>
             <input
               type="text"
+              data-testid="input-username"
               value={identifier}
               onChange={(e) => setIdentifier(e.target.value)}
               required
@@ -226,6 +242,7 @@ export function LoginScreen() {
             </label>
             <input
               type="password"
+              data-testid="input-password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
@@ -245,6 +262,7 @@ export function LoginScreen() {
 
           <button
             type="submit"
+            data-testid="btn-login-submit"
             disabled={isLoading}
             style={{
               width: "100%",
