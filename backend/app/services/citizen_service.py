@@ -2325,12 +2325,14 @@ class CitizenService:
         if not profile:
             return []
 
-        members = db.query(HouseholdMember).filter(
+        # Check if SELF member exists
+        self_member = db.query(HouseholdMember).filter(
             HouseholdMember.citizen_id == citizen_id,
+            HouseholdMember.relationship_type == "SELF",
             HouseholdMember.is_active == True
-        ).order_by(HouseholdMember.created_at.asc()).all()
+        ).first()
 
-        if not members:
+        if not self_member:
             # Seed SELF member if missing
             self_member = HouseholdMember(
                 citizen_id=profile.id,
@@ -2342,12 +2344,17 @@ class CitizenService:
                 gestational_weeks=profile.gestational_weeks,
                 blood_group=profile.blood_group,
                 phone=profile.phone,
-                abha_reference=profile.abha_reference
+                abha_reference=profile.abha_reference,
+                is_active=True
             )
             db.add(self_member)
             db.commit()
             db.refresh(self_member)
-            members = [self_member]
+
+        members = db.query(HouseholdMember).filter(
+            HouseholdMember.citizen_id == citizen_id,
+            HouseholdMember.is_active == True
+        ).order_by(HouseholdMember.created_at.asc()).all()
 
         from app.mappers.household_mapper import map_household_member_to_dto
         return [map_household_member_to_dto(m) for m in members]
@@ -2376,29 +2383,41 @@ class CitizenService:
 
     @staticmethod
     def add_household_member(db: Session, citizen_id: str, req: HouseholdMemberCreateRequest) -> Dict[str, Any]:
+        full_name = req.full_name.strip() if req.full_name else ""
+        if not full_name:
+            raise ValueError("Member full name is required.")
+
+        rel_type = (req.relationship_type or "").strip().upper()
+        if not rel_type:
+            raise ValueError("Relationship type is required.")
+
+        # Age validation if provided
+        if req.age is not None and (req.age < 0 or req.age > 125):
+            raise ValueError("Age must be between 0 and 125 years.")
+
         # Duplicate detection within citizen's active household
         existing = db.query(HouseholdMember).filter(
             HouseholdMember.citizen_id == citizen_id,
-            HouseholdMember.full_name.ilike(req.full_name.strip()),
-            HouseholdMember.relationship_type == req.relationship_type,
+            HouseholdMember.full_name.ilike(full_name),
+            HouseholdMember.relationship_type == rel_type,
             HouseholdMember.is_active == True
         ).first()
         if existing:
-            raise ValueError(f"Household member '{req.full_name}' with relation '{req.relationship_type}' already exists in your household.")
+            raise ValueError(f"Household member '{full_name}' with relation '{rel_type}' already exists in your household.")
 
         member = HouseholdMember(
             citizen_id=citizen_id,
-            full_name=req.full_name.strip(),
-            relationship_type=req.relationship_type,
+            full_name=full_name,
+            relationship_type=rel_type,
             age=req.age,
             sex=req.sex or ("Female" if req.is_pregnant else None),
-            phone=req.phone.strip() if req.phone else None,
-            abha_reference=req.abha_reference.strip() if req.abha_reference else None,
-            is_pregnant=req.is_pregnant,
+            phone=req.phone.strip() if req.phone and req.phone.strip() else None,
+            abha_reference=req.abha_reference.strip() if req.abha_reference and req.abha_reference.strip() else None,
+            is_pregnant=bool(req.is_pregnant),
             gestational_weeks=req.gestational_weeks,
-            blood_group=req.blood_group,
+            blood_group=req.blood_group if req.blood_group and req.blood_group.strip() else None,
             chronic_conditions=req.chronic_conditions or [],
-            health_notes=req.health_notes,
+            health_notes=req.health_notes.strip() if req.health_notes and req.health_notes.strip() else None,
             is_active=True
         )
         db.add(member)
@@ -2412,7 +2431,7 @@ class CitizenService:
             resource_type="HOUSEHOLD_MEMBER",
             resource_id=member.id,
             outcome="SUCCESS",
-            metadata_json={"full_name": req.full_name, "relation": req.relationship_type}
+            metadata_json={"full_name": full_name, "relation": rel_type}
         )
         db.add(audit)
 

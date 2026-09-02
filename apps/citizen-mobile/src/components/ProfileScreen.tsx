@@ -254,24 +254,50 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
   // B. Add Household Member
   const handleAddHouseholdMember = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!addMemberForm.full_name.trim()) {
-      setErrorMsg("कृपया सदस्याचे पूर्ण नाव टाका.");
+    const trimmedName = addMemberForm.full_name.trim();
+    if (!trimmedName) {
+      setErrorMsg(t("profile.error_name_required", "कृपया सदस्याचे पूर्ण नाव टाका."));
       return;
     }
+
+    const trimmedPhone = addMemberForm.phone.trim();
+    if (trimmedPhone && !/^\d{10}$/.test(trimmedPhone)) {
+      setErrorMsg(t("profile.error_phone_invalid", "कृपया वैध १० अंकी मोबाईल नंबर टाका किंवा रिकामा सोडा."));
+      return;
+    }
+
+    let parsedAge: number | undefined = undefined;
+    if (addMemberForm.age.trim()) {
+      const a = parseInt(addMemberForm.age.trim(), 10);
+      if (isNaN(a) || a < 0 || a > 125) {
+        setErrorMsg(t("profile.error_age_invalid", "कृपया वैध वय (० ते १२५ वर्षे) टाका."));
+        return;
+      }
+      parsedAge = a;
+    }
+
+    let parsedGestationalWeeks: number | undefined = undefined;
+    if (addMemberForm.is_pregnant && addMemberForm.gestational_weeks.trim()) {
+      const g = parseInt(addMemberForm.gestational_weeks.trim(), 10);
+      if (!isNaN(g) && g >= 1 && g <= 44) {
+        parsedGestationalWeeks = g;
+      }
+    }
+
     setSubmitting(true);
     setErrorMsg(null);
     try {
       await apiClient.addCitizenHouseholdMember({
-        full_name: addMemberForm.full_name.trim(),
+        full_name: trimmedName,
         relationship_type: addMemberForm.relationship_type,
-        age: addMemberForm.age ? parseInt(addMemberForm.age) : undefined,
+        age: parsedAge,
         sex: addMemberForm.sex,
-        phone: addMemberForm.phone.trim() || undefined,
-        blood_group: addMemberForm.blood_group,
+        phone: trimmedPhone || undefined,
+        blood_group: addMemberForm.blood_group || undefined,
         is_pregnant: addMemberForm.is_pregnant,
-        gestational_weeks: addMemberForm.gestational_weeks ? parseInt(addMemberForm.gestational_weeks) : undefined,
+        gestational_weeks: parsedGestationalWeeks,
         chronic_conditions: addMemberForm.chronic_conditions,
-        health_notes: addMemberForm.health_notes || undefined,
+        health_notes: addMemberForm.health_notes.trim() || undefined,
         consent_obtained: true
       });
 
@@ -292,7 +318,8 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
       navigateTo({ type: "household" });
     } catch (err: any) {
       console.error("Failed to add household member", err);
-      setErrorMsg(err?.message || "सदस्य जोडताना त्रुटी आली.");
+      const message = err?.response?.data?.detail || err?.message || t("profile.error_add_member", "सदस्य जोडताना त्रुटी आली.");
+      setErrorMsg(typeof message === "string" ? message : JSON.stringify(message));
     } finally {
       setSubmitting(false);
     }
@@ -682,6 +709,37 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
           </button>
         </div>
 
+        {/* Error Banner inside Household Directory */}
+        {errorMsg && (
+          <div
+            id="household-dir-error-banner"
+            style={{
+              backgroundColor: "#FEF2F2",
+              border: "1.5px solid #FCA5A5",
+              borderRadius: 14,
+              padding: "12px 14px",
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              color: "#991B1B",
+              fontSize: 13,
+              fontWeight: 600
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <AlertTriangle size={18} color="#DC2626" />
+              <span>{errorMsg}</span>
+            </div>
+            <button
+              onClick={() => setErrorMsg(null)}
+              style={{ border: "none", background: "transparent", color: "#991B1B", cursor: "pointer", padding: 4 }}
+              aria-label="Dismiss error"
+            >
+              <X size={16} />
+            </button>
+          </div>
+        )}
+
         {/* Members Cards List */}
         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
           {household.map((m) => (
@@ -738,7 +796,10 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <button
             id="btn-back-from-add-member"
-            onClick={() => navigateTo({ type: "household" })}
+            onClick={() => {
+              setErrorMsg(null);
+              navigateTo({ type: "household" });
+            }}
             style={{ border: "none", background: "#F1F5F9", borderRadius: "50%", width: 38, height: 38, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}
             aria-label="Back to household"
           >
@@ -754,6 +815,37 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
           </div>
         </div>
 
+        {/* Error Banner inside Add Member Form */}
+        {errorMsg && (
+          <div
+            id="add-member-error-banner"
+            style={{
+              backgroundColor: "#FEF2F2",
+              border: "1.5px solid #FCA5A5",
+              borderRadius: 14,
+              padding: "12px 14px",
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              color: "#991B1B",
+              fontSize: 13,
+              fontWeight: 600
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <AlertTriangle size={18} color="#DC2626" />
+              <span>{errorMsg}</span>
+            </div>
+            <button
+              onClick={() => setErrorMsg(null)}
+              style={{ border: "none", background: "transparent", color: "#991B1B", cursor: "pointer", padding: 4 }}
+              aria-label="Dismiss error"
+            >
+              <X size={16} />
+            </button>
+          </div>
+        )}
+
         <form onSubmit={handleAddHouseholdMember} style={{ display: "flex", flexDirection: "column", gap: 14 }}>
           <div style={{ backgroundColor: "#FFFFFF", borderRadius: 18, padding: 16, border: "1.5px solid #E2E8F0", display: "flex", flexDirection: "column", gap: 12 }}>
             <div>
@@ -765,6 +857,7 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
                 value={addMemberForm.full_name}
                 onChange={(e) => setAddMemberForm({ ...addMemberForm, full_name: e.target.value })}
                 required
+                disabled={submitting}
                 style={{ width: "100%", padding: "10px 12px", borderRadius: 10, border: "1.5px solid #CBD5E1", fontSize: 13, marginTop: 4, boxSizing: "border-box" }}
               />
             </div>
@@ -776,6 +869,7 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
                   id="select-new-member-relation"
                   value={addMemberForm.relationship_type}
                   onChange={(e) => setAddMemberForm({ ...addMemberForm, relationship_type: e.target.value })}
+                  disabled={submitting}
                   style={{ width: "100%", padding: "10px 12px", borderRadius: 10, border: "1.5px solid #CBD5E1", fontSize: 13, marginTop: 4, boxSizing: "border-box" }}
                 >
                   <option value="CHILD">Child</option>
@@ -796,6 +890,9 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
                   placeholder="e.g. 8"
                   value={addMemberForm.age}
                   onChange={(e) => setAddMemberForm({ ...addMemberForm, age: e.target.value })}
+                  disabled={submitting}
+                  min={0}
+                  max={125}
                   style={{ width: "100%", padding: "10px 12px", borderRadius: 10, border: "1.5px solid #CBD5E1", fontSize: 13, marginTop: 4, boxSizing: "border-box" }}
                 />
               </div>
@@ -808,6 +905,7 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
                   id="select-new-member-gender"
                   value={addMemberForm.sex}
                   onChange={(e) => setAddMemberForm({ ...addMemberForm, sex: e.target.value })}
+                  disabled={submitting}
                   style={{ width: "100%", padding: "10px 12px", borderRadius: 10, border: "1.5px solid #CBD5E1", fontSize: 13, marginTop: 4, boxSizing: "border-box" }}
                 >
                   <option value="Female">Female</option>
@@ -822,6 +920,7 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
                   id="select-new-member-blood-group"
                   value={addMemberForm.blood_group}
                   onChange={(e) => setAddMemberForm({ ...addMemberForm, blood_group: e.target.value })}
+                  disabled={submitting}
                   style={{ width: "100%", padding: "10px 12px", borderRadius: 10, border: "1.5px solid #CBD5E1", fontSize: 13, marginTop: 4, boxSizing: "border-box" }}
                 >
                   {["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"].map((bg) => (
@@ -839,6 +938,8 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
                 placeholder="10-digit mobile"
                 value={addMemberForm.phone}
                 onChange={(e) => setAddMemberForm({ ...addMemberForm, phone: e.target.value })}
+                disabled={submitting}
+                maxLength={10}
                 style={{ width: "100%", padding: "10px 12px", borderRadius: 10, border: "1.5px solid #CBD5E1", fontSize: 13, marginTop: 4, boxSizing: "border-box" }}
               />
             </div>
@@ -851,6 +952,7 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
                 placeholder="e.g. Immunization up to date / Routine checkups"
                 value={addMemberForm.health_notes}
                 onChange={(e) => setAddMemberForm({ ...addMemberForm, health_notes: e.target.value })}
+                disabled={submitting}
                 style={{ width: "100%", padding: "10px 12px", borderRadius: 10, border: "1.5px solid #CBD5E1", fontSize: 13, marginTop: 4, boxSizing: "border-box" }}
               />
             </div>
@@ -861,14 +963,14 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
             type="submit"
             disabled={submitting}
             style={{
-              backgroundColor: "#2563EB",
+              backgroundColor: submitting ? "#93C5FD" : "#2563EB",
               color: "#FFFFFF",
               border: "none",
               borderRadius: 14,
               padding: "14px",
               fontSize: 15,
               fontWeight: 800,
-              cursor: "pointer",
+              cursor: submitting ? "not-allowed" : "pointer",
               display: "flex",
               alignItems: "center",
               justifyContent: "center",

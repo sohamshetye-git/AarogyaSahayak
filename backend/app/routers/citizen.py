@@ -970,28 +970,6 @@ def get_citizen_timeline(
     events = CitizenService.get_citizen_timeline(db, profile.id, case_id)
     return StandardResponse(data=events)
 
-@router.get("/household", response_model=StandardResponse)
-def get_household_members(
-    db: Session = Depends(get_db),
-    current_user: Optional[User] = Depends(get_optional_user)
-):
-    from app.mappers.household_mapper import map_household_member_to_dto
-    profile = CitizenService.get_or_create_default_profile(db, current_user)
-    members = CitizenService.get_household_members(db, profile.id)
-    items = [map_household_member_to_dto(m) for m in members]
-    return StandardResponse(data=items)
-
-@router.post("/household", response_model=StandardResponse)
-def add_household_member(
-    req: HouseholdMemberCreateRequest,
-    db: Session = Depends(get_db),
-    current_user: Optional[User] = Depends(get_optional_user)
-):
-    from app.mappers.household_mapper import map_household_member_to_dto
-    profile = CitizenService.get_or_create_default_profile(db, current_user)
-    m = CitizenService.add_household_member(db, profile.id, req)
-    return StandardResponse(data=map_household_member_to_dto(m))
-
 from app.models.schemes import (
     SchemeModel, SchemeVersionModel, SourceDocumentModel,
     SchemeEvaluationModel, SchemeEvaluationResultModel,
@@ -3036,56 +3014,6 @@ def update_citizen_profile_endpoint(
     profile = CitizenService.get_or_create_default_profile(db, current_user)
     data = CitizenService.update_citizen_profile(db, profile.id, req)
     return StandardResponse(data=data)
-
-@router.get("/household", response_model=StandardResponse)
-def get_citizen_household_endpoint(
-    db: Session = Depends(get_db),
-    current_user: Optional[User] = Depends(get_optional_user)
-):
-    profile = CitizenService.get_or_create_default_profile(db, current_user)
-    members = CitizenService.get_household_members(db, profile.id)
-    return StandardResponse(data=members)
-
-@router.post("/household", response_model=StandardResponse)
-def add_citizen_household_member_endpoint(
-    req: HouseholdMemberCreateRequest,
-    db: Session = Depends(get_db),
-    current_user: Optional[User] = Depends(get_optional_user)
-):
-    profile = CitizenService.get_or_create_default_profile(db, current_user)
-    new_member = CitizenService.add_household_member(db, profile.id, req)
-    return StandardResponse(data=new_member)
-
-@router.get("/household/{member_id}", response_model=StandardResponse)
-def get_citizen_household_member_detail_endpoint(
-    member_id: str,
-    db: Session = Depends(get_db),
-    current_user: Optional[User] = Depends(get_optional_user)
-):
-    profile = CitizenService.get_or_create_default_profile(db, current_user)
-    member = CitizenService.get_household_member_detail(db, profile.id, member_id)
-    return StandardResponse(data=member)
-
-@router.patch("/household/{member_id}", response_model=StandardResponse)
-def update_citizen_household_member_endpoint(
-    member_id: str,
-    req: HouseholdMemberUpdateRequest,
-    db: Session = Depends(get_db),
-    current_user: Optional[User] = Depends(get_optional_user)
-):
-    profile = CitizenService.get_or_create_default_profile(db, current_user)
-    updated = CitizenService.update_household_member(db, profile.id, member_id, req)
-    return StandardResponse(data=updated)
-
-@router.delete("/household/{member_id}", response_model=StandardResponse)
-def delete_citizen_household_member_endpoint(
-    member_id: str,
-    db: Session = Depends(get_db),
-    current_user: Optional[User] = Depends(get_optional_user)
-):
-    profile = CitizenService.get_or_create_default_profile(db, current_user)
-    res = CitizenService.delete_household_member(db, profile.id, member_id)
-    return StandardResponse(data=res)
 
 @router.get("/care-team", response_model=StandardResponse)
 def get_citizen_care_team_endpoint(
