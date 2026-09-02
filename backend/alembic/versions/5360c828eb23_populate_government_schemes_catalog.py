@@ -19,25 +19,18 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    """Idempotently populate the canonical government schemes catalog and assistance capabilities."""
-    bind = op.get_bind()
-    from sqlalchemy.orm import Session
-    from app.schemes.import_kb import import_knowledge_base
-    from app.models import SchemeModel
+    """Safe catalog preparation revision.
     
-    session = Session(bind=bind)
-    try:
-        scheme_count = session.query(SchemeModel).count()
-        if scheme_count == 0:
-            import_knowledge_base(db_session=session)
-        session.commit()
-    except Exception as e:
-        session.rollback()
-        raise e
-    finally:
-        session.close()
+    Data import is decoupled from DDL migrations and executed explicitly via
+    `python -m app.schemes.import_kb --apply` during the service startup sequence.
+    This revision was previously failing due to VARCHAR(50) truncation in PostgreSQL
+    and was rolled back (leaving production at 97fadbd11b95). Keeping this revision
+    as a no-op preserves linear migration history and maintains compatibility across all environments.
+    """
+    pass
 
 
 def downgrade() -> None:
     """Downgrade schema."""
     pass
+

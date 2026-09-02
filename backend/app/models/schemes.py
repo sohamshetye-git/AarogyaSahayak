@@ -79,7 +79,7 @@ class SchemeVersionModel(Base):
     scheme_id = Column(String(36), ForeignKey('schemes.scheme_id'), nullable=False, index=True)
     version_label = Column(String(100), nullable=False)
     description = Column(Text, nullable=False)
-    eligibility_mode = Column(String(50), nullable=False, default='DETERMINISTIC_RULES')
+    eligibility_mode = Column(String(128), nullable=False, default='DETERMINISTIC_RULES')
     result_ceiling = Column(Enum(EligibilityOutputEnum), nullable=False, default=EligibilityOutputEnum.LIKELY_ELIGIBLE)
     active_status = Column(Text, nullable=False, default='ACTIVE')
     effective_from = Column(Date, nullable=True)
