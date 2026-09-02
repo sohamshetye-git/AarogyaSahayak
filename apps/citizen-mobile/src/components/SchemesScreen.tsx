@@ -279,7 +279,10 @@ export const SchemesScreen: React.FC<SchemesScreenProps> = ({
         const raw = centresRes.value?.data?.items || centresRes.value?.data || centresRes.value || [];
         setHelpCentres(Array.isArray(raw) ? raw : (raw.items || []));
       }
-      if (householdRes.status === "fulfilled") setHouseholdMembers(householdRes.value?.data || householdRes.value || []);
+      if (householdRes.status === "fulfilled") {
+        const rawH = householdRes.value?.data?.items || householdRes.value?.data || householdRes.value || [];
+        setHouseholdMembers(Array.isArray(rawH) ? rawH : []);
+      }
     } catch (err: any) {
       console.error("Failed to load schemes initial data", err);
       setErrorMsg("माहिती लोड करण्यात अडचण आली. कृपया पुन्हा प्रयत्न करा.");

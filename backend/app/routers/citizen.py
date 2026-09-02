@@ -42,8 +42,8 @@ def set_citizen_refresh_cookie(response: Response, refresh_token: str):
         max_age=max_age,
         expires=max_age,
         httponly=True,
-        secure=is_prod,
-        samesite="lax",
+        secure=True if is_prod else False,
+        samesite="none" if is_prod else "lax",
         path="/"
     )
 
@@ -53,8 +53,8 @@ def clear_citizen_refresh_cookie(response: Response):
         key=COOKIE_NAME,
         path="/",
         httponly=True,
-        secure=is_prod,
-        samesite="lax"
+        secure=True if is_prod else False,
+        samesite="none" if is_prod else "lax"
     )
 
 # -------------------------------------------------------------

@@ -38,7 +38,7 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
   onNavigateToTab
 }) => {
   const { t, locale, setLocale } = useLanguage();
-  const { user } = useCitizenAuth();
+  const { user, refreshBeneficiaries } = useCitizenAuth();
 
   // 1. Navigation state
   const [routeState, setRouteState] = useState<ProfileSubRoute>(() => {
@@ -315,6 +315,7 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
         health_notes: ""
       });
       await loadAllProfileData();
+      refreshBeneficiaries().catch(() => {});
       navigateTo({ type: "household" });
     } catch (err: any) {
       console.error("Failed to add household member", err);
@@ -349,6 +350,7 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
       setIsEditingMember(false);
       showToast(t("profile.member_updated_success", "सदस्याची माहिती यशस्वीपणे अद्ययावत केली!"));
       loadAllProfileData();
+      refreshBeneficiaries().catch(() => {});
     } catch (err: any) {
       console.error("Failed to update household member", err);
       setErrorMsg(err?.message || "माहिती अद्ययावत करताना त्रुटी आली.");
@@ -366,6 +368,7 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
       await apiClient.deleteCitizenHouseholdMember(memberId);
       showToast(t("profile.member_deleted_success", "सदस्य यशस्वीपणे काढून टाकला."));
       await loadAllProfileData();
+      refreshBeneficiaries().catch(() => {});
       navigateTo({ type: "household" });
     } catch (err: any) {
       console.error("Failed to remove household member", err);

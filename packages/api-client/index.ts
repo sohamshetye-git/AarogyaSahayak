@@ -160,8 +160,15 @@ export class AarogyaApiClient {
           body: JSON.stringify({}),
         });
         if (!res.ok) {
-          this.setToken(null);
-          return null;
+          if (res.status === 401) {
+            this.setToken(null);
+            return null;
+          }
+          const errData = await res.json().catch(() => ({}));
+          const error: any = new Error(errData?.detail || `Refresh failed with status ${res.status}`);
+          error.status = res.status;
+          error.code = res.status >= 500 ? "BACKEND_ERROR" : "REFRESH_ERROR";
+          throw error;
         }
         const json = await res.json();
         const data = json.data !== undefined ? json.data : json;
@@ -174,7 +181,13 @@ export class AarogyaApiClient {
           return newToken;
         }
         return null;
-      } catch {
+      } catch (err: any) {
+        if (err?.name === "TypeError" || err?.message?.includes("Failed to fetch") || err?.message?.includes("NetworkError")) {
+          const networkErr: any = new Error("Backend service unreachable or network error.");
+          networkErr.code = "BACKEND_UNREACHABLE";
+          throw networkErr;
+        }
+        if (err?.code) throw err;
         return null;
       } finally {
         this.refreshPromise = null;

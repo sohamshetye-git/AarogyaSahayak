@@ -41,6 +41,7 @@ interface CitizenAuthContextType {
   pendingProtectedAction: PendingProtectedAction | null;
   
   // Actions
+  refreshBeneficiaries: () => Promise<void>;
   startPhoneLogin: (phone: string) => Promise<{ success: boolean; error?: string; mockCode?: string }>;
   resendOtp: () => Promise<boolean>;
   submitOtp: (otp: string) => Promise<{ isNewCitizen: boolean; error?: string }>;
@@ -218,6 +219,29 @@ export const CitizenAuthProvider: React.FC<{ children: React.ReactNode }> = ({ c
       initAuth();
     }
   }, [initAuth]);
+
+  // Re-sync beneficiaries list from backend /auth/me
+  const refreshBeneficiaries = useCallback(async () => {
+    try {
+      const meRes = await apiClient.getCitizenAuthMe();
+      const meData = meRes?.data || meRes;
+      if (meData?.authorized_beneficiaries) {
+        const benList: BeneficiaryOption[] = meData.authorized_beneficiaries || [];
+        setAuthorizedBeneficiaries(benList);
+        // Reconcile active beneficiary
+        const savedBenId = localStorage.getItem("aarogya_citizen_active_ben_id");
+        const matched = benList.find((b: BeneficiaryOption) => b.beneficiaryId === savedBenId);
+        if (matched) {
+          setActiveBeneficiary(matched);
+        } else if (benList.length > 0) {
+          setActiveBeneficiary(benList[0]);
+          localStorage.setItem("aarogya_citizen_active_ben_id", benList[0].beneficiaryId);
+        }
+      }
+    } catch (e) {
+      console.error("Failed to refresh beneficiaries", e);
+    }
+  }, []);
 
   // Cooldown timer interval
   useEffect(() => {
@@ -570,6 +594,7 @@ export const CitizenAuthProvider: React.FC<{ children: React.ReactNode }> = ({ c
         retryInit: initAuth,
         activeBeneficiary,
         authorizedBeneficiaries,
+        refreshBeneficiaries,
         pendingPhone,
         maskedPhone,
         challengeId,
