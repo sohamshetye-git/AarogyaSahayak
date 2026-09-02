@@ -118,14 +118,12 @@ export const CitizenAuthProvider: React.FC<{ children: React.ReactNode }> = ({ c
     setIsLoading(true);
     setInitError(null);
     try {
-      // Step 1: Call refresh using HttpOnly cookie (Single-flight)
-      try {
-        const refreshRes = await apiClient.performRefresh();
-        if (refreshRes) {
-          apiClient.setToken(refreshRes);
-          setToken(refreshRes);
-
-          // Step 2: Fetch authenticated user & profile from /auth/me
+      // Step 1: Check if an access token is already persisted in localStorage
+      const cachedToken = typeof localStorage !== "undefined" ? localStorage.getItem("aarogya_citizen_token") : null;
+      if (cachedToken) {
+        apiClient.setToken(cachedToken);
+        setToken(cachedToken);
+        try {
           const meRes = await apiClient.getCitizenAuthMe();
           const meData = meRes?.data || meRes;
           if (meData?.user) {
@@ -133,7 +131,6 @@ export const CitizenAuthProvider: React.FC<{ children: React.ReactNode }> = ({ c
             const benList: BeneficiaryOption[] = meData.authorized_beneficiaries || [];
             setAuthorizedBeneficiaries(benList);
 
-            // Reconcile active beneficiary
             const savedBenId = localStorage.getItem("aarogya_citizen_active_ben_id");
             const matched = benList.find(b => b.beneficiaryId === savedBenId);
             if (matched) {
@@ -143,12 +140,60 @@ export const CitizenAuthProvider: React.FC<{ children: React.ReactNode }> = ({ c
               localStorage.setItem("aarogya_citizen_active_ben_id", benList[0].beneficiaryId);
             }
 
-            // Sync user preferred language if available
             if (meData.user.preferred_language) {
               LanguageService.saveLocalPreference(meData.user.preferred_language as any);
             }
 
-            // Clear any guest & in-flight auth flow state
+            localStorage.removeItem("aarogya_guest_session");
+            sessionStorage.removeItem("aarogya_citizen_flow_step");
+            sessionStorage.removeItem("aarogya_citizen_pending_phone");
+            sessionStorage.removeItem("aarogya_citizen_masked_phone");
+            sessionStorage.removeItem("aarogya_citizen_challenge_id");
+            setGuestSession(null);
+
+            setAuthMode("AUTHENTICATED");
+            setIsLoading(false);
+            return;
+          }
+        } catch (meErr: any) {
+          if (meErr?.status !== 401 && (meErr?.code === "BACKEND_UNREACHABLE" || meErr?.code === "TIMEOUT" || meErr?.status >= 500)) {
+            // Keep authenticated token and show error state or retry
+            setInitError(meErr.message || "We could not reach the server. Please check your network connection.");
+            setAuthMode("ERROR");
+            setIsLoading(false);
+            return;
+          }
+          // If 401, token expired: fall through to attempt refresh
+        }
+      }
+
+      // Step 2: Try refreshing token via HttpOnly cookie or refresh endpoint
+      try {
+        const refreshRes = await apiClient.performRefresh();
+        if (refreshRes) {
+          apiClient.setToken(refreshRes);
+          setToken(refreshRes);
+
+          const meRes = await apiClient.getCitizenAuthMe();
+          const meData = meRes?.data || meRes;
+          if (meData?.user) {
+            setUser(meData.user);
+            const benList: BeneficiaryOption[] = meData.authorized_beneficiaries || [];
+            setAuthorizedBeneficiaries(benList);
+
+            const savedBenId = localStorage.getItem("aarogya_citizen_active_ben_id");
+            const matched = benList.find(b => b.beneficiaryId === savedBenId);
+            if (matched) {
+              setActiveBeneficiary(matched);
+            } else if (benList.length > 0) {
+              setActiveBeneficiary(benList[0]);
+              localStorage.setItem("aarogya_citizen_active_ben_id", benList[0].beneficiaryId);
+            }
+
+            if (meData.user.preferred_language) {
+              LanguageService.saveLocalPreference(meData.user.preferred_language as any);
+            }
+
             localStorage.removeItem("aarogya_guest_session");
             sessionStorage.removeItem("aarogya_citizen_flow_step");
             sessionStorage.removeItem("aarogya_citizen_pending_phone");
@@ -168,7 +213,6 @@ export const CitizenAuthProvider: React.FC<{ children: React.ReactNode }> = ({ c
           setIsLoading(false);
           return;
         }
-        // 401 or invalid session -> continue
       }
 
       // If refresh failed with 401 / no session:
@@ -204,7 +248,7 @@ export const CitizenAuthProvider: React.FC<{ children: React.ReactNode }> = ({ c
         }
       }
 
-      // Requirement 1 & 2: Whenever the Citizen App is opened through a fresh launch, show the Language Selection page first.
+      // Fresh launch without authenticated session -> Language Selection
       setAuthMode("LANGUAGE_SELECT");
     } catch (e: any) {
       setAuthMode("LANGUAGE_SELECT");

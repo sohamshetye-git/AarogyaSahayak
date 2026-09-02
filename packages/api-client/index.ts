@@ -128,10 +128,21 @@ export class AarogyaApiClient {
 
   setToken(token: string | null) {
     this.token = token;
+    if (typeof localStorage !== "undefined") {
+      if (token) {
+        localStorage.setItem("aarogya_citizen_token", token);
+      } else {
+        localStorage.removeItem("aarogya_citizen_token");
+      }
+    }
   }
 
   getToken(): string | null {
-    return this.token;
+    if (this.token) return this.token;
+    if (typeof localStorage !== "undefined") {
+      return localStorage.getItem("aarogya_citizen_token") || localStorage.getItem("aarogya_token");
+    }
+    return null;
   }
 
   setTokenRefreshedCallback(callback: (token: string, user?: any) => void) {
@@ -143,7 +154,9 @@ export class AarogyaApiClient {
       endpoint.includes("/auth/login") ||
       endpoint.includes("/citizen/auth/otp") ||
       endpoint.includes("/citizen/auth/refresh") ||
-      endpoint.includes("/citizen/auth/logout")
+      endpoint.includes("/citizen/auth/register") ||
+      endpoint.includes("/citizen/auth/guest") ||
+      endpoint.includes("/health")
     );
   }
 
@@ -227,7 +240,7 @@ export class AarogyaApiClient {
       ...(options.headers as Record<string, string>),
     };
 
-    const activeToken = this.token || (typeof localStorage !== "undefined" ? localStorage.getItem("aarogya_token") : null);
+    const activeToken = this.getToken();
     if (activeToken) {
       headers["Authorization"] = `Bearer ${activeToken}`;
     }

@@ -159,21 +159,30 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
         apiClient.getCitizenAbhaLinkStatus()
       ]);
 
+      const extractList = (val: any) => {
+        if (Array.isArray(val)) return val;
+        if (Array.isArray(val?.items)) return val.items;
+        if (Array.isArray(val?.data?.items)) return val.data.items;
+        if (Array.isArray(val?.data)) return val.data;
+        return [];
+      };
+
       if (profRes.status === "fulfilled") {
         const p = profRes.value?.data || profRes.value;
         setProfile(p);
         setEditPersonalForm(p);
       }
       if (houseRes.status === "fulfilled") {
-        const h = houseRes.value?.data?.items || houseRes.value?.data || houseRes.value || [];
-        setHousehold(Array.isArray(h) ? h : []);
+        const h = extractList(houseRes.value);
+        setHousehold(h);
       }
       if (teamRes.status === "fulfilled") {
-        setCareTeam(teamRes.value?.data || teamRes.value);
+        const t = teamRes.value?.data || teamRes.value;
+        setCareTeam(t);
       }
       if (consentRes.status === "fulfilled") {
-        const c = consentRes.value?.data?.items || consentRes.value?.data || consentRes.value || [];
-        setConsents(Array.isArray(c) ? c : []);
+        const c = extractList(consentRes.value);
+        setConsents(c);
       }
       if (abhaRes.status === "fulfilled") {
         setAbhaStatus(abhaRes.value?.data || abhaRes.value);
@@ -287,7 +296,7 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
     setSubmitting(true);
     setErrorMsg(null);
     try {
-      await apiClient.addCitizenHouseholdMember({
+      const addRes = await apiClient.addCitizenHouseholdMember({
         full_name: trimmedName,
         relationship_type: addMemberForm.relationship_type,
         age: parsedAge,
@@ -300,6 +309,11 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
         health_notes: addMemberForm.health_notes.trim() || undefined,
         consent_obtained: true
       });
+
+      const newMember = addRes?.data || addRes;
+      if (newMember && (newMember.id || newMember.full_name)) {
+        setHousehold(prev => [newMember, ...prev.filter(m => m.id !== newMember.id)]);
+      }
 
       showToast(t("profile.member_added_success", "कुटुंबातील सदस्य यशस्वीपणे जोडला गेला!"));
       setAddMemberForm({
