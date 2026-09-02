@@ -104,24 +104,30 @@ export const DoctorConsultationSummaryScreen: React.FC<DoctorConsultationSummary
           </div>
 
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            <div style={{ padding: 10, backgroundColor: "#F8FAFC", borderRadius: 12, border: "1px solid #E2E8F0" }}>
-              <div style={{ fontSize: 14, fontWeight: 800, color: "#0F172A" }}>Paracetamol 500mg Tablet</div>
-              <div style={{ fontSize: 12, color: "#64748B", marginTop: 2 }}>Dosage: 1 tablet • 1-0-1 (After Food) • 3 days</div>
-            </div>
-            <div style={{ padding: 10, backgroundColor: "#F8FAFC", borderRadius: 12, border: "1px solid #E2E8F0" }}>
-              <div style={{ fontSize: 14, fontWeight: 800, color: "#0F172A" }}>ORS Sachet</div>
-              <div style={{ fontSize: 12, color: "#64748B", marginTop: 2 }}>Dosage: 1 packet in 1L boiled water • As needed</div>
-            </div>
+            {medicines.length > 0 && medicines[0]?.items?.length > 0 ? (
+              medicines[0].items.map((med: any, idx: number) => (
+                <div key={idx} style={{ padding: 10, backgroundColor: "#F8FAFC", borderRadius: 12, border: "1px solid #E2E8F0" }}>
+                  <div style={{ fontSize: 14, fontWeight: 800, color: "#0F172A" }}>{med.medicine_name || med.medicine}</div>
+                  <div style={{ fontSize: 12, color: "#64748B", marginTop: 2 }}>
+                    Dosage: {med.dosage || "1 tablet"} • {med.frequency || "1-0-1"} {med.instructions ? `(${med.instructions})` : ""} • {med.duration_days || 3} days
+                  </div>
+                </div>
+              ))
+            ) : (
+              <div style={{ padding: 12, backgroundColor: "#F8FAFC", borderRadius: 12, border: "1px solid #E2E8F0", fontSize: 13, color: "#64748B" }}>
+                Medicines recorded in consultation plan. Tap "View in Medicines" to view full details.
+              </div>
+            )}
           </div>
         </div>
 
         {/* Assigned ASHA Follow-up */}
         <div style={{ backgroundColor: "#FFFFFF", borderRadius: 20, padding: 16, border: "1px solid #E2E8F0" }}>
           <div style={{ fontSize: 13, fontWeight: 800, color: "#1E293B", display: "flex", alignItems: "center", gap: 6, marginBottom: 8 }}>
-            <UserCheck size={16} color="#2563EB" /> ASHA Follow-up Scheduled
+            <UserCheck size={16} color="#2563EB" /> Care Follow-up Scheduled
           </div>
           <div style={{ fontSize: 12, color: "#64748B" }}>
-            Your ASHA worker (<b>Sita Patel</b>) has received instructions to check on you in 3 days.
+            Your assigned health worker (<b>{data?.assigned_worker_name || data?.details?.assigned_asha || "Sita Patel"}</b>) has received instructions for your post-consultation health check.
           </div>
         </div>
 

@@ -113,7 +113,8 @@ def test_citizen_speak_to_doctor_e2e_all_channels(client, db_session):
         # 1. Doctor lists direct requests
         list_res = client.get("/api/doctor/direct-requests", headers=doc_headers)
         assert list_res.status_code == 200
-        req_list = list_res.json()["data"]
+        req_data = list_res.json()["data"]
+        req_list = req_data.get("items", req_data) if isinstance(req_data, dict) else req_data
         assert any(r["id"] == cb_req_id for r in req_list)
         assert any(r["id"] == chat_req_id for r in req_list)
         assert any(r["id"] == phc_req_id for r in req_list)
@@ -188,6 +189,34 @@ def test_citizen_speak_to_doctor_e2e_all_channels(client, db_session):
         assert len(care_detail["prescriptions"]) >= 1
         assert len(care_detail["investigations"]) >= 1
         assert len(care_detail["followups"]) >= 1
+
+        # ----------------------------------------------------
+        # CITIZEN MY MEDICINES INTEGRATION VERIFICATION
+        # ----------------------------------------------------
+        rx_res = client.get("/api/citizen/prescriptions")
+        assert rx_res.status_code == 200
+        rx_data = rx_res.json()["data"]
+        rx_list = rx_data.get("items", rx_data) if isinstance(rx_data, dict) else rx_data
+        assert len(rx_list) >= 1
+        latest_rx = rx_list[0]
+        med_names = [it["medicine_name"] for it in latest_rx["items"]]
+        assert "Hydrocortisone 1% Cream" in med_names or "Cetirizine 10mg" in med_names
+
+        inv_res = client.get("/api/citizen/investigations")
+        assert inv_res.status_code == 200
+        inv_data = inv_res.json()["data"]
+        inv_list = inv_data.get("items", inv_data) if isinstance(inv_data, dict) else inv_data
+        assert len(inv_list) >= 1
+        test_names = [o["test_name"] for o in inv_list]
+        assert "Complete Blood Count (CBC)" in test_names
+
+        fu_res = client.get("/api/citizen/followups")
+        assert fu_res.status_code == 200
+        fu_data = fu_res.json()["data"]
+        fu_list = fu_data.get("items", fu_data) if isinstance(fu_data, dict) else fu_data
+        assert len(fu_list) >= 1
+        task_types = [f["task_type"] for f in fu_list]
+        assert "POST_CONSULTATION_CHECK" in task_types
 
         # ----------------------------------------------------
         # ASHA PORTAL VERIFICATION

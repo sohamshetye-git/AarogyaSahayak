@@ -2872,33 +2872,78 @@ def get_citizen_prescriptions(
     current_user: Optional[User] = Depends(get_optional_user)
 ):
     profile = CitizenService.get_or_create_default_profile(db, current_user)
-    # Citizen only sees SIGNED, ACTIVE, COMPLETED, AMENDED, PARTIALLY_STOPPED, STOPPED prescriptions
+    
+    # Collect matching case IDs and citizen IDs for profile
+    citizen_ids = [profile.id]
+    if profile.user_id:
+        other_profiles = db.query(CitizenProfile).filter(CitizenProfile.user_id == profile.user_id).all()
+        for op in other_profiles:
+            if op.id not in citizen_ids:
+                citizen_ids.append(op.id)
+    
+    # Find all cases linked to these citizen profiles
+    cases = db.query(Case).filter(Case.citizen_id.in_(citizen_ids)).all()
+    case_ids = [c.id for c in cases]
+    
+    # Citizen sees non-draft prescriptions belonging directly to profile or profile's cases
     rxs = db.query(Prescription).filter(
-        Prescription.citizen_id == profile.id,
+        (Prescription.citizen_id.in_(citizen_ids)) | (Prescription.case_id.in_(case_ids)),
         Prescription.status != "DRAFT"
     ).order_by(Prescription.created_at.desc()).all()
-    items = [
-        {
+    
+    items = []
+    for p in rxs:
+        doc_name = getattr(p, "doctor_name", None) or "Dr. Abhinav Sharma"
+        if getattr(p, "prescriber_doctor_id", None):
+            doc_user = db.query(User).filter(User.id == p.prescriber_doctor_id).first()
+            if doc_user and doc_user.name:
+                doc_name = doc_user.name
+                
+        fac_name = "Kalyanpur PHC"
+        if getattr(p, "facility_id", None):
+            fac = db.query(Facility).filter(Facility.id == p.facility_id).first()
+            if fac and fac.official_name:
+                fac_name = fac.official_name
+
+        p_status = getattr(p.status, "value", p.status) if hasattr(p.status, "value") else str(p.status)
+        p_items = []
+        for i in p.items:
+            m_name = (
+                getattr(i, "generic_name_snapshot", None) or 
+                getattr(i, "brand_name_snapshot", None) or 
+                getattr(i, "medicine", None) or 
+                getattr(i, "medicine_name", "Medicine")
+            )
+            dosage_val = getattr(i, "dose", None) or getattr(i, "dosage", "1 tablet")
+            freq_val = getattr(i, "frequency", "1-0-1")
+            dur_val = getattr(i, "duration_value", None) or getattr(i, "duration_days", 5)
+            instr_val = getattr(i, "instructions", "") or getattr(i, "timing", "")
+
+            p_items.append({
+                "medicine_name": m_name,
+                "dosage": dosage_val,
+                "frequency": freq_val,
+                "duration_days": dur_val,
+                "instructions": instr_val,
+                "formulation": getattr(i, "formulation", "Tablet"),
+                "strength": getattr(i, "strength", ""),
+                "route": getattr(i, "route", "ORAL")
+            })
+
+        items.append({
             "id": p.id,
             "reference": getattr(p, "reference", p.id),
-            "status": getattr(p.status, "value", p.status) if hasattr(p.status, "value") else str(p.status),
-            "doctor_name": getattr(p, "doctor_name", "Dr. Abhinav Sharma"),
+            "status": p_status,
+            "doctor_name": doc_name,
             "doctor_qualification": getattr(p, "doctor_qualification", "MBBS, MD"),
-            "provisional_diagnosis": getattr(p, "provisional_diagnosis", "Routine care"),
-            "items": [
-                {
-                    "medicine_name": getattr(i, "generic_name_snapshot", None) or getattr(i, "brand_name_snapshot", None) or getattr(i, "medicine", "Medicine"),
-                    "dosage": getattr(i, "dose", None) or getattr(i, "dosage", "1 tablet"),
-                    "frequency": i.frequency,
-                    "duration_days": getattr(i, "duration_value", None) or getattr(i, "duration_days", 5),
-                    "instructions": i.instructions
-                }
-                for i in p.items
-            ],
+            "facility_name": fac_name,
+            "provisional_diagnosis": getattr(p, "provisional_diagnosis", None) or getattr(p, "clinical_context", "General care"),
+            "clinical_context": getattr(p, "clinical_context", None) or getattr(p, "provisional_diagnosis", None),
+            "signed_at": p.signed_at.isoformat() if getattr(p, "signed_at", None) else p.created_at.isoformat(),
+            "items": p_items,
             "created_at": p.created_at.isoformat()
-        }
-        for p in rxs
-    ]
+        })
+
     return StandardResponse(data=items)
  
 @router.post("/prescriptions/{prescription_id}/acknowledge", response_model=StandardResponse)
@@ -2909,9 +2954,18 @@ def acknowledge_citizen_prescription(
     current_user: Optional[User] = Depends(get_optional_user)
 ):
     profile = CitizenService.get_or_create_default_profile(db, current_user)
+    citizen_ids = [profile.id]
+    if profile.user_id:
+        other_profiles = db.query(CitizenProfile).filter(CitizenProfile.user_id == profile.user_id).all()
+        for op in other_profiles:
+            if op.id not in citizen_ids:
+                citizen_ids.append(op.id)
+    cases = db.query(Case).filter(Case.citizen_id.in_(citizen_ids)).all()
+    case_ids = [c.id for c in cases]
+
     rx = db.query(Prescription).filter(
         Prescription.id == prescription_id,
-        Prescription.citizen_id == profile.id
+        (Prescription.citizen_id.in_(citizen_ids)) | (Prescription.case_id.in_(case_ids))
     ).first()
     if not rx:
         raise HTTPException(status_code=404, detail="Prescription not found")
@@ -2938,18 +2992,48 @@ def get_citizen_investigations(
     current_user: Optional[User] = Depends(get_optional_user)
 ):
     profile = CitizenService.get_or_create_default_profile(db, current_user)
-    orders = db.query(InvestigationOrder).filter(InvestigationOrder.citizen_id == profile.id).order_by(InvestigationOrder.ordered_at.desc()).all()
-    items = [
-        {
+    citizen_ids = [profile.id]
+    if profile.user_id:
+        other_profiles = db.query(CitizenProfile).filter(CitizenProfile.user_id == profile.user_id).all()
+        for op in other_profiles:
+            if op.id not in citizen_ids:
+                citizen_ids.append(op.id)
+    cases = db.query(Case).filter(Case.citizen_id.in_(citizen_ids)).all()
+    case_ids = [c.id for c in cases]
+
+    orders = db.query(InvestigationOrder).filter(
+        (InvestigationOrder.citizen_id.in_(citizen_ids)) | (InvestigationOrder.case_id.in_(case_ids))
+    ).order_by(InvestigationOrder.ordered_at.desc()).all()
+
+    items = []
+    for o in orders:
+        order_ref = getattr(o, "reference", getattr(o, "order_reference", o.id))
+        doc_name = "Dr. Abhinav Sharma"
+        if getattr(o, "ordered_by_doctor_id", None):
+            doc_user = db.query(User).filter(User.id == o.ordered_by_doctor_id).first()
+            if doc_user and doc_user.name:
+                doc_name = doc_user.name
+        fac_name = "Kalyanpur PHC Lab"
+        if getattr(o, "facility_id", None):
+            fac = db.query(Facility).filter(Facility.id == o.facility_id).first()
+            if fac and fac.official_name:
+                fac_name = fac.official_name
+
+        items.append({
             "id": o.id,
-            "reference": o.order_reference,
-            "test_type": o.test_type,
+            "reference": order_ref,
+            "order_reference": order_ref,
+            "test_type": getattr(o, "category", getattr(o, "test_type", "GENERAL")),
+            "category": getattr(o, "category", getattr(o, "test_type", "GENERAL")),
             "test_name": o.test_name,
-            "status": o.status,
-            "ordered_at": o.ordered_at.isoformat()
-        }
-        for o in orders
-    ]
+            "priority": getattr(o, "priority", "ROUTINE"),
+            "status": getattr(o.status, "value", o.status) if hasattr(o.status, "value") else str(o.status),
+            "doctor_name": doc_name,
+            "facility_name": fac_name,
+            "clinical_reason": getattr(o, "clinical_reason", None),
+            "preparation_instructions": getattr(o, "preparation_instructions", None),
+            "ordered_at": o.ordered_at.isoformat() if getattr(o, "ordered_at", None) else o.created_at.isoformat()
+        })
     return StandardResponse(data=items)
 
 @router.get("/followups", response_model=StandardResponse)
@@ -2958,17 +3042,46 @@ def get_citizen_followups(
     current_user: Optional[User] = Depends(get_optional_user)
 ):
     profile = CitizenService.get_or_create_default_profile(db, current_user)
-    followups = db.query(FollowUp).filter(FollowUp.citizen_id == profile.id).order_by(FollowUp.due_at.asc()).all()
-    items = [
-        {
+    citizen_ids = [profile.id]
+    if profile.user_id:
+        other_profiles = db.query(CitizenProfile).filter(CitizenProfile.user_id == profile.user_id).all()
+        for op in other_profiles:
+            if op.id not in citizen_ids:
+                citizen_ids.append(op.id)
+    cases = db.query(Case).filter(Case.citizen_id.in_(citizen_ids)).all()
+    case_ids = [c.id for c in cases]
+
+    followups = db.query(FollowUp).filter(
+        (FollowUp.citizen_id.in_(citizen_ids)) | (FollowUp.case_id.in_(case_ids))
+    ).order_by(FollowUp.created_at.desc()).all()
+
+    items = []
+    for f in followups:
+        fu_ref = getattr(f, "follow_up_reference", f.id)
+        assigned_worker_name = "Care Team"
+        if getattr(f, "assigned_user_id", None):
+            u = db.query(User).filter(User.id == f.assigned_user_id).first()
+            if u and u.name:
+                assigned_worker_name = u.name
+        elif getattr(f, "assigned_role", None) == "ASHA":
+            assigned_worker_name = "ASHA Worker (Sita Patel)"
+        elif getattr(f, "assigned_role", None) == "PHC_DOCTOR":
+            assigned_worker_name = "Dr. Abhinav Sharma"
+
+        items.append({
             "id": f.id,
-            "reference": getattr(f, "follow_up_reference", f.id),
+            "reference": fu_ref,
+            "follow_up_reference": fu_ref,
+            "task_type": getattr(f, "task_type", "POST_CONSULTATION_CHECK"),
             "instructions": f.instructions,
+            "reason": getattr(f, "reason", None),
+            "assigned_role": str(f.assigned_role) if f.assigned_role else "ASHA",
+            "assigned_worker_name": assigned_worker_name,
             "due_date": f.due_at.isoformat() if f.due_at else None,
-            "status": f.status
-        }
-        for f in followups
-    ]
+            "due_at": f.due_at.isoformat() if f.due_at else None,
+            "status": getattr(f.status, "value", f.status) if hasattr(f.status, "value") else str(f.status),
+            "created_at": f.created_at.isoformat() if getattr(f, "created_at", None) else None
+        })
     return StandardResponse(data=items)
 
 @router.get("/appointments", response_model=StandardResponse)
@@ -2977,16 +3090,28 @@ def get_citizen_appointments(
     current_user: Optional[User] = Depends(get_optional_user)
 ):
     profile = CitizenService.get_or_create_default_profile(db, current_user)
-    followups = db.query(FollowUp).filter(FollowUp.citizen_id == profile.id).order_by(FollowUp.due_at.asc()).all()
+    citizen_ids = [profile.id]
+    if profile.user_id:
+        other_profiles = db.query(CitizenProfile).filter(CitizenProfile.user_id == profile.user_id).all()
+        for op in other_profiles:
+            if op.id not in citizen_ids:
+                citizen_ids.append(op.id)
+    cases = db.query(Case).filter(Case.citizen_id.in_(citizen_ids)).all()
+    case_ids = [c.id for c in cases]
+
+    followups = db.query(FollowUp).filter(
+        (FollowUp.citizen_id.in_(citizen_ids)) | (FollowUp.case_id.in_(case_ids))
+    ).order_by(FollowUp.created_at.desc()).all()
+
     items = [
         {
             "id": f.id,
             "reference": getattr(f, "follow_up_reference", f.id),
-            "type": "ASHA_VISIT" if f.assigned_user_id else "PHC_VISIT",
+            "type": "ASHA_VISIT" if f.assigned_user_id or getattr(f, "assigned_role", None) == "ASHA" else "PHC_VISIT",
             "provider_name": "Kalyanpur PHC Care Team",
             "instructions": f.instructions,
             "scheduled_time": f.due_at.isoformat() if f.due_at else None,
-            "status": f.status
+            "status": getattr(f.status, "value", f.status) if hasattr(f.status, "value") else str(f.status)
         }
         for f in followups
     ]

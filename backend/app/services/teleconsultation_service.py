@@ -798,19 +798,18 @@ class TeleconsultationService:
         for inv_dto in dto.investigation_orders:
             inv_ref = f"LAB-{datetime.now().strftime('%Y%m%d%H%M%S')}-{uuid.uuid4().hex[:4].upper()}"
             inv = InvestigationOrder(
-                order_reference=inv_ref,
+                reference=inv_ref,
                 citizen_id=req.citizen_id,
                 case_id=req.case_id,
                 consultation_id=consultation.id,
-                ordering_doctor_id=doctor_user.id,
-                ordering_doctor_name=f"Dr. {doctor_user.name}",
+                ordered_by_doctor_id=doctor_user.id,
                 facility_id="PHC-09",
                 test_name=inv_dto.get("test_name", "Complete Blood Count (CBC)"),
-                test_category=inv_dto.get("category", "PATHOLOGY"),
-                urgency=inv_dto.get("urgency", "ROUTINE"),
-                clinical_indication=dto.provisional_diagnosis,
+                category=inv_dto.get("category", "PATHOLOGY"),
+                priority=inv_dto.get("urgency", inv_dto.get("priority", "ROUTINE")),
+                clinical_reason=dto.provisional_diagnosis,
                 status="ORDERED",
-                patient_preparation_instructions=inv_dto.get("instructions", "Fasting not required")
+                preparation_instructions=inv_dto.get("instructions", "Fasting not required")
             )
             db.add(inv)
 
