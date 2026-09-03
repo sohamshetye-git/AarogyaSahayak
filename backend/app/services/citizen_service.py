@@ -3,6 +3,7 @@ import time
 import logging
 from datetime import datetime, timezone, timedelta
 from typing import List, Optional, Dict, Any
+from fastapi import HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy import or_, and_
 
@@ -978,10 +979,27 @@ class CitizenService:
         session_facts = (session.context_state or {}) if session else {}
         facts = (need.structured_facts or {}) if need else session_facts
 
-        s_list = facts.get("symptoms", []) or []
+        # Combine facts symptoms with any explicit symptoms passed in request
+        s_list = []
+        if getattr(req, "symptoms", None):
+            s_list.extend(req.symptoms)
+        if facts.get("symptoms"):
+            s_list.extend(facts.get("symptoms", []))
+
+        # Clean whitespace and deduplicate case-insensitively
+        seen_symptom_keys = set()
         for s in s_list:
-            display_str = s.title() if isinstance(s, str) else str(s)
-            code_str = s.upper().replace(" ", "_") if isinstance(s, str) else str(s).upper()
+            if not s or not isinstance(s, str):
+                continue
+            clean_s = " ".join(s.strip().split())
+            if not clean_s:
+                continue
+            lower_key = clean_s.lower()
+            if lower_key in seen_symptom_keys:
+                continue
+            seen_symptom_keys.add(lower_key)
+            display_str = clean_s.title()
+            code_str = clean_s.upper().replace(" ", "_")
             confirmed_symptoms.append({
                 "code": code_str,
                 "display": display_str,
@@ -991,7 +1009,10 @@ class CitizenService:
         
         neg_list = facts.get("negated_symptoms", []) or facts.get("negated", []) or []
         for ns in neg_list:
-            negated_symptoms.append(ns.title() if isinstance(ns, str) else str(ns))
+            if ns and isinstance(ns, str):
+                clean_ns = " ".join(ns.strip().split())
+                if clean_ns and clean_ns.lower() not in seen_symptom_keys:
+                    negated_symptoms.append(clean_ns.title())
         
         v_dict = facts.get("vitals", {}) or {}
         if "temperature_f" in v_dict and v_dict["temperature_f"]:
@@ -1005,11 +1026,22 @@ class CitizenService:
         if m:
             duration_val = float(m.group(1))
 
+        # Explicit chief concern handling
+        passed_concern = getattr(req, "chief_concern", None)
+        if passed_concern and isinstance(passed_concern, str) and passed_concern.strip():
+            chief_concern = " ".join(passed_concern.strip().split())
+        elif need and need.confirmed_summary and need.confirmed_summary.strip():
+            chief_concern = " ".join(need.confirmed_summary.strip().split())
+        elif confirmed_symptoms:
+            chief_concern = confirmed_symptoms[0]["display"]
+        else:
+            chief_concern = "General health checkup / care guidance"
+
         # Populate chief concern and confirmed symptoms
         if not confirmed_symptoms:
             confirmed_symptoms.append({
                 "code": "HEALTH_CONCERN",
-                "display": need.confirmed_summary if (need and need.confirmed_summary) else "General health checkup / care guidance",
+                "display": chief_concern,
                 "status": "CONFIRMED",
                 "source": "CITIZEN_REPORTED"
             })
@@ -1020,14 +1052,17 @@ class CitizenService:
             if v["type"] == "TEMPERATURE" and v["value"]:
                 temp_c = (float(v["value"]) - 32) * 5 / 9
 
+        # Evaluate triage priority using all confirmed symptoms + chief concern
+        eval_symptoms = [s["display"].lower() for s in confirmed_symptoms]
+        if chief_concern and chief_concern.lower() not in eval_symptoms:
+            eval_symptoms.append(chief_concern.lower())
+
         priority, triggered, reason, guidance = EmergencyRuleEvaluator.evaluate(
-            symptoms=[s["display"].lower() for s in confirmed_symptoms],
+            symptoms=eval_symptoms,
             is_pregnant=is_pregnant,
             gestational_weeks=gestational_weeks,
             temperature_c=temp_c
         )
-
-        chief_concern = (need.confirmed_summary if (need and need.confirmed_summary) else None) or (confirmed_symptoms[0]["display"] if confirmed_symptoms else "Health Consultation")
         citizen_summary = f"{beneficiary_name} reports {chief_concern} since {int(duration_val)} {duration_unit.lower()}."
         if negated_symptoms:
             citizen_summary += f" Explicitly denied: {', '.join(negated_symptoms)}."
@@ -1168,16 +1203,56 @@ class CitizenService:
             need_obj = db.query(CitizenNeed).filter(CitizenNeed.id == req.need_id).first()
             if need_obj and need_obj.session_id:
                 sess = db.query(CitizenChatSession).filter(CitizenChatSession.id == need_obj.session_id).first()
-                if sess and sess.linked_case_id:
-                    case = db.query(Case).filter(Case.id == sess.linked_case_id).first()
+        # Validate channel for new citizen doctor requests
+        requested_channel_val = (req.channel or "CALLBACK").upper()
+        if requested_channel_val in ["AUDIO", "VIDEO"]:
+            raise HTTPException(
+                status_code=400,
+                detail="Audio and Video consultations are temporarily unavailable. Please select Doctor Phone Callback or Doctor Chat Advice."
+            )
+        if requested_channel_val not in ["CALLBACK", "CHAT", "IN_PERSON_PHC", "HOME_VISIT"]:
+            requested_channel_val = "CALLBACK"
 
         packet = req.handoff_packet or {}
-        symptoms_list = [s["display"] if isinstance(s, dict) else str(s) for s in packet.get("symptoms", [])] or req.symptoms
-        chief_complaint = packet.get("chief_concern") or req.chief_complaint or "Doctor consultation requested"
-        safety_data = packet.get("safety", {})
-        priority_val = safety_data.get("priority", "ROUTINE")
-        guidance = safety_data.get("citizen_message", "Please stay calm and monitor your symptoms.")
-        requested_channel_val = req.channel or "CHAT"
+        raw_symptoms = [s["display"] if isinstance(s, dict) else str(s) for s in packet.get("symptoms", [])] or req.symptoms or []
+        # Normalize and deduplicate symptoms
+        symptoms_list = []
+        seen_syms = set()
+        for s in raw_symptoms:
+            if s and isinstance(s, str):
+                c_s = " ".join(s.strip().split())
+                if c_s and c_s.lower() not in seen_syms:
+                    seen_syms.add(c_s.lower())
+                    symptoms_list.append(c_s.title())
+
+        chief_complaint = " ".join((packet.get("chief_concern") or req.chief_complaint or (symptoms_list[0] if symptoms_list else "Doctor consultation requested")).strip().split())
+        
+        # Deterministic emergency evaluation
+        eval_symptoms = [s.lower() for s in symptoms_list]
+        if chief_complaint and chief_complaint.lower() not in eval_symptoms:
+            eval_symptoms.append(chief_complaint.lower())
+
+        is_preg = profile.is_pregnant
+        gest_w = profile.gestational_weeks
+        if req.beneficiary_id:
+            hm = db.query(HouseholdMember).filter(HouseholdMember.id == req.beneficiary_id, HouseholdMember.citizen_id == citizen_id).first()
+            if hm:
+                is_preg = hm.is_pregnant
+                gest_w = hm.gestational_weeks
+
+        calc_priority, is_trig, trig_reason, trig_guidance = EmergencyRuleEvaluator.evaluate(
+            symptoms=eval_symptoms,
+            is_pregnant=is_preg,
+            gestational_weeks=gest_w
+        )
+        priority_val = calc_priority.value
+        guidance = trig_guidance if is_trig else "Please stay calm and monitor your symptoms."
+        safety_data = {
+            "priority": priority_val,
+            "triggered_rule_ids": ["EMERGENCY-RULE-01"] if is_trig else [],
+            "citizen_message": guidance,
+            "evaluated_at": utc_now().isoformat()
+        }
 
         if not case:
             case_priority = CasePriorityEnum.URGENT if priority_val == "URGENT" else (CasePriorityEnum.HIGH if priority_val == "HIGH" else CasePriorityEnum.ROUTINE)
@@ -1189,8 +1264,8 @@ class CitizenService:
                 priority=case_priority,
                 status=CaseStatusEnum.NEW,
                 preferred_language=req.preferred_language or profile.preferred_language or "mr-IN",
-                safety_rule_triggered=bool(safety_data.get("triggered_rule_ids")),
-                safety_rule_reason=safety_data.get("citizen_message"),
+                safety_rule_triggered=is_trig,
+                safety_rule_reason=trig_reason,
                 citizen_guidance_text=guidance,
                 assigned_facility_name="Kalyanpur Primary Health Centre (PHC)",
                 assigned_facility_id="PHC-09"

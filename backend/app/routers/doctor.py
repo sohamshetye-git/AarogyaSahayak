@@ -4034,6 +4034,21 @@ def patch_doctor_direct_request_status(
         # Create Investigation Orders if requested
         inv_items = payload.get("investigation_orders", [])
         for inv_dto in inv_items:
+            if isinstance(inv_dto, str):
+                test_name = inv_dto
+                category = "PATHOLOGY"
+                priority = "ROUTINE"
+                clinical_reason = diag
+                prep_inst = None
+            elif isinstance(inv_dto, dict):
+                test_name = inv_dto.get("test_name", "Complete Blood Count (CBC)")
+                category = inv_dto.get("category", "PATHOLOGY")
+                priority = inv_dto.get("priority") or inv_dto.get("urgency") or "ROUTINE"
+                clinical_reason = inv_dto.get("clinical_reason") or diag
+                prep_inst = inv_dto.get("preparation_instructions")
+            else:
+                continue
+            
             inv = InvestigationOrder(
                 reference=f"LAB-{datetime.now().strftime('%Y%m%d%H%M%S')}-{uuid.uuid4().hex[:4].upper()}",
                 citizen_id=cit_id,
@@ -4041,10 +4056,11 @@ def patch_doctor_direct_request_status(
                 consultation_id=cons.id,
                 ordered_by_doctor_id=current_user.id,
                 facility_id=fac_id or "PHC-09",
-                test_name=inv_dto.get("test_name", "Complete Blood Count (CBC)"),
-                category=inv_dto.get("category", "PATHOLOGY"),
-                priority=inv_dto.get("urgency", "ROUTINE"),
-                clinical_reason=diag,
+                test_name=test_name,
+                category=category,
+                priority=priority,
+                clinical_reason=clinical_reason,
+                preparation_instructions=prep_inst,
                 status="ORDERED",
                 ordered_at=now_dt
             )

@@ -12,7 +12,14 @@ import { CareHandoffReviewSheet } from "./CareHandoffReviewSheet";
 
 interface AssistantScreenProps {
   onBack: () => void;
-  onOpenDoctor: () => void;
+  onOpenDoctor: (prefillData?: {
+    sessionId?: string;
+    needId?: string;
+    chiefComplaint?: string;
+    symptoms?: string[];
+    priority?: string;
+    beneficiaryId?: string;
+  }) => void;
   onOpenEmergency: () => void;
   onOpenAsha: () => void;
   onOpenFacilities: () => void;
@@ -571,8 +578,37 @@ export const AssistantScreen: React.FC<AssistantScreenProps> = ({
     if (actionType === "EMERGENCY_HELP" || actionType === "CALL_108") {
       onOpenEmergency();
     } else if (actionType === "SPEAK_TO_DOCTOR") {
-      setHandoffRequestType("DOCTOR_CONSULTATION");
-      setHandoffSheetOpen(true);
+      // Find latest confirmed health understanding facts from messages
+      let extractedChiefComplaint: string | undefined = undefined;
+      let extractedSymptoms: string[] = [];
+      let extractedPriority: string | undefined = undefined;
+
+      for (let i = messages.length - 1; i >= 0; i--) {
+        const msg = messages[i];
+        const under = msg.structured_payload?.understanding;
+        if (under) {
+          if (under.new_facts?.symptoms && Array.isArray(under.new_facts.symptoms)) {
+            extractedSymptoms.push(...under.new_facts.symptoms);
+          }
+          if (under.primary_concern) {
+            extractedChiefComplaint = under.primary_concern;
+          }
+        }
+        if (msg.structured_payload?.safety?.priority) {
+          extractedPriority = msg.structured_payload.safety.priority;
+        }
+        if (msg.sender === "CITIZEN" && msg.confirmed_text && !extractedChiefComplaint) {
+          extractedChiefComplaint = msg.confirmed_text;
+        }
+      }
+
+      onOpenDoctor({
+        sessionId: sessionId || undefined,
+        needId: activeNeedId || undefined,
+        chiefComplaint: extractedChiefComplaint,
+        symptoms: extractedSymptoms.length > 0 ? Array.from(new Set(extractedSymptoms)) : undefined,
+        priority: extractedPriority
+      });
     } else if (actionType === "REQUEST_ASHA" || actionType === "CALL_ASHA") {
       setHandoffRequestType("ASHA_ASSISTANCE");
       setHandoffSheetOpen(true);

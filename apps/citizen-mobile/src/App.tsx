@@ -196,8 +196,30 @@ function CitizenAppInner() {
     setActiveTab(tabId as any);
   };
 
-  // Guard Doctor Consultation
-  const handleOpenDoctor = () => {
+  // Guard Doctor Consultation with optional chat/home prefill data
+  const [wizardPrefillData, setWizardPrefillData] = useState<{
+    sessionId?: string;
+    needId?: string;
+    chiefComplaint?: string;
+    symptoms?: string[];
+    priority?: string;
+    beneficiaryId?: string;
+  } | null>(null);
+
+  const handleOpenDoctor = (prefill?: {
+    sessionId?: string;
+    needId?: string;
+    chiefComplaint?: string;
+    symptoms?: string[];
+    priority?: string;
+    beneficiaryId?: string;
+  }) => {
+    if (prefill) {
+      setWizardPrefillData(prefill);
+    } else {
+      setWizardPrefillData(null);
+    }
+
     if (isGuest) {
       triggerProtectedAction({
         actionType: "DOCTOR_CONSULTATION",
@@ -601,6 +623,12 @@ function CitizenAppInner() {
           {activeTab === "doctor" && (
             <DoctorRequestWizard
               onBack={() => setActiveTab("home")}
+              initialChatSessionId={wizardPrefillData?.sessionId}
+              initialCitizenNeedId={wizardPrefillData?.needId}
+              initialChiefComplaint={wizardPrefillData?.chiefComplaint}
+              initialSymptoms={wizardPrefillData?.symptoms}
+              initialBeneficiaryId={wizardPrefillData?.beneficiaryId}
+              initialPriority={wizardPrefillData?.priority}
               onRequestSubmitted={(reqId) => {
                 setActiveRequestId(reqId);
                 setActiveTab("doctor_waiting");
@@ -611,6 +639,12 @@ function CitizenAppInner() {
           {activeTab === "doctor_request" && (
             <DoctorRequestWizard
               onBack={() => setActiveTab("home")}
+              initialChatSessionId={wizardPrefillData?.sessionId}
+              initialCitizenNeedId={wizardPrefillData?.needId}
+              initialChiefComplaint={wizardPrefillData?.chiefComplaint}
+              initialSymptoms={wizardPrefillData?.symptoms}
+              initialBeneficiaryId={wizardPrefillData?.beneficiaryId}
+              initialPriority={wizardPrefillData?.priority}
               onRequestSubmitted={(reqId) => {
                 setActiveRequestId(reqId);
                 setActiveTab("doctor_waiting");

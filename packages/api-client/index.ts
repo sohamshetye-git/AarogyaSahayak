@@ -2037,6 +2037,8 @@ export class AarogyaApiClient {
     beneficiary_id?: string;
     request_type?: string;
     requested_channel?: string;
+    chief_concern?: string;
+    symptoms?: string[];
   }) {
     return this.request<any>("/citizen/care-handoffs/preview", {
       method: "POST",

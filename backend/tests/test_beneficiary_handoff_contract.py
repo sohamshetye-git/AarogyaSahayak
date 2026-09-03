@@ -50,7 +50,7 @@ def test_doctor_request_creation_from_home_and_duplicate_reuse(client):
         "beneficiary_id": self_b["beneficiary_id"],
         "chief_complaint": "Severe persistent headache and dizziness",
         "symptoms": ["headache", "dizziness"],
-        "channel": "AUDIO",
+        "channel": "CALLBACK",
         "request_type": "DOCTOR_CONSULTATION",
         "sharing_scope": {
             "share_structured_summary": True,

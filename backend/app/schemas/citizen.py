@@ -225,6 +225,8 @@ class HandoffPreviewRequest(BaseModel):
     beneficiary_id: Optional[str] = None
     request_type: str = "DOCTOR_CONSULTATION" # DOCTOR_CONSULTATION | ASHA_ASSISTANCE
     requested_channel: Optional[str] = "CALLBACK"
+    chief_concern: Optional[str] = None
+    symptoms: Optional[List[str]] = None
 
 class DoctorRequestCreateDTO(BaseModel):
     beneficiary_id: Optional[str] = None

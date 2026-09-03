@@ -14,13 +14,21 @@ interface DoctorRequestWizardProps {
   onRequestSubmitted: (requestId: string) => void;
   initialChatSessionId?: string;
   initialCitizenNeedId?: string;
+  initialChiefComplaint?: string;
+  initialSymptoms?: string[];
+  initialBeneficiaryId?: string;
+  initialPriority?: string;
 }
 
 export const DoctorRequestWizard: React.FC<DoctorRequestWizardProps> = ({
   onBack,
   onRequestSubmitted,
   initialChatSessionId,
-  initialCitizenNeedId
+  initialCitizenNeedId,
+  initialChiefComplaint,
+  initialSymptoms,
+  initialBeneficiaryId,
+  initialPriority
 }) => {
   const { t, locale } = useLanguage();
 
@@ -35,10 +43,11 @@ export const DoctorRequestWizard: React.FC<DoctorRequestWizardProps> = ({
   const [loading, setLoading] = useState<boolean>(true);
   const [submitting, setSubmitting] = useState<boolean>(false);
   const [errorNotice, setErrorNotice] = useState<string | null>(null);
+  const [symptomInputError, setSymptomInputError] = useState<string | null>(null);
 
   // Beneficiaries Canonical State
   const [beneficiaries, setBeneficiaries] = useState<BeneficiaryOption[]>([]);
-  const [selectedBeneficiaryId, setSelectedBeneficiaryId] = useState<string | null>(null);
+  const [selectedBeneficiaryId, setSelectedBeneficiaryId] = useState<string | null>(initialBeneficiaryId || null);
 
   // Derived selected beneficiary
   const selectedBeneficiary =
@@ -48,14 +57,34 @@ export const DoctorRequestWizard: React.FC<DoctorRequestWizardProps> = ({
   const [inputType, setInputType] = useState<"VOICE" | "TEXT">("VOICE");
   const [isRecording, setIsRecording] = useState(false);
   const [spokenText, setSpokenText] = useState("");
-  const [chiefComplaint, setChiefComplaint] = useState("");
+  const [chiefComplaint, setChiefComplaint] = useState(initialChiefComplaint || "");
   const [durationText, setDurationText] = useState("Not provided");
   const [severityLevel, setSeverityLevel] = useState("UNKNOWN");
-  const [extractedSymptoms, setExtractedSymptoms] = useState<string[]>([]);
+  const [extractedSymptoms, setExtractedSymptoms] = useState<string[]>(() => {
+    if (initialSymptoms && Array.isArray(initialSymptoms)) {
+      const seen = new Set<string>();
+      const res: string[] = [];
+      for (const s of initialSymptoms) {
+        const clean = s.trim();
+        if (clean && !seen.has(clean.toLowerCase())) {
+          seen.add(clean.toLowerCase());
+          res.push(clean);
+        }
+      }
+      return res;
+    }
+    return [];
+  });
   const [newSymptomInput, setNewSymptomInput] = useState("");
 
-  // Step 3: Mode & Channel (Only genuine working channels)
-  const [selectedChannel, setSelectedChannel] = useState<"CALLBACK" | "AUDIO" | "VIDEO" | "CHAT" | "IN_PERSON_PHC">("CALLBACK");
+  // Step 3: Mode & Channel (Strictly CALLBACK and CHAT only for new Citizen requests)
+  const [selectedChannel, setSelectedChannel] = useState<"CALLBACK" | "CHAT">("CALLBACK");
+
+  // Safety triage result
+  const [safetyPriority, setSafetyPriority] = useState<string>(initialPriority || "ROUTINE");
+  const [safetyReason, setSafetyReason] = useState<string | null>(null);
+  const [safetyGuidance, setSafetyGuidance] = useState<string | null>(null);
+  const [isTriageLoading, setIsTriageLoading] = useState<boolean>(false);
 
   // Step 4: Location
   const [landmark, setLandmark] = useState<string>("");
@@ -70,9 +99,6 @@ export const DoctorRequestWizard: React.FC<DoctorRequestWizardProps> = ({
 
   // Step 6: Explicit Consent (Enabled once patient reviews)
   const [explicitConsent, setExplicitConsent] = useState<boolean>(true);
-
-  // Safety triage result
-  const [safetyPriority, setSafetyPriority] = useState<string>("ROUTINE");
 
   // Load Beneficiaries on Mount
   useEffect(() => {
@@ -170,6 +196,32 @@ export const DoctorRequestWizard: React.FC<DoctorRequestWizardProps> = ({
     return () => { isMounted = false; };
   }, []);
 
+  // Dynamic backend triage priority recalculation
+  const recalculateTriagePriority = async (concern: string, syms: string[]) => {
+    setIsTriageLoading(true);
+    try {
+      const res = await apiClient.previewCareHandoff({
+        beneficiary_id: selectedBeneficiary?.beneficiaryId || undefined,
+        session_id: initialChatSessionId || undefined,
+        need_id: initialCitizenNeedId || undefined,
+        request_type: "DOCTOR_CONSULTATION",
+        requested_channel: selectedChannel,
+        chief_concern: concern.trim() || undefined,
+        symptoms: syms
+      });
+      const data = res?.data || res;
+      if (data?.safety?.priority) {
+        setSafetyPriority(data.safety.priority);
+        setSafetyReason(data.safety.triggered_rule_ids?.length > 0 ? (data.safety.citizen_message || "Priority assessment complete") : null);
+        setSafetyGuidance(data.safety.citizen_message || null);
+      }
+    } catch (e) {
+      console.warn("Priority assessment dynamic check unavailable:", e);
+    } finally {
+      setIsTriageLoading(false);
+    }
+  };
+
   // Safe Continue from Step 1 (Beneficiary Selection)
   const handleProceedFromStep1 = async () => {
     if (!selectedBeneficiary || !selectedBeneficiary.beneficiaryId) {
@@ -187,7 +239,9 @@ export const DoctorRequestWizard: React.FC<DoctorRequestWizardProps> = ({
         session_id: initialChatSessionId || undefined,
         need_id: initialCitizenNeedId || undefined,
         request_type: "DOCTOR_CONSULTATION",
-        requested_channel: selectedChannel
+        requested_channel: selectedChannel,
+        chief_concern: chiefComplaint || undefined,
+        symptoms: extractedSymptoms.length > 0 ? extractedSymptoms : undefined
       });
 
       const packet = previewRes?.data || previewRes;
@@ -196,7 +250,18 @@ export const DoctorRequestWizard: React.FC<DoctorRequestWizardProps> = ({
           setChiefComplaint(packet.chief_concern);
         }
         if (Array.isArray(packet.symptoms) && packet.symptoms.length > 0 && extractedSymptoms.length === 0) {
-          const syms = packet.symptoms.map((s: any) => (typeof s === "string" ? s : s.display || s.code));
+          const seen = new Set<string>();
+          const syms: string[] = [];
+          packet.symptoms.forEach((s: any) => {
+            const label = typeof s === "string" ? s : s.display || s.code;
+            if (label && typeof label === "string") {
+              const clean = label.trim();
+              if (clean && !seen.has(clean.toLowerCase())) {
+                seen.add(clean.toLowerCase());
+                syms.push(clean);
+              }
+            }
+          });
           setExtractedSymptoms(syms);
         }
         if (packet.location?.landmark) {
@@ -207,6 +272,8 @@ export const DoctorRequestWizard: React.FC<DoctorRequestWizardProps> = ({
         }
         if (packet.safety?.priority) {
           setSafetyPriority(packet.safety.priority);
+          setSafetyReason(packet.safety.triggered_rule_ids?.length > 0 ? (packet.safety.citizen_message || null) : null);
+          setSafetyGuidance(packet.safety.citizen_message || null);
         }
       }
 
@@ -227,9 +294,10 @@ export const DoctorRequestWizard: React.FC<DoctorRequestWizardProps> = ({
       try {
         const result = await audioCaptureService.stopRecording(locale || "mr-IN");
         if (result.transcript) {
-          setSpokenText(result.transcript);
-          setChiefComplaint(result.transcript);
-          extractSymptomsFromText(result.transcript);
+          const cleanTranscript = result.transcript.trim();
+          setSpokenText(cleanTranscript);
+          setChiefComplaint(cleanTranscript);
+          extractSymptomsFromText(cleanTranscript);
         } else if (result.errorMessage) {
           setErrorNotice(result.errorMessage);
         }
@@ -257,32 +325,65 @@ export const DoctorRequestWizard: React.FC<DoctorRequestWizardProps> = ({
   const extractSymptomsFromText = (text: string) => {
     const syms: string[] = [...extractedSymptoms];
     const textLower = text.toLowerCase();
-    if ((textLower.includes("छातीत") || textLower.includes("chest") || textLower.includes("छाती")) && !syms.includes("Chest Pain")) {
-      syms.push("Chest Pain");
+    
+    const checkAndAdd = (name: string) => {
+      const lower = name.toLowerCase();
+      if (!syms.some(s => s.toLowerCase() === lower)) {
+        syms.push(name);
+      }
+    };
+
+    if (textLower.includes("छातीत") || textLower.includes("chest") || textLower.includes("छाती") || textLower.includes("सीने")) {
+      checkAndAdd("Chest Pain");
     }
-    if ((textLower.includes("डोके") || textLower.includes("headache") || textLower.includes("सिर")) && !syms.includes("Severe Headache")) {
-      syms.push("Severe Headache");
+    if (textLower.includes("डोके") || textLower.includes("headache") || textLower.includes("सिर") || textLower.includes("डोकेदुखी")) {
+      checkAndAdd("Severe Headache");
     }
-    if ((textLower.includes("ताप") || textLower.includes("fever") || textLower.includes("बुखार")) && !syms.includes("High Fever")) {
-      syms.push("High Fever");
+    if (textLower.includes("ताप") || textLower.includes("fever") || textLower.includes("बुखार")) {
+      checkAndAdd("High Fever");
     }
-    if ((textLower.includes("धाप") || textLower.includes("breath") || textLower.includes("सांस")) && !syms.includes("Shortness of Breath")) {
-      syms.push("Shortness of Breath");
+    if (textLower.includes("धाप") || textLower.includes("breath") || textLower.includes("सांस") || textLower.includes("श्वास")) {
+      checkAndAdd("Shortness of Breath");
     }
-    if (syms.length === 0) syms.push("Health Concern");
-    setExtractedSymptoms(syms);
+    
+    // Deduplicate array case-insensitively
+    const seen = new Set<string>();
+    const deduplicated = syms.filter(s => {
+      const clean = s.trim().toLowerCase();
+      if (!clean || seen.has(clean)) return false;
+      seen.add(clean);
+      return true;
+    });
+
+    setExtractedSymptoms(deduplicated);
+    recalculateTriagePriority(text, deduplicated);
   };
 
   const handleAddSymptom = () => {
-    if (!newSymptomInput.trim()) return;
-    if (!extractedSymptoms.includes(newSymptomInput.trim())) {
-      setExtractedSymptoms([...extractedSymptoms, newSymptomInput.trim()]);
+    setSymptomInputError(null);
+    const trimmed = newSymptomInput.trim();
+    if (!trimmed) {
+      setSymptomInputError(t("wizard.symptom_empty_error", "Please enter a symptom name."));
+      return;
     }
+    
+    const exists = extractedSymptoms.some(s => s.trim().toLowerCase() === trimmed.toLowerCase());
+    if (exists) {
+      setSymptomInputError(t("wizard.symptom_duplicate_error", "This symptom is already added."));
+      return;
+    }
+
+    const updated = [...extractedSymptoms, trimmed];
+    setExtractedSymptoms(updated);
     setNewSymptomInput("");
+    setSymptomInputError(null);
+    recalculateTriagePriority(chiefComplaint, updated);
   };
 
   const handleRemoveSymptom = (sym: string) => {
-    setExtractedSymptoms(extractedSymptoms.filter((s) => s !== sym));
+    const updated = extractedSymptoms.filter((s) => s.trim().toLowerCase() !== sym.trim().toLowerCase());
+    setExtractedSymptoms(updated);
+    recalculateTriagePriority(chiefComplaint, updated);
   };
 
   // Step 2 Proceed
@@ -596,6 +697,39 @@ export const DoctorRequestWizard: React.FC<DoctorRequestWizardProps> = ({
               </div>
             )}
 
+            {/* Priority Assessment Card */}
+            <div style={{ backgroundColor: "#FFFFFF", padding: 14, borderRadius: 16, border: "1px solid #E2E8F0" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <span style={{ fontSize: 12, fontWeight: 800, color: "#475569" }}>
+                  {t("wizard.triage_priority_label", "Triage Priority Level")}
+                </span>
+                <span
+                  style={{
+                    fontSize: 11,
+                    fontWeight: 800,
+                    padding: "3px 10px",
+                    borderRadius: 8,
+                    backgroundColor: safetyPriority === "URGENT" ? "#FEE2E2" : (safetyPriority === "HIGH" ? "#FEF3C7" : "#DCFCE7"),
+                    color: safetyPriority === "URGENT" ? "#DC2626" : (safetyPriority === "HIGH" ? "#92400E" : "#166534"),
+                    border: `1px solid ${safetyPriority === "URGENT" ? "#FCA5A5" : (safetyPriority === "HIGH" ? "#FDE68A" : "#BBF7D0")}`
+                  }}
+                >
+                  {isTriageLoading ? (
+                    <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                      <Loader2 size={10} className="animate-spin" /> Evaluating...
+                    </span>
+                  ) : (
+                    safetyPriority === "URGENT" ? `⚠️ ${t("priority.URGENT", "URGENT")}` : (safetyPriority === "HIGH" ? t("priority.HIGH", "HIGH") : t("priority.ROUTINE", "ROUTINE"))
+                  )}
+                </span>
+              </div>
+              {safetyGuidance && (
+                <div style={{ fontSize: 12, color: safetyPriority === "URGENT" ? "#B91C1C" : "#475569", marginTop: 6, fontWeight: 600 }}>
+                  {safetyGuidance}
+                </div>
+              )}
+            </div>
+
             {/* Symptoms Tags */}
             <div style={{ backgroundColor: "#FFFFFF", padding: 14, borderRadius: 16, border: "1px solid #E2E8F0" }}>
               <label style={{ fontSize: 12, fontWeight: 800, color: "#475569", display: "block", marginBottom: 8 }}>
@@ -624,7 +758,8 @@ export const DoctorRequestWizard: React.FC<DoctorRequestWizardProps> = ({
                       <button
                         type="button"
                         onClick={() => handleRemoveSymptom(sym)}
-                        style={{ border: "none", background: "none", color: "#6B7280", cursor: "pointer", padding: 0 }}
+                        style={{ border: "none", background: "none", color: "#6B7280", cursor: "pointer", padding: 0, fontSize: 16, lineHeight: 1 }}
+                        title="Remove symptom"
                       >
                         ×
                       </button>
@@ -637,18 +772,33 @@ export const DoctorRequestWizard: React.FC<DoctorRequestWizardProps> = ({
                 <input
                   type="text"
                   value={newSymptomInput}
-                  onChange={(e) => setNewSymptomInput(e.target.value)}
+                  onChange={(e) => {
+                    setNewSymptomInput(e.target.value);
+                    if (symptomInputError) setSymptomInputError(null);
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      handleAddSymptom();
+                    }
+                  }}
                   placeholder={t("wizard.step2_add_symptom_placeholder", "Add symptom (e.g. Fever)")}
-                  style={{ flex: 1, padding: "8px 12px", borderRadius: 10, border: "1px solid #CBD5E1", fontSize: 13 }}
+                  style={{ flex: 1, padding: "8px 12px", borderRadius: 10, border: `1px solid ${symptomInputError ? '#EF4444' : '#CBD5E1'}`, fontSize: 13, outline: "none" }}
                 />
                 <button
                   type="button"
+                  id="btn-add-symptom"
                   onClick={handleAddSymptom}
                   style={{ padding: "8px 14px", borderRadius: 10, backgroundColor: "#2563EB", color: "#FFFFFF", border: "none", fontWeight: 700, fontSize: 13, cursor: "pointer" }}
                 >
                   {t("common.add", "Add")}
                 </button>
               </div>
+              {symptomInputError && (
+                <div style={{ color: "#DC2626", fontSize: 11, fontWeight: 700, marginTop: 4 }}>
+                  {symptomInputError}
+                </div>
+              )}
             </div>
 
             {/* Duration and Severity */}
@@ -719,10 +869,7 @@ export const DoctorRequestWizard: React.FC<DoctorRequestWizardProps> = ({
 
             {[
               { id: "CALLBACK", label: t("consultation.channel.CALLBACK", "Doctor Phone Callback"), desc: t("wizard.step3_desc_callback", "Doctor will call your registered phone"), icon: Phone, badge: t("wizard.step3_badge_recommended", "Recommended"), available: true },
-              { id: "CHAT", label: t("consultation.channel.CHAT", "Doctor Chat Advice"), desc: t("wizard.step3_desc_chat", "Structured written consultation guidance"), icon: MessageSquare, badge: t("wizard.step3_badge_available", "Available"), available: true },
-              { id: "IN_PERSON_PHC", label: t("consultation.channel.IN_PERSON_PHC", "Schedule PHC OPD Visit"), desc: t("wizard.step3_desc_phc", "Walk into Kalyanpur PHC for in-person evaluation"), icon: Building, badge: t("wizard.step3_badge_opd", "OPD Available"), available: true },
-              { id: "AUDIO", label: t("consultation.channel.AUDIO", "In-App Audio Consultation"), desc: t("wizard.step3_desc_audio", "Telehealth voice room (WebRTC)"), icon: Phone, badge: t("wizard.step3_badge_coming_soon", "Coming later"), available: false },
-              { id: "VIDEO", label: t("consultation.channel.VIDEO", "In-App Video Consultation"), desc: t("wizard.step3_desc_video", "Live video room (WebRTC)"), icon: Video, badge: t("wizard.step3_badge_unavailable", "Unavailable"), available: false }
+              { id: "CHAT", label: t("consultation.channel.CHAT", "Doctor Chat Advice"), desc: t("wizard.step3_desc_chat", "Structured written consultation guidance"), icon: MessageSquare, badge: t("wizard.step3_badge_available", "Available"), available: true }
             ].map((ch) => {
               const Icon = ch.icon;
               const isSelected = selectedChannel === ch.id;
@@ -730,6 +877,7 @@ export const DoctorRequestWizard: React.FC<DoctorRequestWizardProps> = ({
               return (
                 <div
                   key={ch.id}
+                  id={`channel-option-${ch.id.toLowerCase()}`}
                   onClick={isAvailable ? () => setSelectedChannel(ch.id as any) : undefined}
                   style={{
                     padding: 16,

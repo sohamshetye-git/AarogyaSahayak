@@ -18,6 +18,14 @@ interface RxItem {
   instructions: string;
 }
 
+interface CustomInvestigationItem {
+  test_name: string;
+  category: string;
+  priority: "ROUTINE" | "URGENT";
+  clinical_reason?: string;
+  preparation_instructions?: string;
+}
+
 export function DirectCitizenRequestsScreen() {
   const { t } = useLanguage();
   const navigate = useNavigate();
@@ -45,6 +53,15 @@ export function DirectCitizenRequestsScreen() {
     }
   ]);
   const [labOrders, setLabOrders] = useState<string[]>([]);
+  const [customLabOrders, setCustomLabOrders] = useState<CustomInvestigationItem[]>([]);
+  const [showAddCustomLabModal, setShowAddCustomLabModal] = useState(false);
+  const [newLabTestName, setNewLabTestName] = useState("");
+  const [newLabCategory, setNewLabCategory] = useState("PATHOLOGY");
+  const [newLabPriority, setNewLabPriority] = useState<"ROUTINE" | "URGENT">("ROUTINE");
+  const [newLabClinicalReason, setNewLabClinicalReason] = useState("");
+  const [newLabPrepInstructions, setNewLabPrepInstructions] = useState("");
+  const [labFormError, setLabFormError] = useState<string | null>(null);
+
   const [assignAsha, setAssignAsha] = useState(false);
   const [ashaInstructions, setAshaInstructions] = useState("Visit home on Day 3, check temperature and recovery.");
 
@@ -242,7 +259,52 @@ export function DirectCitizenRequestsScreen() {
     e.stopPropagation();
     setSelectedReq(req);
     setDiagnosis(req.chief_complaint || "Clinical Assessment Complete");
+    setLabOrders([]);
+    setCustomLabOrders([]);
+    setShowAddCustomLabModal(false);
+    setLabFormError(null);
     setShowCompleteModal(true);
+  };
+
+  const handleAddCustomLabOrder = () => {
+    setLabFormError(null);
+    const trimmedName = newLabTestName.trim();
+    if (!trimmedName) {
+      setLabFormError("Investigation test name is required.");
+      return;
+    }
+
+    // Check duplicate in standard lab orders
+    const existsStandard = labOrders.some(t => t.toLowerCase() === trimmedName.toLowerCase());
+    // Check duplicate in custom lab orders
+    const existsCustom = customLabOrders.some(c => c.test_name.toLowerCase() === trimmedName.toLowerCase());
+    
+    if (existsStandard || existsCustom) {
+      setLabFormError("This investigation order is already added.");
+      return;
+    }
+
+    setCustomLabOrders([
+      ...customLabOrders,
+      {
+        test_name: trimmedName,
+        category: newLabCategory || "PATHOLOGY",
+        priority: newLabPriority || "ROUTINE",
+        clinical_reason: newLabClinicalReason.trim() || undefined,
+        preparation_instructions: newLabPrepInstructions.trim() || undefined
+      }
+    ]);
+
+    setNewLabTestName("");
+    setNewLabCategory("PATHOLOGY");
+    setNewLabPriority("ROUTINE");
+    setNewLabClinicalReason("");
+    setNewLabPrepInstructions("");
+    setShowAddCustomLabModal(false);
+  };
+
+  const handleRemoveCustomLabOrder = (index: number) => {
+    setCustomLabOrders(customLabOrders.filter((_, i) => i !== index));
   };
 
   const handleAddRxItem = () => {
@@ -296,6 +358,26 @@ export function DirectCitizenRequestsScreen() {
   const handleSubmitComplete = async () => {
     if (!selectedReq) return;
     setIsProcessing(selectedReq.id);
+
+    // Combine standard selected lab orders with custom added lab orders
+    const combinedInvestigationOrders = [
+      ...labOrders.map(test => ({
+        test_name: test,
+        category: "PATHOLOGY",
+        urgency: "ROUTINE",
+        priority: "ROUTINE",
+        clinical_reason: diagnosis
+      })),
+      ...customLabOrders.map(c => ({
+        test_name: c.test_name,
+        category: c.category,
+        urgency: c.priority,
+        priority: c.priority,
+        clinical_reason: c.clinical_reason || diagnosis,
+        preparation_instructions: c.preparation_instructions
+      }))
+    ];
+
     try {
       await apiClient.completeDoctorDirectConsultation(selectedReq.id, {
         provisional_diagnosis: diagnosis,
@@ -303,11 +385,7 @@ export function DirectCitizenRequestsScreen() {
         patient_guidance: guidance,
         disposition: assignAsha ? "FOLLOW_UP_REQUIRED" : "COMPLETED",
         prescriptions: prescriptions.filter(p => p.medicine_name.trim().length > 0),
-        investigation_orders: labOrders.map(test => ({
-          test_name: test,
-          category: "PATHOLOGY",
-          urgency: "ROUTINE"
-        })),
+        investigation_orders: combinedInvestigationOrders,
         assign_asha_followup: assignAsha,
         asha_task_type: "POST_CONSULTATION_CHECK",
         asha_due_days: 3,
@@ -807,8 +885,23 @@ export function DirectCitizenRequestsScreen() {
 
               {/* Lab / Investigation Orders */}
               <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200">
-                <span className="text-xs font-extrabold text-slate-800 mb-2 block">Diagnostic Investigation Orders</span>
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs font-extrabold text-slate-800">Diagnostic Investigation Orders</span>
+                  <button
+                    type="button"
+                    id="btn-add-more-investigation"
+                    onClick={() => {
+                      setLabFormError(null);
+                      setShowAddCustomLabModal(!showAddCustomLabModal);
+                    }}
+                    className="text-xs font-bold text-blue-600 hover:text-blue-800 flex items-center gap-1"
+                  >
+                    <Plus size={14} /> + Add More Investigation
+                  </button>
+                </div>
+
+                {/* Common / Quick Select Tests */}
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mb-3">
                   {["Complete Blood Count (CBC)", "Blood Glucose (RBS)", "Malaria Smear / RDT", "Urine Routine", "Serum Electrolytes"].map((test) => {
                     const isSelected = labOrders.includes(test);
                     return (
@@ -820,7 +913,7 @@ export function DirectCitizenRequestsScreen() {
                           else setLabOrders([...labOrders, test]);
                         }}
                         className={`p-2 rounded-xl text-xs font-bold text-left border transition-all ${
-                          isSelected ? "bg-blue-600 text-white border-blue-600" : "bg-white text-slate-700 border-slate-200 hover:bg-slate-100"
+                          isSelected ? "bg-blue-600 text-white border-blue-600 shadow-sm" : "bg-white text-slate-700 border-slate-200 hover:bg-slate-100"
                         }`}
                       >
                         {test}
@@ -828,6 +921,159 @@ export function DirectCitizenRequestsScreen() {
                     );
                   })}
                 </div>
+
+                {/* Custom Added Tests Cards */}
+                {customLabOrders.length > 0 && (
+                  <div className="flex flex-col gap-2 mb-3">
+                    <span className="text-[11px] font-bold text-slate-600">Custom Ordered Investigations:</span>
+                    {customLabOrders.map((customTest, idx) => (
+                      <div
+                        key={idx}
+                        className="flex items-center justify-between p-2.5 bg-white rounded-xl border border-slate-200 shadow-sm text-xs"
+                      >
+                        <div>
+                          <div className="font-extrabold text-slate-900 flex items-center gap-2">
+                            <span>🧪 {customTest.test_name}</span>
+                            <span className={`text-[10px] px-1.5 py-0.5 rounded font-bold ${customTest.priority === "URGENT" ? "bg-red-100 text-red-700" : "bg-blue-100 text-blue-700"}`}>
+                              {customTest.priority}
+                            </span>
+                            <span className="text-[10px] text-slate-500 font-semibold uppercase">
+                              [{customTest.category}]
+                            </span>
+                          </div>
+                          {customTest.clinical_reason && (
+                            <div className="text-[11px] text-slate-600 mt-0.5">
+                              Reason: {customTest.clinical_reason}
+                            </div>
+                          )}
+                          {customTest.preparation_instructions && (
+                            <div className="text-[11px] text-amber-700 mt-0.5">
+                              Instructions: {customTest.preparation_instructions}
+                            </div>
+                          )}
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveCustomLabOrder(idx)}
+                          className="p-1 text-slate-400 hover:text-red-600 rounded transition-colors"
+                          title="Remove custom investigation"
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Inline Add Custom Investigation Form */}
+                {showAddCustomLabModal && (
+                  <div className="p-3 bg-white rounded-xl border border-blue-200 shadow-sm flex flex-col gap-2.5 mt-2">
+                    <div className="text-xs font-bold text-blue-900 flex justify-between items-center">
+                      <span>Add New Investigation Order</span>
+                      <button
+                        type="button"
+                        onClick={() => setShowAddCustomLabModal(false)}
+                        className="text-slate-400 hover:text-slate-600"
+                      >
+                        <X size={14} />
+                      </button>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      <div>
+                        <label className="text-[10px] font-bold text-slate-600 block mb-1">Test Name *</label>
+                        <input
+                          type="text"
+                          id="input-custom-lab-name"
+                          value={newLabTestName}
+                          onChange={(e) => {
+                            setNewLabTestName(e.target.value);
+                            if (labFormError) setLabFormError(null);
+                          }}
+                          placeholder="e.g. Thyroid Profile (T3, T4, TSH)"
+                          className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs outline-none focus:border-blue-500"
+                        />
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <label className="text-[10px] font-bold text-slate-600 block mb-1">Category</label>
+                          <select
+                            value={newLabCategory}
+                            onChange={(e) => setNewLabCategory(e.target.value)}
+                            className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold outline-none"
+                          >
+                            <option value="PATHOLOGY">Pathology</option>
+                            <option value="BIOCHEMISTRY">Biochemistry</option>
+                            <option value="MICROBIOLOGY">Microbiology</option>
+                            <option value="RADIOLOGY">Radiology / Imaging</option>
+                            <option value="GENERAL">General</option>
+                          </select>
+                        </div>
+
+                        <div>
+                          <label className="text-[10px] font-bold text-slate-600 block mb-1">Priority</label>
+                          <select
+                            value={newLabPriority}
+                            onChange={(e) => setNewLabPriority(e.target.value as any)}
+                            className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold outline-none"
+                          >
+                            <option value="ROUTINE">Routine</option>
+                            <option value="URGENT">Urgent</option>
+                          </select>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      <div>
+                        <label className="text-[10px] font-bold text-slate-600 block mb-1">Clinical Reason (Optional)</label>
+                        <input
+                          type="text"
+                          value={newLabClinicalReason}
+                          onChange={(e) => setNewLabClinicalReason(e.target.value)}
+                          placeholder="e.g. Evaluate chronic fatigue"
+                          className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs outline-none"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="text-[10px] font-bold text-slate-600 block mb-1">Preparation Instructions (Optional)</label>
+                        <input
+                          type="text"
+                          value={newLabPrepInstructions}
+                          onChange={(e) => setNewLabPrepInstructions(e.target.value)}
+                          placeholder="e.g. 10-12 hours overnight fasting"
+                          className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs outline-none"
+                        />
+                      </div>
+                    </div>
+
+                    {labFormError && (
+                      <div className="text-[11px] font-bold text-red-600">
+                        {labFormError}
+                      </div>
+                    )}
+
+                    <div className="flex justify-end gap-2 mt-1">
+                      <button
+                        type="button"
+                        onClick={() => setShowAddCustomLabModal(false)}
+                        className="px-3 py-1.5 text-xs font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-lg"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="button"
+                        id="btn-confirm-add-custom-lab"
+                        onClick={handleAddCustomLabOrder}
+                        className="px-4 py-1.5 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-lg shadow-sm"
+                      >
+                        Add Test Order
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* ASHA Follow-up Assignment Directive */}
