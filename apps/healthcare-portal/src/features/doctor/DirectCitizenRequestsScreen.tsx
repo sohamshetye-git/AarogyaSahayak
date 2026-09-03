@@ -65,32 +65,59 @@ export function DirectCitizenRequestsScreen() {
   const [assignAsha, setAssignAsha] = useState(false);
   const [ashaInstructions, setAshaInstructions] = useState("Visit home on Day 3, check temperature and recovery.");
 
-  // Live Chat Drawer State for CHAT channel
+  // Connection status & Realtime hook
+  const { connectionStatus } = useRealtime((event, data) => {
+    handleRealtimeEvent(event, data);
+  });
+
+  // Live Chat Drawer State with stable scalar canonical identities
   const [activeChatReq, setActiveChatReq] = useState<any>(null);
   const activeChatReqRef = React.useRef<any>(null);
   activeChatReqRef.current = activeChatReq;
 
+  // Stable scalar IDs
+  const activeConversationId = activeChatReq?.conversation_id || activeChatReq?.id || null;
+  const activeServiceRequestId = activeChatReq?.service_request_id || activeChatReq?.id || null;
+  const activeRequestRef = activeChatReq?.request_reference || activeChatReq?.public_reference || null;
+
   const [chatMessage, setChatMessage] = useState("");
   const [sendingMsg, setSendingMsg] = useState(false);
+  const [isManualRefreshing, setIsManualRefreshing] = useState(false);
+  const [refreshFeedback, setRefreshFeedback] = useState<string | null>(null);
   const chatDrawerScrollRef = React.useRef<HTMLDivElement>(null);
   const isChatPollingRef = React.useRef<boolean>(false);
 
-  // Helper for message deduplication and chronological sorting
+  // Canonical message merge and deduplication helper
+  // Rules: deduplicate primarily by server id / client_message_id, sort by created_at with id as tie-breaker
   const mergeMessagesCanonical = (existing: any[] = [], incoming: any[] = []) => {
     const map = new Map<string, any>();
     for (const m of existing) {
-      const key = m.client_message_id || m.id || m.message_id;
+      if (!m) continue;
+      const key = m.id || m.client_message_id || m.message_id;
       if (key) map.set(String(key), m);
     }
     for (const m of incoming) {
-      const key = m.client_message_id || m.id || m.message_id;
-      if (key) {
-        const prev = map.get(String(key));
-        map.set(String(key), prev ? { ...prev, ...m } : m);
+      if (!m) continue;
+      // Reconcile optimistic messages using client_message_id
+      const clientKey = m.client_message_id ? String(m.client_message_id) : null;
+      const idKey = m.id || m.message_id ? String(m.id || m.message_id) : null;
+      
+      let matchedKey = (clientKey && map.has(clientKey)) ? clientKey : (idKey && map.has(idKey) ? idKey : null);
+      if (matchedKey) {
+        const prev = map.get(matchedKey);
+        map.set(matchedKey, { ...prev, ...m });
+      } else {
+        const key = idKey || clientKey;
+        if (key) map.set(key, m);
       }
     }
     const combined = Array.from(map.values());
-    combined.sort((a, b) => (a.created_at || "").localeCompare(b.created_at || ""));
+    combined.sort((a, b) => {
+      const timeA = new Date(a.created_at || 0).getTime();
+      const timeB = new Date(b.created_at || 0).getTime();
+      if (timeA !== timeB) return timeA - timeB;
+      return String(a.id || "").localeCompare(String(b.id || ""));
+    });
     return combined;
   };
 
@@ -126,14 +153,15 @@ export function DirectCitizenRequestsScreen() {
         }
       }
 
-      // If active chat req is open, refresh its status and metadata without losing messages
+      // If active chat drawer is open, refresh its status and metadata without losing messages
       const currentActive = activeChatReqRef.current;
       if (currentActive) {
         const updated = items.find((r: any) =>
           r.id === currentActive.id ||
+          r.conversation_id === currentActive.conversation_id ||
           r.service_request_id === currentActive.id ||
           r.id === currentActive.service_request_id ||
-          r.request_reference === currentActive.request_reference
+          (currentActive.request_reference && r.request_reference === currentActive.request_reference)
         );
         if (updated) {
           setActiveChatReq((prev: any) => {
@@ -154,7 +182,11 @@ export function DirectCitizenRequestsScreen() {
     }
   };
 
-  const fetchChatConversation = async (reqId: string) => {
+  const fetchChatConversation = async (targetId?: string) => {
+    const currentActive = activeChatReqRef.current;
+    const reqId = targetId || currentActive?.conversation_id || currentActive?.id || currentActive?.service_request_id;
+    if (!reqId) return;
+
     try {
       let detail: any = null;
       try {
@@ -173,13 +205,25 @@ export function DirectCitizenRequestsScreen() {
           detail = threadData;
         }
       }
+
       if (detail) {
         setActiveChatReq((prev: any) => {
+          if (!prev) return prev;
+          // Ensure target conversation matches current open drawer
+          const isTargetMatch =
+            !prev.id ||
+            prev.id === reqId ||
+            prev.conversation_id === reqId ||
+            prev.service_request_id === reqId ||
+            prev.id === detail.id ||
+            prev.conversation_id === detail.conversation_id;
+          if (!isTargetMatch) return prev;
+
           const prevMessages = prev?.messages || [];
           const newMessages = Array.isArray(detail.messages) ? detail.messages : [];
           const merged = mergeMessagesCanonical(prevMessages, newMessages);
           return {
-            ...(prev || {}),
+            ...prev,
             ...detail,
             messages: merged
           };
@@ -187,10 +231,12 @@ export function DirectCitizenRequestsScreen() {
       }
     } catch (err) {
       console.error("Failed to load chat details", err);
+      throw err;
     }
   };
 
-  useRealtime((event, data) => {
+  // Realtime WebSocket event normalization & handler
+  const handleRealtimeEvent = (event: string, data: any) => {
     const currentActive = activeChatReqRef.current;
 
     if (
@@ -215,9 +261,9 @@ export function DirectCitizenRequestsScreen() {
           convId === currentActive.conversation_id ||
           srvId === currentActive.id ||
           srvId === currentActive.service_request_id ||
-          data?.request_reference === currentActive.request_reference
+          (data?.request_reference && data.request_reference === currentActive.request_reference)
         ) {
-          fetchChatConversation(currentActive.id || currentActive.conversation_id);
+          fetchChatConversation(currentActive.conversation_id || currentActive.id);
         }
       }
     }
@@ -244,10 +290,10 @@ export function DirectCitizenRequestsScreen() {
           (reqRef && reqRef === currentActive.request_reference);
 
         if (isMatch) {
-          // 1. Immediately inject & merge message into activeChatReq
+          // Normalize incoming message payload
           const incomingMsg = {
             id: data.id || data.message_id || `msg-${Date.now()}`,
-            conversation_id: convId || currentActive.id,
+            conversation_id: convId || currentActive.conversation_id || currentActive.id,
             service_request_id: srvId || currentActive.service_request_id || currentActive.id,
             sender_role: data.sender_role || (data.sender_type === "DOCTOR" || data.sender_role === "PHC_DOCTOR" ? "PHC_DOCTOR" : "CITIZEN"),
             sender_type: data.sender_type || (data.sender_role === "PHC_DOCTOR" ? "DOCTOR" : "CITIZEN"),
@@ -259,6 +305,7 @@ export function DirectCitizenRequestsScreen() {
             created_at: data.created_at || new Date().toISOString()
           };
 
+          // Functional update to avoid stale closures
           setActiveChatReq((prev: any) => {
             if (!prev) return prev;
             const updated = mergeMessagesCanonical(prev.messages || [], [incomingMsg]);
@@ -270,11 +317,11 @@ export function DirectCitizenRequestsScreen() {
 
           // Mark read if it is from citizen
           if (incomingMsg.sender_role === "CITIZEN" || incomingMsg.sender_type === "CITIZEN") {
-            apiClient.markDoctorChatRead(currentActive.id || currentActive.conversation_id, incomingMsg.id).catch(() => {});
+            apiClient.markDoctorChatRead(currentActive.conversation_id || currentActive.id, incomingMsg.id).catch(() => {});
           }
 
-          // 2. Fetch full conversation in background to sync any metadata
-          fetchChatConversation(currentActive.id || currentActive.conversation_id);
+          // Background sync for complete consistency
+          fetchChatConversation(currentActive.conversation_id || currentActive.id).catch(() => {});
         }
       }
     }
@@ -303,12 +350,15 @@ export function DirectCitizenRequestsScreen() {
         }
       }
     }
-  });
+  };
 
   // 3-second active chat polling fallback while drawer is open
   useEffect(() => {
     if (!activeChatReq?.id && !activeChatReq?.conversation_id) return;
-    const reqId = activeChatReq.id || activeChatReq.conversation_id;
+    const reqId = activeChatReq.conversation_id || activeChatReq.id;
+
+    // Immediately fetch when drawer opens
+    fetchChatConversation(reqId).catch(() => {});
 
     const pollChat = async () => {
       if (isChatPollingRef.current) return;
@@ -326,12 +376,38 @@ export function DirectCitizenRequestsScreen() {
     return () => clearInterval(chatInterval);
   }, [activeChatReq?.id, activeChatReq?.conversation_id]);
 
+  // Manual Refresh Chat Action with spinner and feedback toast
+  const handleManualRefreshChat = async () => {
+    if (!activeChatReq || isManualRefreshing) return;
+    setIsManualRefreshing(true);
+    setRefreshFeedback(null);
+    try {
+      const targetId = activeChatReq.conversation_id || activeChatReq.id;
+      await fetchChatConversation(targetId);
+      setRefreshFeedback("Chat updated");
+      setTimeout(() => {
+        setRefreshFeedback(null);
+      }, 3000);
+      if (chatDrawerScrollRef.current) {
+        chatDrawerScrollRef.current.scrollTop = chatDrawerScrollRef.current.scrollHeight;
+      }
+    } catch (err: any) {
+      console.error("Manual chat refresh failed", err);
+      setRefreshFeedback("Refresh failed. Tap to retry.");
+      setTimeout(() => {
+        setRefreshFeedback(null);
+      }, 4000);
+    } finally {
+      setIsManualRefreshing(false);
+    }
+  };
+
   // Auto-scroll doctor chat drawer when messages change
   React.useEffect(() => {
     if (chatDrawerScrollRef.current) {
       chatDrawerScrollRef.current.scrollTop = chatDrawerScrollRef.current.scrollHeight;
     }
-  }, [activeChatReq?.messages]);
+  }, [activeChatReq?.messages?.length]);
 
   useEffect(() => {
     fetchRequests();
@@ -841,10 +917,28 @@ export function DirectCitizenRequestsScreen() {
                 <MessageSquare size={20} />
               </div>
               <div>
-                <div className="text-sm font-black flex items-center gap-2">
-                  {(activeChatReq.beneficiary_name && activeChatReq.beneficiary_name.trim().toLowerCase() !== "self" && activeChatReq.beneficiary_name.trim().toLowerCase() !== "myself") ? activeChatReq.beneficiary_name : (activeChatReq.citizen_name || "Patient Consultation")}
-                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-500/40 border border-white/20 uppercase">
+                <div className="text-sm font-black flex items-center gap-2 flex-wrap">
+                  <span>
+                    {(activeChatReq.beneficiary_name && activeChatReq.beneficiary_name.trim().toLowerCase() !== "self" && activeChatReq.beneficiary_name.trim().toLowerCase() !== "myself") ? activeChatReq.beneficiary_name : (activeChatReq.citizen_name || "Patient Consultation")}
+                  </span>
+                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-500/40 border border-white/20 uppercase font-bold">
                     {activeChatReq.status || "ACTIVE"}
+                  </span>
+                  {/* Connection Status Badge */}
+                  <span
+                    id="doctor-chat-connection-status"
+                    className={`text-[10px] px-2 py-0.5 rounded-full font-bold flex items-center gap-1 border ${
+                      connectionStatus === "ONLINE"
+                        ? "bg-emerald-500/30 text-emerald-100 border-emerald-300/40"
+                        : connectionStatus === "RECONNECTING"
+                        ? "bg-amber-500/30 text-amber-100 border-amber-300/40 animate-pulse"
+                        : "bg-sky-500/30 text-sky-100 border-sky-300/40"
+                    }`}
+                  >
+                    <span className={`w-1.5 h-1.5 rounded-full ${
+                      connectionStatus === "ONLINE" ? "bg-emerald-400" : (connectionStatus === "RECONNECTING" ? "bg-amber-400" : "bg-sky-400")
+                    }`} />
+                    {connectionStatus === "ONLINE" ? "Live" : (connectionStatus === "RECONNECTING" ? "Reconnecting" : "Polling")}
                   </span>
                 </div>
                 <div className="text-[11px] opacity-85 font-mono">
@@ -852,14 +946,43 @@ export function DirectCitizenRequestsScreen() {
                 </div>
               </div>
             </div>
-            <button
-              id="btn-close-doctor-chat-drawer"
-              onClick={() => setActiveChatReq(null)}
-              className="p-1.5 hover:bg-white/20 rounded-xl transition-colors text-white"
-            >
-              <X size={20} />
-            </button>
+
+            <div className="flex items-center gap-2">
+              {/* Manual Refresh Chat Fallback Button */}
+              <button
+                id="btn-refresh-doctor-chat"
+                type="button"
+                onClick={handleManualRefreshChat}
+                disabled={isManualRefreshing}
+                className="px-2.5 py-1.5 bg-white/15 hover:bg-white/25 active:bg-white/30 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all border border-white/20 disabled:opacity-50"
+                title="Manually fetch latest messages"
+              >
+                <RefreshCw size={13} className={isManualRefreshing ? "animate-spin" : ""} />
+                <span>{isManualRefreshing ? "Refreshing…" : "Refresh Chat"}</span>
+              </button>
+
+              <button
+                id="btn-close-doctor-chat-drawer"
+                onClick={() => setActiveChatReq(null)}
+                className="p-1.5 hover:bg-white/20 rounded-xl transition-colors text-white"
+                title="Close chat drawer"
+              >
+                <X size={20} />
+              </button>
+            </div>
           </div>
+
+          {/* Refresh Feedback Alert */}
+          {refreshFeedback && (
+            <div className={`px-4 py-1.5 text-xs font-semibold flex items-center justify-between transition-all ${
+              refreshFeedback.includes("failed") ? "bg-red-50 text-red-700 border-b border-red-200" : "bg-emerald-50 text-emerald-800 border-b border-emerald-200"
+            }`}>
+              <span>{refreshFeedback}</span>
+              <button onClick={() => setRefreshFeedback(null)} className="text-slate-400 hover:text-slate-600">
+                <X size={12} />
+              </button>
+            </div>
+          )}
 
           {/* Patient Complaint Header */}
           <div className="bg-blue-50/70 px-4 py-2.5 border-b border-blue-100/60 flex items-center justify-between text-xs">
