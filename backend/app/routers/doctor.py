@@ -1912,13 +1912,41 @@ def get_doctor_followup_detail(
 
     case = f.case
     cit = f.citizen or (case.citizen if case else None)
-    doc_user = db.query(User).filter(User.id == f.created_by_id).first() if f.created_by_id else None
-    asha_user = db.query(User).filter(User.id == f.assigned_user_id).first() if f.assigned_user_id else None
 
-    # Baseline vitals from initial case/consultation
+    # Resolve doctor identity
+    doc_user = None
+    assigned_doctor_name = "Unassigned"
+    assigned_doctor_id = None
+    if f.created_by_id and f.created_by_role in ["PHC_DOCTOR", "DOCTOR", "STAFF"]:
+        doc_user = db.query(User).filter(User.id == f.created_by_id).first()
+        if doc_user:
+            assigned_doctor_name = doc_user.name
+            assigned_doctor_id = doc_user.id
+    elif case and getattr(case, "assigned_doctor_name", None):
+        assigned_doctor_name = case.assigned_doctor_name
+        assigned_doctor_id = getattr(case, "assigned_doctor_id", None)
+
+    # Resolve ASHA identity
+    asha_user = None
+    assigned_asha_name = "Unassigned"
+    assigned_asha_id = f.assigned_user_id
+    if f.assigned_user_id:
+        asha_user = db.query(User).filter(User.id == f.assigned_user_id).first()
+        if asha_user:
+            assigned_asha_name = asha_user.name
+    elif f.created_by_role == "ASHA_WORKER" and f.created_by_id:
+        asha_user = db.query(User).filter(User.id == f.created_by_id).first()
+        if asha_user:
+            assigned_asha_name = asha_user.name
+            assigned_asha_id = asha_user.id
+    elif case and getattr(case, "assigned_asha_name", None):
+        assigned_asha_name = case.assigned_asha_name
+        assigned_asha_id = getattr(case, "assigned_asha_id", None)
+
+    # Baseline vitals (only from initial consultation / case vitals)
     baseline_vitals = None
     repeat_vitals = None
-    if case and case.vitals:
+    if case and case.vitals and len(case.vitals) > 0:
         bv = case.vitals[0]
         baseline_vitals = {
             "systolic_bp": bv.systolic_bp,
@@ -1926,32 +1954,44 @@ def get_doctor_followup_detail(
             "spo2": bv.spo2,
             "pulse": bv.pulse,
             "temperature_c": bv.temperature_c,
+            "glucose_mg_dl": bv.glucose_mg_dl,
             "recorded_at": bv.recorded_at.isoformat() if bv.recorded_at else None
         }
-        if len(case.vitals) > 1:
-            rv = case.vitals[-1]
-            repeat_vitals = {
-                "systolic_bp": rv.systolic_bp,
-                "diastolic_bp": rv.diastolic_bp,
-                "spo2": rv.spo2,
-                "pulse": rv.pulse,
-                "temperature_c": rv.temperature_c,
-                "recorded_at": rv.recorded_at.isoformat() if rv.recorded_at else None
-            }
+
+    # Repeat vitals should ONLY be populated if visit was actually conducted / completed / escalated
+    is_conducted = f.status in ["COMPLETED", "COMPLETED_BY_ASHA", "REVIEW_REQUIRED", "ESCALATED", "DOCTOR_ACKNOWLEDGED", "REVIEWED", "RESOLVED"]
+    if is_conducted and case and case.vitals and len(case.vitals) > 1:
+        rv = case.vitals[-1]
+        repeat_vitals = {
+            "systolic_bp": rv.systolic_bp,
+            "diastolic_bp": rv.diastolic_bp,
+            "spo2": rv.spo2,
+            "pulse": rv.pulse,
+            "temperature_c": rv.temperature_c,
+            "glucose_mg_dl": rv.glucose_mg_dl,
+            "recorded_at": rv.recorded_at.isoformat() if rv.recorded_at else None
+        }
 
     ref_str = f"FUP-{f.id[:8].upper()}" if "-" not in f.id else f.id
 
+    # Build chronological timeline
     timeline_events = [
-        {"event": "FOLLOWUP_ASSIGNED", "timestamp": f.created_at.isoformat() if f.created_at else None, "actor": doc_user.name if doc_user else "Doctor"},
+        {
+            "event": "FOLLOWUP_SCHEDULED" if f.source == "ASHA_SCHEDULED" else "FOLLOWUP_ASSIGNED",
+            "timestamp": f.created_at.isoformat() if f.created_at else None,
+            "actor": assigned_asha_name if f.source == "ASHA_SCHEDULED" else assigned_doctor_name
+        },
     ]
     if f.started_at:
-        timeline_events.append({"event": "FOLLOWUP_STARTED", "timestamp": f.started_at.isoformat(), "actor": asha_user.name if asha_user else "ASHA Worker"})
-    if f.completed_at:
-        timeline_events.append({"event": "FOLLOWUP_COMPLETED_BY_ASHA", "timestamp": f.completed_at.isoformat(), "actor": asha_user.name if asha_user else "ASHA Worker"})
-    if f.status == "ESCALATED":
-        timeline_events.append({"event": "FOLLOWUP_ESCALATED", "timestamp": f.updated_at.isoformat() if f.updated_at else None, "actor": asha_user.name if asha_user else "ASHA Worker"})
+        timeline_events.append({"event": "FOLLOWUP_STARTED", "timestamp": f.started_at.isoformat(), "actor": assigned_asha_name})
+    if f.completed_at and f.status not in ["ESCALATED"]:
+        timeline_events.append({"event": "FOLLOWUP_COMPLETED_BY_ASHA", "timestamp": f.completed_at.isoformat(), "actor": assigned_asha_name})
+    if f.status in ["ESCALATED", "DOCTOR_ACKNOWLEDGED"]:
+        esc_time = f.completed_at.isoformat() if f.completed_at else (f.updated_at.isoformat() if f.updated_at else None)
+        timeline_events.append({"event": "FOLLOWUP_ESCALATED", "timestamp": esc_time, "actor": assigned_asha_name})
     if f.reviewed_by_doctor_at:
-        timeline_events.append({"event": "FOLLOWUP_REVIEWED", "timestamp": f.reviewed_by_doctor_at.isoformat(), "actor": current_user.name})
+        doc_actor = current_user.name if (current_user and current_user.name) else assigned_doctor_name
+        timeline_events.append({"event": "FOLLOWUP_REVIEWED", "timestamp": f.reviewed_by_doctor_at.isoformat(), "actor": doc_actor})
 
     detail_data = {
         "follow_up_id": f.id,
@@ -1963,8 +2003,8 @@ def get_doctor_followup_detail(
         "citizen_id": cit.id if cit else "",
         "citizen_name": cit.display_name if cit else "Citizen",
         "patient_name": cit.display_name if cit else "Citizen",
-        "age": cit.age_estimate if cit else 28,
-        "patient_age": cit.age_estimate if cit else 28,
+        "age": cit.age_estimate if cit else None,
+        "patient_age": cit.age_estimate if cit else None,
         "gender": cit.sex if cit else "Female",
         "patient_gender": cit.sex if cit else "Female",
         "village_name": cit.village_name if cit else "Kalyanpur",
@@ -1977,22 +2017,24 @@ def get_doctor_followup_detail(
         "instructions": f.instructions,
         "task_type": f.task_type,
         "reason": f.reason,
-        "assigned_doctor_id": f.created_by_id,
-        "assigned_doctor_name": doc_user.name if doc_user else "Dr. Abhinav Sharma",
-        "created_by_doctor_name": doc_user.name if doc_user else "Dr. Abhinav Sharma",
-        "assigned_asha_id": f.assigned_user_id,
-        "assigned_asha_name": asha_user.name if asha_user else (case.assigned_asha_name if case else "Sita Patel"),
+        "assigned_doctor_id": assigned_doctor_id,
+        "assigned_doctor_name": assigned_doctor_name,
+        "created_by_doctor_name": assigned_doctor_name,
+        "assigned_asha_id": assigned_asha_id,
+        "assigned_asha_name": assigned_asha_name,
         "assigned_asha_phone": "9823012345",
         "due_at": f.due_at.isoformat() if f.due_at else None,
         "started_at": f.started_at.isoformat() if f.started_at else None,
-        "completed_at": f.completed_at.isoformat() if f.completed_at else None,
+        "completed_at": f.completed_at.isoformat() if (f.completed_at and is_conducted) else None,
         "reviewed_at": f.reviewed_by_doctor_at.isoformat() if f.reviewed_by_doctor_at else None,
         "baseline_vitals": baseline_vitals,
         "repeat_vitals": repeat_vitals,
-        "symptoms_outcome": f.symptoms_outcome,
-        "completion_notes": f.completion_notes,
-        "escalation_reason": f.escalation_conditions or f.completion_notes,
+        "symptoms_outcome": f.symptoms_outcome if is_conducted else None,
+        "completion_notes": f.completion_notes if is_conducted else None,
+        "escalation_reason": (f.escalation_conditions or f.completion_notes) if f.status in ["ESCALATED", "DOCTOR_ACKNOWLEDGED"] else None,
+        "escalation_conditions": f.escalation_conditions,
         "measurements_to_repeat": f.measurements_to_repeat or [],
+        "adherence_required": f.adherence_required,
         "timeline": timeline_events
     }
     return StandardResponse(data=detail_data)

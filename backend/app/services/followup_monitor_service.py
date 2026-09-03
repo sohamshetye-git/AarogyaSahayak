@@ -22,20 +22,32 @@ def get_followup_canonical_dto(f: FollowUp, db: Session, current_user: User) -> 
     category = "MATERNAL" if (citizen and citizen.is_pregnant) else ("CHILD_HEALTH" if (citizen and citizen.age_estimate and citizen.age_estimate <= 12) else "NCD_CHRONIC")
 
     # Determine assigned ASHA name
-    asha_name = "Sita Patel (ASHA)"
+    asha_name = "Unassigned"
+    assigned_asha_id = f.assigned_user_id
     if f.assigned_user_id:
         asha_user = db.query(User).filter(User.id == f.assigned_user_id).first()
         if asha_user:
             asha_name = asha_user.name
-    elif case and case.assigned_asha_name:
+    elif f.created_by_role == "ASHA_WORKER" and f.created_by_id:
+        asha_user = db.query(User).filter(User.id == f.created_by_id).first()
+        if asha_user:
+            asha_name = asha_user.name
+            assigned_asha_id = asha_user.id
+    elif case and getattr(case, "assigned_asha_name", None):
         asha_name = case.assigned_asha_name
+        assigned_asha_id = getattr(case, "assigned_asha_id", None)
 
     # Determine doctor name
-    doc_name = "Dr. Abhinav Sharma (PHC Medical Officer)"
-    if f.created_by_id:
+    doc_name = "Unassigned"
+    assigned_doc_id = None
+    if f.created_by_id and f.created_by_role in ["PHC_DOCTOR", "DOCTOR", "STAFF"]:
         doc_user = db.query(User).filter(User.id == f.created_by_id).first()
         if doc_user:
             doc_name = doc_user.name
+            assigned_doc_id = doc_user.id
+    elif case and getattr(case, "assigned_doctor_name", None):
+        doc_name = case.assigned_doctor_name
+        assigned_doc_id = getattr(case, "assigned_doctor_id", None)
 
     # Escalation ID if present
     esc_id = None
@@ -60,12 +72,13 @@ def get_followup_canonical_dto(f: FollowUp, db: Session, current_user: User) -> 
     effective_status = f.status
     if f.status in ["PENDING", "SCHEDULED", "IN_PROGRESS"] and due_at_val and due_at_val < now:
         effective_status = "OVERDUE"
-    elif f.status == "COMPLETED" and not f.reviewed_by_doctor_at:
+    elif f.status in ["COMPLETED", "COMPLETED_BY_ASHA"] and not f.reviewed_by_doctor_at:
         effective_status = "COMPLETED" # Result Ready
 
-    # Vitals dict
+    # Vitals dict (only if conducted/recorded)
     latest_v = None
-    if case and case.vitals:
+    is_conducted = f.status in ["COMPLETED", "COMPLETED_BY_ASHA", "REVIEW_REQUIRED", "ESCALATED", "DOCTOR_ACKNOWLEDGED", "REVIEWED", "RESOLVED"]
+    if is_conducted and case and case.vitals and len(case.vitals) > 1:
         lv = case.vitals[-1]
         latest_v = {
             "systolic_bp": lv.systolic_bp,
@@ -73,6 +86,7 @@ def get_followup_canonical_dto(f: FollowUp, db: Session, current_user: User) -> 
             "spo2": lv.spo2,
             "pulse": lv.pulse,
             "temperature_c": lv.temperature_c,
+            "glucose_mg_dl": lv.glucose_mg_dl,
             "recorded_at": lv.recorded_at.isoformat() if lv.recorded_at else None
         }
 
@@ -83,29 +97,30 @@ def get_followup_canonical_dto(f: FollowUp, db: Session, current_user: User) -> 
         "consultation_id": f.consultation_id,
         "directive_id": f.id,
         "escalation_id": esc_id,
-        "patient_name": citizen.display_name if citizen else (f.result or "Kavita Patil"),
-        "case_reference": case.reference if case else "CASE-DEMO-008",
+        "patient_name": citizen.display_name if citizen else (f.result or "Citizen"),
+        "case_reference": case.reference if case else "CASE-001",
         "patient_category": category,
-        "patient_age": citizen.age_estimate if citizen else 28,
+        "patient_age": citizen.age_estimate if citizen else None,
         "patient_gender": citizen.sex if citizen else "Female",
         "village_name": citizen.village_name if citizen else "Kalyanpur",
         "is_pregnant": citizen.is_pregnant if citizen else False,
         "gestational_weeks": citizen.gestational_weeks if citizen else None,
         "priority": f.priority.value if hasattr(f.priority, "value") else str(f.priority),
         "status": effective_status,
-        "assigned_asha_id": f.assigned_user_id or "asha-001",
+        "assigned_asha_id": assigned_asha_id,
         "assigned_asha_name": asha_name,
-        "created_by_doctor_id": f.created_by_id or current_user.id,
+        "created_by_doctor_id": assigned_doc_id,
         "created_by_doctor_name": doc_name,
-        "directive": f.instructions or f.reason or "Repeat BP and verify medication adherence",
-        "measurements_to_repeat": f.measurements_to_repeat or ["systolic_bp", "diastolic_bp"],
-        "adherence_required": f.adherence_required if f.adherence_required is not None else True,
+        "assigned_doctor_name": doc_name,
+        "directive": f.instructions or f.reason or "Follow-up monitoring",
+        "measurements_to_repeat": f.measurements_to_repeat or [],
+        "adherence_required": f.adherence_required if f.adherence_required is not None else False,
         "due_at": f.due_at.isoformat() if f.due_at else None,
-        "completed_at": f.completed_at.isoformat() if f.completed_at else None,
+        "completed_at": f.completed_at.isoformat() if (f.completed_at and is_conducted) else None,
         "escalated_at": f.completed_at.isoformat() if f.status == "ESCALATED" and f.completed_at else None,
         "reviewed_by_doctor_at": f.reviewed_by_doctor_at.isoformat() if f.reviewed_by_doctor_at else None,
-        "completion_notes": f.completion_notes or f.result,
-        "symptoms_outcome": f.symptoms_outcome,
+        "completion_notes": f.completion_notes if is_conducted else None,
+        "symptoms_outcome": f.symptoms_outcome if is_conducted else None,
         "latest_vitals": latest_v
     }
 

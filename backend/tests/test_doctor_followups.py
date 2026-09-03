@@ -67,3 +67,38 @@ def test_get_doctor_followup_detail_and_lifecycle(client: TestClient):
     )
     assert rev_res.status_code == 200, rev_res.text
     assert rev_res.json().get("data", {}).get("status") == "REVIEWED"
+
+
+def test_pending_followup_fup003_data_consistency(client: TestClient):
+    """Verify FUP-003 (Pending Laxmi Kamble) returns true nulls and correct doctor/ASHA mapping."""
+    headers = get_auth_headers(client)
+    detail_res = client.get("/api/doctor/followups/FUP-003", headers=headers)
+    assert detail_res.status_code == 200, detail_res.text
+    detail = detail_res.json().get("data", {})
+
+    assert detail["follow_up_id"] == "FUP-003"
+    assert detail["status"] == "PENDING"
+    assert detail["patient_name"] == "Laxmi Kamble"
+    assert detail["source"] == "ASHA_SCHEDULED"
+    assert detail["assigned_asha_name"] == "Sita Patel"
+    assert detail["assigned_doctor_name"] != "Sita Patel"
+    assert detail["repeat_vitals"] is None
+    assert detail["symptoms_outcome"] is None
+    assert detail["completion_notes"] is None
+    assert detail["completed_at"] is None
+    assert detail["measurements_to_repeat"] == ["temperature_c", "pulse"]
+
+
+def test_completed_followup_fup005_data_consistency(client: TestClient):
+    """Verify FUP-005 (Completed by ASHA) returns completed fields, notes, and outcome."""
+    headers = get_auth_headers(client)
+    detail_res = client.get("/api/doctor/followups/FUP-005", headers=headers)
+    assert detail_res.status_code == 200, detail_res.text
+    detail = detail_res.json().get("data", {})
+
+    assert detail["follow_up_id"] == "FUP-005"
+    assert detail["status"] == "COMPLETED_BY_ASHA"
+    assert detail["symptoms_outcome"] == "IMPROVED"
+    assert detail["completion_notes"] is not None
+    assert detail["completed_at"] is not None
+
