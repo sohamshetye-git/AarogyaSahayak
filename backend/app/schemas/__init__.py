@@ -203,8 +203,24 @@ class AshaFollowUpSubmitRequest(BaseModel):
     notes: str
     escalate_to_doctor: bool = False
     next_followup_required: bool = False
-    next_followup_date: Optional[str] = None
-    next_followup_purpose: Optional[str] = None
+class AshaAddSymptomsRequest(BaseModel):
+    symptoms: List[str]
+    onset_duration: Optional[str] = None
+    severity: Optional[str] = None  # Mild, Moderate, Severe
+    notes: Optional[str] = None
+    followup_id: Optional[str] = None
+
+class AshaRecordVitalsRequest(BaseModel):
+    systolic_bp: Optional[int] = None
+    diastolic_bp: Optional[int] = None
+    spo2: Optional[int] = None
+    pulse: Optional[int] = None
+    temperature_c: Optional[float] = None
+    weight_kg: Optional[float] = None
+    glucose_mg_dl: Optional[float] = None
+    respiratory_rate: Optional[int] = None
+    notes: Optional[str] = None
+    followup_id: Optional[str] = None
 
 class TimelineEventDTO(BaseModel):
     id: str

@@ -54,6 +54,48 @@ export function AshaCitizenCaseScreen() {
   // Safety modal state
   const [showSafetyModal, setShowSafetyModal] = useState(false);
 
+  // 1. Symptoms Modal State
+  const [showSymptomsModal, setShowSymptomsModal] = useState(false);
+  const [symptomInput, setSymptomInput] = useState("");
+  const [symptomList, setSymptomList] = useState<string[]>([]);
+  const [symptomSeverity, setSymptomSeverity] = useState("Moderate");
+  const [symptomDuration, setSymptomDuration] = useState("2 days");
+  const [symptomNotes, setSymptomNotes] = useState("");
+  const [isSubmittingSymptoms, setIsSubmittingSymptoms] = useState(false);
+  const [symptomError, setSymptomError] = useState<string | null>(null);
+
+  // 2. Vitals Modal State
+  const [showVitalsModal, setShowVitalsModal] = useState(false);
+  const [systolic, setSystolic] = useState<number | "">("");
+  const [diastolic, setDiastolic] = useState<number | "">("");
+  const [spo2, setSpo2] = useState<number | "">("");
+  const [pulse, setPulse] = useState<number | "">("");
+  const [temp, setTemp] = useState<number | "">("");
+  const [weight, setWeight] = useState<number | "">("");
+  const [glucose, setGlucose] = useState<number | "">("");
+  const [respRate, setRespRate] = useState<number | "">("");
+  const [vitalNotes, setVitalNotes] = useState("");
+  const [isSubmittingVitals, setIsSubmittingVitals] = useState(false);
+  const [vitalsError, setVitalsError] = useState<string | null>(null);
+
+  // 3. Trends Modal State
+  const [showTrendsModal, setShowTrendsModal] = useState(false);
+  const [trendsData, setTrendsData] = useState<any[]>([]);
+  const [loadingTrends, setLoadingTrends] = useState(false);
+  const [trendsError, setTrendsError] = useState<string | null>(null);
+  const [trendsFilter, setTrendsFilter] = useState("ALL");
+
+  // 4. Referral Modal State
+  const [showReferralModal, setShowReferralModal] = useState(false);
+  const [referralUrgency, setReferralUrgency] = useState("URGENT");
+  const [referralReason, setReferralReason] = useState("");
+  const [referralTransport, setReferralTransport] = useState(false);
+  const [isSubmittingReferral, setIsSubmittingReferral] = useState(false);
+  const [referralError, setReferralError] = useState<string | null>(null);
+
+  // 5. Follow-up state
+  const [isStartingFollowup, setIsStartingFollowup] = useState(false);
+
   const fetchCase = async () => {
     if (!caseId) return;
     try {
@@ -65,7 +107,7 @@ export function AshaCitizenCaseScreen() {
       const tRes = Array.isArray(rawTRes?.data?.events) ? rawTRes.data.events : Array.isArray(rawTRes?.data) ? rawTRes.data : Array.isArray(rawTRes) ? rawTRes : [];
       setCaseData(res);
       setTimeline(tRes || []);
-      
+
       // Cache in Dexie for offline
       await db.cachedCases.put({
         id: res.id,
@@ -108,7 +150,7 @@ export function AshaCitizenCaseScreen() {
         citizen_id: currentCase.citizen_id || null,
         case_id: currentCase.id?.startsWith("citizen-") ? null : currentCase.id,
         additional_facts: {
-          age: currentCase.citizen_age || 22,
+          age: currentCase.citizen_age || 28,
           gender: currentCase.citizen_gender ? String(currentCase.citizen_gender).toUpperCase() : "FEMALE",
           sex: currentCase.citizen_gender ? String(currentCase.citizen_gender).toUpperCase() : "FEMALE",
           is_pregnant: Boolean(currentCase.is_pregnant),
@@ -214,6 +256,198 @@ export function AshaCitizenCaseScreen() {
     }
   };
 
+  // Symptoms Handlers
+  const handleOpenSymptomsModal = () => {
+    const existing = caseData?.symptoms?.map((s: any) => s.term || s.normalized_term) || [];
+    setSymptomList(existing);
+    setSymptomInput("");
+    setSymptomError(null);
+    setShowSymptomsModal(true);
+  };
+
+  const handleAddSymptomTag = () => {
+    const trimmed = symptomInput.trim();
+    if (!trimmed) return;
+    if (symptomList.some((s) => s.toLowerCase() === trimmed.toLowerCase())) {
+      setSymptomError("Symptom is already in the list.");
+      return;
+    }
+    setSymptomList([...symptomList, trimmed]);
+    setSymptomInput("");
+    setSymptomError(null);
+  };
+
+  const handleRemoveSymptomTag = (index: number) => {
+    setSymptomList(symptomList.filter((_, i) => i !== index));
+  };
+
+  const handleSaveSymptoms = async () => {
+    if (symptomList.length === 0) {
+      setSymptomError("Please add at least one symptom.");
+      return;
+    }
+    setIsSubmittingSymptoms(true);
+    setSymptomError(null);
+    try {
+      const activeFup = caseData.followups?.find((f: any) => f.status !== "COMPLETED");
+      const res = await apiClient.addAshaCaseSymptoms(caseData.id, {
+        symptoms: symptomList,
+        onset_duration: symptomDuration,
+        severity: symptomSeverity,
+        notes: symptomNotes || `Field visit confirmed symptoms: ${symptomList.join(", ")}`,
+        followup_id: activeFup?.id,
+      });
+      setShowSymptomsModal(false);
+      await fetchCase();
+    } catch (err: any) {
+      setSymptomError(err.message || "Failed to save symptoms.");
+    } finally {
+      setIsSubmittingSymptoms(false);
+    }
+  };
+
+  // Vitals Handlers
+  const handleOpenVitalsModal = () => {
+    setSystolic("");
+    setDiastolic("");
+    setSpo2("");
+    setPulse("");
+    setTemp("");
+    setWeight("");
+    setGlucose("");
+    setRespRate("");
+    setVitalNotes("");
+    setVitalsError(null);
+    setShowVitalsModal(true);
+  };
+
+  const handleSaveVitals = async () => {
+    const hasAny = systolic !== "" || diastolic !== "" || spo2 !== "" || pulse !== "" || temp !== "" || weight !== "" || glucose !== "" || respRate !== "";
+    if (!hasAny) {
+      setVitalsError("At least one vital measurement must be provided.");
+      return;
+    }
+    if ((systolic !== "" && diastolic === "") || (diastolic !== "" && systolic === "")) {
+      setVitalsError("Both systolic and diastolic blood pressure are required when recording blood pressure.");
+      return;
+    }
+    if (systolic !== "" && (Number(systolic) < 50 || Number(systolic) > 300)) {
+      setVitalsError("Systolic BP must be between 50 and 300 mmHg.");
+      return;
+    }
+    if (diastolic !== "" && (Number(diastolic) < 30 || Number(diastolic) > 200)) {
+      setVitalsError("Diastolic BP must be between 30 and 200 mmHg.");
+      return;
+    }
+    if (spo2 !== "" && (Number(spo2) < 50 || Number(spo2) > 100)) {
+      setVitalsError("SpO2 must be between 50% and 100%.");
+      return;
+    }
+    if (pulse !== "" && (Number(pulse) < 30 || Number(pulse) > 250)) {
+      setVitalsError("Pulse must be between 30 and 250 bpm.");
+      return;
+    }
+    if (temp !== "" && (Number(temp) < 30 || Number(temp) > 45)) {
+      setVitalsError("Temperature must be between 30.0°C and 45.0°C.");
+      return;
+    }
+    if (weight !== "" && (Number(weight) < 1 || Number(weight) > 300)) {
+      setVitalsError("Weight must be between 1.0 and 300.0 kg.");
+      return;
+    }
+    if (glucose !== "" && (Number(glucose) < 20 || Number(glucose) > 1000)) {
+      setVitalsError("Blood glucose must be between 20 and 1000 mg/dL.");
+      return;
+    }
+
+    setIsSubmittingVitals(true);
+    setVitalsError(null);
+    try {
+      const activeFup = caseData.followups?.find((f: any) => f.status !== "COMPLETED");
+      const payload: any = {};
+      if (systolic !== "") payload.systolic_bp = Number(systolic);
+      if (diastolic !== "") payload.diastolic_bp = Number(diastolic);
+      if (spo2 !== "") payload.spo2 = Number(spo2);
+      if (pulse !== "") payload.pulse = Number(pulse);
+      if (temp !== "") payload.temperature_c = Number(temp);
+      if (weight !== "") payload.weight_kg = Number(weight);
+      if (glucose !== "") payload.glucose_mg_dl = Number(glucose);
+      if (respRate !== "") payload.respiratory_rate = Number(respRate);
+      if (vitalNotes) payload.notes = vitalNotes;
+      if (activeFup?.id) payload.followup_id = activeFup.id;
+
+      await apiClient.recordAshaCaseVitals(caseData.id, payload);
+      setShowVitalsModal(false);
+      await fetchCase();
+    } catch (err: any) {
+      setVitalsError(err.message || "Failed to record vitals.");
+    } finally {
+      setIsSubmittingVitals(false);
+    }
+  };
+
+  // Trends Handlers
+  const handleOpenTrendsModal = async () => {
+    setShowTrendsModal(true);
+    setLoadingTrends(true);
+    setTrendsError(null);
+    try {
+      const res = await apiClient.getAshaCaseVitalsTrends(caseData.id);
+      const data = res?.data || res;
+      setTrendsData(Array.isArray(data) ? data : []);
+    } catch (err: any) {
+      setTrendsError(err.message || "Failed to load vitals trends.");
+    } finally {
+      setLoadingTrends(false);
+    }
+  };
+
+  // Referral Handlers
+  const handleOpenReferralModal = () => {
+    setReferralUrgency(caseData.priority === "URGENT" ? "URGENT" : "ROUTINE");
+    setReferralReason(caseData.safety_rule_reason || caseData.primary_concern || "Clinical evaluation recommended at PHC.");
+    setReferralTransport(false);
+    setReferralError(null);
+    setShowReferralModal(true);
+  };
+
+  const handleSaveReferral = async () => {
+    if (!referralReason.trim()) {
+      setReferralError("Please provide a clinical reason for referral.");
+      return;
+    }
+    setIsSubmittingReferral(true);
+    setReferralError(null);
+    const targetFacilityId = caseData.assigned_facility_id || caseData.facility_id || "PHC-09";
+    try {
+      await apiClient.referAshaCase(caseData.id, {
+        facility_id: targetFacilityId,
+        urgency: referralUrgency,
+        reason: referralReason,
+        transport_required: referralTransport,
+      });
+      setShowReferralModal(false);
+      await fetchCase();
+    } catch (err: any) {
+      setReferralError(err.message || "Failed to submit referral.");
+    } finally {
+      setIsSubmittingReferral(false);
+    }
+  };
+
+  // Start Followup Handler
+  const handleStartFollowup = async (fupId: string) => {
+    setIsStartingFollowup(true);
+    try {
+      await apiClient.startAshaFollowup(fupId);
+      await fetchCase();
+    } catch (err) {
+      console.error("Failed to start follow-up", err);
+    } finally {
+      setIsStartingFollowup(false);
+    }
+  };
+
   if (loading || !caseData) {
     return (
       <div style={{ padding: "60px 0", textAlign: "center", color: "var(--text-secondary)" }}>
@@ -222,16 +456,21 @@ export function AshaCitizenCaseScreen() {
     );
   }
 
+  const isMale = caseData.citizen_gender && ["male", "m"].includes(String(caseData.citizen_gender).trim().toLowerCase());
+  const isPregnant = !isMale && Boolean(caseData.is_pregnant);
+
   const maskPhone = (phone: string) => {
-    if (!phone) return "9876543212";
+    if (!phone) return "9876543210";
     if (phoneRevealed) return phone;
     return phone.length >= 10 ? `******${phone.slice(-4)}` : phone;
   };
 
   const maskAbha = (abha: string) => {
-    if (!abha) return "12-3456-7890-3212";
+    if (!abha) return "12-3456-7890-1234";
     return abha.length >= 14 ? `${abha.slice(0, 4)}-****-****-${abha.slice(-4)}` : abha;
   };
+
+  const activeFollowup = caseData.followups?.find((f: any) => f.status !== "COMPLETED") || caseData.followups?.[0];
 
   const renderPrimaryAction = () => {
     const status = caseData.status;
@@ -279,7 +518,7 @@ export function AshaCitizenCaseScreen() {
     if (status === "CITIZEN_CONTACTED" || status === "ASHA_REVIEWED") {
       return (
         <button
-          onClick={() => navigate(`/asha/visit?caseId=${caseData.id}`)}
+          onClick={handleOpenSymptomsModal}
           style={{
             display: "flex",
             alignItems: "center",
@@ -296,7 +535,7 @@ export function AshaCitizenCaseScreen() {
           }}
         >
           <VisitIcon size={16} color="#FFF" />
-          <span>{t("asha.start_field_visit", "Start Field Visit")}</span>
+          <span>Conduct Field Visit</span>
         </button>
       );
     }
@@ -347,9 +586,37 @@ export function AshaCitizenCaseScreen() {
       );
     }
     if (status === "FOLLOW_UP_REQUIRED") {
+      const activeFollowup = caseData.active_followup || (caseData.follow_ups && caseData.follow_ups.length > 0 ? caseData.follow_ups[0] : null);
+      if (activeFollowup && activeFollowup.status === "IN_PROGRESS") {
+        return (
+          <button
+            onClick={() => navigate(`/asha/followups/${activeFollowup.id}`)}
+            style={{
+              padding: "10px 18px",
+              backgroundColor: "#E0F2F1",
+              color: "var(--teal)",
+              borderRadius: 8,
+              border: "1px solid var(--teal)",
+              fontSize: 13,
+              fontWeight: 700,
+              cursor: "pointer",
+              minHeight: 42,
+            }}
+          >
+            📋 Continue Follow-up Visit →
+          </button>
+        );
+      }
       return (
         <button
-          onClick={() => navigate(`/asha/followups?citizenId=${caseData.citizen_id}`)}
+          onClick={() => {
+            if (activeFollowup && activeFollowup.id) {
+              handleStartFollowup(activeFollowup.id);
+            } else {
+              navigate(`/asha/followups?citizenId=${caseData.citizen_id}`);
+            }
+          }}
+          disabled={isStartingFollowup}
           style={{
             padding: "10px 18px",
             backgroundColor: "var(--primary)",
@@ -358,11 +625,12 @@ export function AshaCitizenCaseScreen() {
             border: "none",
             fontSize: 13,
             fontWeight: 700,
-            cursor: "pointer",
+            cursor: isStartingFollowup ? "wait" : "pointer",
             minHeight: 42,
+            opacity: isStartingFollowup ? 0.7 : 1,
           }}
         >
-          🔄 Start Follow-up
+          {isStartingFollowup ? "⏳ Starting..." : "🔄 Start Follow-up"}
         </button>
       );
     }
@@ -406,7 +674,6 @@ export function AshaCitizenCaseScreen() {
     );
   };
 
-  // Next Task Category resolution
   const getNextTaskDetails = () => {
     const status = caseData.status;
     if (status === "NO_ACTIVE_CASE") {
@@ -420,7 +687,7 @@ export function AshaCitizenCaseScreen() {
     }
     if (status === "CITIZEN_CONTACTED") {
       return {
-        task: "Conduct Comprehensive 7-Step Field Visit",
+        task: "Conduct In-Person Field Visit & Triage",
         category: "Field Visit Scheduled",
         due: "Today (Afternoon 2:00 PM - 4:00 PM)",
         source: "Citizen Phone Triage",
@@ -453,8 +720,6 @@ export function AshaCitizenCaseScreen() {
       worker: "Sita Patel (ASHA Worker)"
     };
   };
-
-
 
   const nextTask = getNextTaskDetails();
 
@@ -535,18 +800,18 @@ export function AshaCitizenCaseScreen() {
             </h1>
             <PriorityBadge priority={caseData.priority} />
             <StatusBadge status={caseData.status} />
-            {caseData.is_pregnant && (
+            {isPregnant && (
               <span style={{ padding: "3px 10px", borderRadius: 12, backgroundColor: "#FCE4EC", color: "#C2185B", fontSize: 12, fontWeight: 700 }}>
-                Pregnant ({caseData.gestational_weeks ? `${caseData.gestational_weeks}w` : "14w"} · Trimester 2)
+                Pregnant ({caseData.gestational_weeks ? `${caseData.gestational_weeks}w` : "Trimester 2"})
               </span>
             )}
           </div>
           <div style={{ fontSize: 13, color: "var(--text-secondary)", display: "flex", gap: 12, flexWrap: "wrap" }}>
             <span>Ref: <strong>{caseData.reference}</strong></span>
             <span>·</span>
-            <span>Village: {caseData.village_name || "Ganeshpur"}</span>
+            <span>Village: {caseData.village_name || "Kalyanpur"}</span>
             <span>·</span>
-            <span>Age: {caseData.citizen_age || 22}y ({caseData.citizen_gender || "Female"})</span>
+            <span>Age: {caseData.citizen_age || 31}y ({caseData.citizen_gender || (isMale ? "Male" : "Female")})</span>
             <span>·</span>
             <span>Language: Marathi (mr-IN)</span>
             <span>·</span>
@@ -647,10 +912,10 @@ export function AshaCitizenCaseScreen() {
                 Warning signs detected. Urgent professional evaluation is recommended.
               </div>
               <div style={{ fontSize: 13, color: "var(--text-primary)", marginTop: 4, lineHeight: "20px" }}>
-                {caseData.safety_rule_reason || "Elevated blood pressure observed in pregnancy assessment (BP: 150/100 mmHg)."}
+                {caseData.safety_rule_reason || "Elevated blood pressure observed during clinical evaluation."}
               </div>
               <div style={{ fontSize: 11, color: "var(--text-secondary)", marginTop: 4 }}>
-                Matched Rule: Maternal Hypertension Screening (Rule ID: SAFETY-MAT-01, v2026.1)
+                Matched Rule: Deterministic Clinical Safety Protocol (Rule Engine v2026.1)
               </div>
             </div>
           </div>
@@ -702,12 +967,12 @@ export function AshaCitizenCaseScreen() {
               </div>
               <div>
                 <span style={{ color: "var(--text-secondary)", display: "block", fontSize: 11 }}>Village / Ward</span>
-                <strong>{caseData.village_name || "Ganeshpur"}</strong>
+                <strong>{caseData.village_name || "Kalyanpur"}</strong>
               </div>
             </div>
 
             <div style={{ padding: "8px 12px", backgroundColor: "var(--neutral-bg)", borderRadius: 6, fontSize: 12, color: "var(--text-secondary)", marginBottom: 14 }}>
-              📍 Landmark: Near Ganesh Mandir, House #42 · Last contact: Today 10:30 AM (Citizen Spoke)
+              📍 Landmark: Near Gram Panchayat, House #18 · Last contact: Today 10:30 AM
             </div>
 
             <div style={{ display: "flex", gap: 8 }}>
@@ -799,34 +1064,6 @@ export function AshaCitizenCaseScreen() {
                   >
                     📅 Schedule Routine Visit
                   </button>
-                  <button
-                    onClick={() => navigate("/asha/schemes")}
-                    style={{
-                      padding: "8px 12px",
-                      borderRadius: 6,
-                      border: "1px solid var(--border)",
-                      backgroundColor: "var(--surface)",
-                      fontSize: 12,
-                      fontWeight: 700,
-                      cursor: "pointer"
-                    }}
-                  >
-                    🏛 Evaluate Schemes
-                  </button>
-                  <button
-                    onClick={() => navigate("/asha/people")}
-                    style={{
-                      padding: "8px 12px",
-                      borderRadius: 6,
-                      border: "1px solid var(--border)",
-                      backgroundColor: "var(--surface)",
-                      fontSize: 12,
-                      fontWeight: 700,
-                      cursor: "pointer"
-                    }}
-                  >
-                    📁 Directory
-                  </button>
                 </div>
               </div>
             ) : (
@@ -863,7 +1100,7 @@ export function AshaCitizenCaseScreen() {
                           fontWeight: 600,
                         }}
                       >
-                        ✓ {s.term}
+                        ✓ {s.term || s.normalized_term}
                       </span>
                     ))
                   ) : (
@@ -874,7 +1111,8 @@ export function AshaCitizenCaseScreen() {
                 </div>
 
                 <button
-                  onClick={() => navigate(`/asha/visit?caseId=${caseData.id}&step=2`)}
+                  id="confirm-add-symptoms-btn"
+                  onClick={handleOpenSymptomsModal}
                   style={{
                     width: "100%",
                     padding: "8px",
@@ -893,31 +1131,66 @@ export function AshaCitizenCaseScreen() {
             )}
           </div>
 
-          {/* C. Dynamic Patient Context (Pregnancy / Maternal) */}
-          <div style={{ backgroundColor: "var(--surface)", padding: 20, borderRadius: 12, border: "1px solid var(--border)" }}>
-            <h3 style={{ margin: "0 0 12px", fontSize: 15, fontWeight: 700, color: "var(--text-primary)" }}>
-              🤰 Dynamic Context: Antenatal Maternal Tracking
-            </h3>
+          {/* C. Dynamic Patient Context Card */}
+          {isPregnant ? (
+            <div style={{ backgroundColor: "var(--surface)", padding: 20, borderRadius: 12, border: "1px solid var(--border)" }}>
+              <h3 style={{ margin: "0 0 12px", fontSize: 15, fontWeight: 700, color: "var(--text-primary)" }}>
+                🤰 Dynamic Context: Antenatal Maternal Tracking
+              </h3>
 
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, fontSize: 13 }}>
-              <div>
-                <span style={{ color: "var(--text-secondary)", display: "block", fontSize: 11 }}>Gestational Age</span>
-                <strong>{caseData.gestational_weeks || 14} Weeks (Trimester 2)</strong>
-              </div>
-              <div>
-                <span style={{ color: "var(--text-secondary)", display: "block", fontSize: 11 }}>Estimated Due Date (EDD)</span>
-                <strong>24 Feb 2027 (Consistent)</strong>
-              </div>
-              <div>
-                <span style={{ color: "var(--text-secondary)", display: "block", fontSize: 11 }}>ANC Registration</span>
-                <strong style={{ color: "#2E7D32" }}>✓ Registered (ANC-1 Done)</strong>
-              </div>
-              <div>
-                <span style={{ color: "var(--text-secondary)", display: "block", fontSize: 11 }}>Next Scheduled ANC</span>
-                <strong>ANC-2 Due (16-18 Weeks)</strong>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, fontSize: 13 }}>
+                <div>
+                  <span style={{ color: "var(--text-secondary)", display: "block", fontSize: 11 }}>Gestational Age</span>
+                  <strong>{caseData.gestational_weeks} Weeks (Trimester {caseData.gestational_weeks <= 12 ? "1" : caseData.gestational_weeks <= 26 ? "2" : "3"})</strong>
+                </div>
+                <div>
+                  <span style={{ color: "var(--text-secondary)", display: "block", fontSize: 11 }}>Estimated Due Date (EDD)</span>
+                  <strong>{caseData.dynamic_context?.edd || "Calculated at PHC"}</strong>
+                </div>
+                <div>
+                  <span style={{ color: "var(--text-secondary)", display: "block", fontSize: 11 }}>ANC Registration</span>
+                  <strong style={{ color: "#2E7D32" }}>✓ Registered ({caseData.dynamic_context?.anc_stage || "ANC-1"})</strong>
+                </div>
+                <div>
+                  <span style={{ color: "var(--text-secondary)", display: "block", fontSize: 11 }}>Scheduled ANC Phase</span>
+                  <strong>{caseData.dynamic_context?.anc_stage || "Next Routine ANC"}</strong>
+                </div>
               </div>
             </div>
-          </div>
+          ) : caseData.dynamic_context?.type === "NCD_MONITORING" || /hypertension|bp|blood pressure|diabetes|sugar|heart/i.test(caseData.primary_concern || "") ? (
+            <div style={{ backgroundColor: "var(--surface)", padding: 20, borderRadius: 12, border: "1px solid var(--border)" }}>
+              <h3 style={{ margin: "0 0 12px", fontSize: 15, fontWeight: 700, color: "var(--text-primary)" }}>
+                🫀 Dynamic Context: NCD & Chronic Care Monitoring
+              </h3>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, fontSize: 13 }}>
+                <div>
+                  <span style={{ color: "var(--text-secondary)", display: "block", fontSize: 11 }}>Protocol Track</span>
+                  <strong>Hypertension & Cardiovascular Triage</strong>
+                </div>
+                <div>
+                  <span style={{ color: "var(--text-secondary)", display: "block", fontSize: 11 }}>Frequency</span>
+                  <strong>Bi-weekly Field BP Monitoring</strong>
+                </div>
+                <div>
+                  <span style={{ color: "var(--text-secondary)", display: "block", fontSize: 11 }}>Medication Status</span>
+                  <strong>Adherence Review Active</strong>
+                </div>
+                <div>
+                  <span style={{ color: "var(--text-secondary)", display: "block", fontSize: 11 }}>Care Facility</span>
+                  <strong>Kalyanpur PHC</strong>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div style={{ backgroundColor: "var(--surface)", padding: 20, borderRadius: 12, border: "1px solid var(--border)" }}>
+              <h3 style={{ margin: "0 0 12px", fontSize: 15, fontWeight: 700, color: "var(--text-primary)" }}>
+                📋 Dynamic Context: General Longitudinal Care
+              </h3>
+              <div style={{ padding: "12px 14px", backgroundColor: "var(--neutral-bg)", borderRadius: 8, fontSize: 13, color: "var(--text-secondary)" }}>
+                No additional program-specific context recorded.
+              </div>
+            </div>
+          )}
 
           {/* D. Scheme Support */}
           <div style={{ backgroundColor: "var(--surface)", padding: 20, borderRadius: 12, border: "1px solid var(--border)" }}>
@@ -974,7 +1247,7 @@ export function AshaCitizenCaseScreen() {
                 })
               ) : evaluatingSchemes ? (
                 <div style={{ padding: 12, textAlign: "center", fontSize: 12, color: "var(--text-secondary)" }}>
-                  Evaluating 29 schemes against PostgreSQL criteria...
+                  Evaluating schemes against criteria...
                 </div>
               ) : (
                 <div style={{ padding: 12, textAlign: "center", fontSize: 12, color: "var(--text-secondary)" }}>
@@ -1013,37 +1286,39 @@ export function AshaCitizenCaseScreen() {
               <h3 style={{ margin: 0, fontSize: 15, fontWeight: 700, color: "var(--text-primary)" }}>
                 🩺 Latest Vital Signs & Measurements
               </h3>
-              <span style={{ fontSize: 11, color: "var(--text-secondary)" }}>Verified</span>
+              <span style={{ fontSize: 11, color: "var(--text-secondary)" }}>
+                {caseData.vitals && caseData.vitals.length > 0 ? "Verified" : "Pending Entry"}
+              </span>
             </div>
 
             {caseData.vitals && caseData.vitals.length > 0 ? (
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 14 }}>
-                <div style={{ padding: 10, backgroundColor: "var(--urgent-bg)", borderRadius: 8, border: "1px solid #F5C6CB" }}>
-                  <div style={{ fontSize: 11, color: "var(--urgent)", fontWeight: 700 }}>Blood Pressure (BP)</div>
-                  <div style={{ fontSize: 22, fontWeight: 800, color: "var(--urgent)", marginTop: 2 }}>
-                    {caseData.vitals[0].systolic_bp}/{caseData.vitals[0].diastolic_bp}
-                    <span style={{ fontSize: 11, fontWeight: 500, marginLeft: 4 }}>mmHg</span>
+                <div style={{ padding: 10, backgroundColor: caseData.vitals[0].is_warning_sign ? "var(--urgent-bg)" : "var(--neutral-bg)", borderRadius: 8, border: caseData.vitals[0].is_warning_sign ? "1px solid #F5C6CB" : "1px solid var(--border)" }}>
+                  <div style={{ fontSize: 11, color: caseData.vitals[0].is_warning_sign ? "var(--urgent)" : "var(--text-secondary)", fontWeight: 700 }}>Blood Pressure (BP)</div>
+                  <div style={{ fontSize: 22, fontWeight: 800, color: caseData.vitals[0].is_warning_sign ? "var(--urgent)" : "var(--text-primary)", marginTop: 2 }}>
+                    {caseData.vitals[0].systolic_bp && caseData.vitals[0].diastolic_bp ? `${caseData.vitals[0].systolic_bp}/${caseData.vitals[0].diastolic_bp}` : "Not recorded"}
+                    {caseData.vitals[0].systolic_bp && <span style={{ fontSize: 11, fontWeight: 500, marginLeft: 4 }}>mmHg</span>}
                   </div>
                 </div>
 
                 <div style={{ padding: 10, backgroundColor: "var(--neutral-bg)", borderRadius: 8 }}>
                   <div style={{ fontSize: 11, color: "var(--text-secondary)", fontWeight: 600 }}>SpO₂ Level</div>
                   <div style={{ fontSize: 22, fontWeight: 800, color: "var(--text-primary)", marginTop: 2 }}>
-                    {caseData.vitals[0].spo2 || 97}%
+                    {caseData.vitals[0].spo2 ? `${caseData.vitals[0].spo2}%` : "Not recorded"}
                   </div>
                 </div>
 
                 <div style={{ padding: 10, backgroundColor: "var(--neutral-bg)", borderRadius: 8 }}>
                   <div style={{ fontSize: 11, color: "var(--text-secondary)", fontWeight: 600 }}>Pulse Rate</div>
                   <div style={{ fontSize: 22, fontWeight: 800, color: "var(--text-primary)", marginTop: 2 }}>
-                    {caseData.vitals[0].pulse || 88} <span style={{ fontSize: 11, fontWeight: 500 }}>bpm</span>
+                    {caseData.vitals[0].pulse ? `${caseData.vitals[0].pulse} bpm` : "Not recorded"}
                   </div>
                 </div>
 
                 <div style={{ padding: 10, backgroundColor: "var(--neutral-bg)", borderRadius: 8 }}>
                   <div style={{ fontSize: 11, color: "var(--text-secondary)", fontWeight: 600 }}>Temperature / Weight</div>
-                  <div style={{ fontSize: 18, fontWeight: 800, color: "var(--text-primary)", marginTop: 2 }}>
-                    {caseData.vitals[0].temperature_c || 37.0}°C · 52 kg
+                  <div style={{ fontSize: 16, fontWeight: 800, color: "var(--text-primary)", marginTop: 2 }}>
+                    {caseData.vitals[0].temperature_c ? `${caseData.vitals[0].temperature_c}°C` : "Not recorded"} · {caseData.vitals[0].weight_kg ? `${caseData.vitals[0].weight_kg} kg` : "Not recorded"}
                   </div>
                 </div>
               </div>
@@ -1053,13 +1328,16 @@ export function AshaCitizenCaseScreen() {
               </div>
             )}
 
-            <div style={{ fontSize: 11, color: "var(--text-secondary)", marginBottom: 12, fontStyle: "italic" }}>
-              Recorded by Sita Patel (ASHA) · Source: Manual Validated Cuff
-            </div>
+            {caseData.vitals && caseData.vitals.length > 0 && (
+              <div style={{ fontSize: 11, color: "var(--text-secondary)", marginBottom: 12, fontStyle: "italic" }}>
+                Recorded by {caseData.vitals[0].recorded_by || "ASHA"} · Source: {caseData.vitals[0].source_type || "Field Entry"}
+              </div>
+            )}
 
             <div style={{ display: "flex", gap: 8 }}>
               <button
-                onClick={() => navigate(`/asha/visit?caseId=${caseData.id}&step=3`)}
+                id="view-trends-btn"
+                onClick={handleOpenTrendsModal}
                 style={{
                   flex: 1,
                   padding: "8px 12px",
@@ -1074,7 +1352,8 @@ export function AshaCitizenCaseScreen() {
                 📊 View Trends
               </button>
               <button
-                onClick={() => navigate(`/asha/visit?caseId=${caseData.id}&step=3`)}
+                id="record-vitals-btn"
+                onClick={handleOpenVitalsModal}
                 style={{
                   flex: 1,
                   padding: "8px 12px",
@@ -1101,21 +1380,26 @@ export function AshaCitizenCaseScreen() {
             <div style={{ display: "flex", flexDirection: "column", gap: 10, fontSize: 13, marginBottom: 14 }}>
               <div style={{ display: "flex", justifyContent: "space-between", padding: "8px 12px", backgroundColor: "var(--neutral-bg)", borderRadius: 6 }}>
                 <span style={{ color: "var(--text-secondary)" }}>Field Visit Status</span>
-                <strong>{caseData.status === "CITIZEN_CONTACTED" ? "Scheduled (Today)" : "In Progress / Done"}</strong>
+                <strong>{caseData.field_visit_status || (caseData.status === "CITIZEN_CONTACTED" ? "Scheduled (Today)" : "Not Started")}</strong>
               </div>
               <div style={{ display: "flex", justifyContent: "space-between", padding: "8px 12px", backgroundColor: "var(--neutral-bg)", borderRadius: 6 }}>
                 <span style={{ color: "var(--text-secondary)" }}>PHC Referral</span>
-                <strong>{caseData.status === "REFERRED_TO_PHC" ? "Referred (PHC-09 Kalyanpur)" : "Not Created"}</strong>
+                <strong>{caseData.phc_referral_status || (caseData.status === "REFERRED_TO_PHC" ? "Referred (PHC-09 Kalyanpur)" : "Not Created")}</strong>
               </div>
               <div style={{ display: "flex", justifyContent: "space-between", padding: "8px 12px", backgroundColor: "var(--neutral-bg)", borderRadius: 6 }}>
                 <span style={{ color: "var(--text-secondary)" }}>Doctor Review Status</span>
-                <strong>{caseData.status === "DOCTOR_ACKNOWLEDGED" ? "Reviewed by Dr. Sharma" : "Pending Referral Submission"}</strong>
+                <strong>{caseData.doctor_review_status || "Not Required"}</strong>
+              </div>
+              <div style={{ display: "flex", justifyContent: "space-between", padding: "8px 12px", backgroundColor: "var(--neutral-bg)", borderRadius: 6 }}>
+                <span style={{ color: "var(--text-secondary)" }}>Follow-up Task</span>
+                <strong>{caseData.followup_status || "Not Assigned"}</strong>
               </div>
             </div>
 
-            {caseData.status !== "REFERRED_TO_PHC" ? (
+            {caseData.status !== "REFERRED_TO_PHC" && (!caseData.referrals || caseData.referrals.length === 0) ? (
               <button
-                onClick={() => navigate(`/asha/visit?caseId=${caseData.id}&step=6`)}
+                id="prepare-referral-btn"
+                onClick={handleOpenReferralModal}
                 style={{
                   width: "100%",
                   padding: "10px",
@@ -1158,32 +1442,72 @@ export function AshaCitizenCaseScreen() {
               </button>
             </div>
 
-            <div style={{ padding: "12px 14px", backgroundColor: "var(--neutral-bg)", borderRadius: 8, border: "1px solid var(--border)", marginBottom: 12 }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                <span style={{ fontSize: 13, fontWeight: 700 }}>Repeat BP Check & Warning Signs</span>
-                <span style={{ fontSize: 11, fontWeight: 700, color: "var(--urgent)" }}>URGENT</span>
-              </div>
-              <div style={{ fontSize: 12, color: "var(--text-secondary)", marginTop: 4 }}>
-                Due in 2 days · Assigned to Sita Patel (ASHA) · Source: Antenatal Triage
-              </div>
-            </div>
+            {activeFollowup ? (
+              <>
+                <div style={{ padding: "12px 14px", backgroundColor: "var(--neutral-bg)", borderRadius: 8, border: "1px solid var(--border)", marginBottom: 12 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <span style={{ fontSize: 13, fontWeight: 700 }}>{activeFollowup.instructions || "Active Health Monitoring Follow-up"}</span>
+                    <span
+                      style={{
+                        fontSize: 11,
+                        fontWeight: 700,
+                        padding: "2px 6px",
+                        borderRadius: 4,
+                        backgroundColor: activeFollowup.status === "IN_PROGRESS" ? "#E3F2FD" : "var(--urgent-bg)",
+                        color: activeFollowup.status === "IN_PROGRESS" ? "#1976D2" : "var(--urgent)",
+                      }}
+                    >
+                      {activeFollowup.status}
+                    </span>
+                  </div>
+                  <div style={{ fontSize: 12, color: "var(--text-secondary)", marginTop: 4 }}>
+                    {activeFollowup.due_at ? `Due by ${new Date(activeFollowup.due_at).toLocaleDateString()}` : "Due in 2 days"} · Assigned to Sita Patel (ASHA)
+                  </div>
+                </div>
 
-            <button
-              onClick={() => navigate(`/asha/followups?citizenId=${caseData.citizen_id}`)}
-              style={{
-                width: "100%",
-                padding: "8px",
-                borderRadius: 6,
-                border: "1px solid var(--primary)",
-                backgroundColor: "var(--primary-light)",
-                color: "var(--primary-dark)",
-                fontSize: 12,
-                fontWeight: 700,
-                cursor: "pointer",
-              }}
-            >
-              Start Follow-up Task
-            </button>
+                {activeFollowup.status === "IN_PROGRESS" ? (
+                  <button
+                    onClick={() => navigate(`/asha/followups/${activeFollowup.id}`)}
+                    style={{
+                      width: "100%",
+                      padding: "8px",
+                      borderRadius: 6,
+                      border: "1px solid var(--teal)",
+                      backgroundColor: "#E0F2F1",
+                      color: "var(--teal)",
+                      fontSize: 12,
+                      fontWeight: 700,
+                      cursor: "pointer",
+                    }}
+                  >
+                    Continue Follow-up Visit →
+                  </button>
+                ) : (
+                  <button
+                    id="start-followup-btn"
+                    onClick={() => handleStartFollowup(activeFollowup.id)}
+                    disabled={isStartingFollowup}
+                    style={{
+                      width: "100%",
+                      padding: "8px",
+                      borderRadius: 6,
+                      border: "1px solid var(--primary)",
+                      backgroundColor: "var(--primary-light)",
+                      color: "var(--primary-dark)",
+                      fontSize: 12,
+                      fontWeight: 700,
+                      cursor: "pointer",
+                    }}
+                  >
+                    {isStartingFollowup ? "Starting..." : "Start Follow-up Task"}
+                  </button>
+                )}
+              </>
+            ) : (
+              <div style={{ padding: "12px 14px", backgroundColor: "var(--neutral-bg)", borderRadius: 8, fontSize: 13, color: "var(--text-secondary)" }}>
+                No pending follow-up task. Follow-up instructions will appear after PHC review.
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -1203,7 +1527,7 @@ export function AshaCitizenCaseScreen() {
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: 14, position: "relative", paddingLeft: 20 }}>
             <div style={{ position: "absolute", left: 7, top: 6, bottom: 6, width: 2, backgroundColor: "var(--border)" }} />
-            {Array.from(new Map(timeline.map((evt) => [evt.event_type + evt.timestamp, evt])).values()).map((evt, idx) => (
+            {timeline.map((evt, idx) => (
               <div key={evt.id || idx} style={{ position: "relative", display: "flex", flexDirection: "column", gap: 2 }}>
                 <div
                   style={{
@@ -1237,7 +1561,7 @@ export function AshaCitizenCaseScreen() {
                     {evt.actor_role}
                   </span>
                   <span style={{ fontSize: 11, color: "var(--text-secondary)" }}>
-                    {new Date(evt.timestamp).toLocaleString()}
+                    {evt.timestamp ? new Date(evt.timestamp).toLocaleString() : ""}
                   </span>
                 </div>
                 <div style={{ fontSize: 12, color: "var(--text-secondary)" }}>
@@ -1248,6 +1572,690 @@ export function AshaCitizenCaseScreen() {
           </div>
         )}
       </div>
+
+      {/* Symptoms Confirmation Modal */}
+      {showSymptomsModal && (
+        <div
+          style={{
+            position: "fixed",
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: "rgba(0,0,0,0.5)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 300,
+            padding: 16,
+          }}
+          onClick={() => setShowSymptomsModal(false)}
+        >
+          <div
+            style={{
+              backgroundColor: "var(--surface)",
+              borderRadius: 12,
+              padding: 24,
+              maxWidth: 520,
+              width: "100%",
+              boxShadow: "0 10px 25px rgba(0,0,0,0.2)",
+              display: "flex",
+              flexDirection: "column",
+              gap: 14,
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: "var(--text-primary)" }}>
+              🩺 Confirm & Add Field Visit Symptoms
+            </h3>
+            
+            <div style={{ fontSize: 12, color: "var(--text-secondary)" }}>
+              Citizen Concern: <em>"{caseData.primary_concern || "Health check"}"</em>
+            </div>
+
+            {symptomError && (
+              <div style={{ padding: "8px 12px", backgroundColor: "var(--urgent-bg)", color: "var(--urgent)", borderRadius: 6, fontSize: 12 }}>
+                {symptomError}
+              </div>
+            )}
+
+            <div>
+              <label style={{ fontSize: 12, fontWeight: 700, color: "var(--text-secondary)", display: "block", marginBottom: 6 }}>
+                Add Confirmed Symptom:
+              </label>
+              <div style={{ display: "flex", gap: 8 }}>
+                <input
+                  id="symptom-input-field"
+                  type="text"
+                  value={symptomInput}
+                  onChange={(e) => setSymptomInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      handleAddSymptomTag();
+                    }
+                  }}
+                  placeholder="e.g., Severe Headache, Blurry Vision, Chest Pain"
+                  style={{ flex: 1, padding: 10, borderRadius: 8, border: "1px solid var(--border)" }}
+                />
+                <button
+                  type="button"
+                  id="add-symptom-tag-btn"
+                  onClick={handleAddSymptomTag}
+                  style={{
+                    padding: "10px 16px",
+                    borderRadius: 8,
+                    border: "none",
+                    backgroundColor: "var(--primary)",
+                    color: "#FFF",
+                    fontWeight: 700,
+                    cursor: "pointer",
+                  }}
+                >
+                  + Add
+                </button>
+              </div>
+            </div>
+
+            <div>
+              <label style={{ fontSize: 12, fontWeight: 700, color: "var(--text-secondary)", display: "block", marginBottom: 6 }}>
+                Active Symptom Observations:
+              </label>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 6, minHeight: 36, padding: 8, backgroundColor: "var(--neutral-bg)", borderRadius: 8 }}>
+                {symptomList.length > 0 ? (
+                  symptomList.map((sym, idx) => (
+                    <span
+                      key={idx}
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: 6,
+                        padding: "4px 10px",
+                        borderRadius: 6,
+                        backgroundColor: "var(--primary-light)",
+                        color: "var(--primary-dark)",
+                        fontSize: 12,
+                        fontWeight: 700,
+                      }}
+                    >
+                      {sym}
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveSymptomTag(idx)}
+                        style={{
+                          border: "none",
+                          backgroundColor: "transparent",
+                          cursor: "pointer",
+                          color: "var(--primary-dark)",
+                          fontWeight: 700,
+                          padding: 0,
+                          fontSize: 12,
+                        }}
+                      >
+                        ✕
+                      </button>
+                    </span>
+                  ))
+                ) : (
+                  <span style={{ fontSize: 12, color: "var(--text-secondary)" }}>No symptoms added yet. Type above and press Add.</span>
+                )}
+              </div>
+            </div>
+
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+              <div>
+                <label style={{ fontSize: 12, fontWeight: 700, color: "var(--text-secondary)", display: "block", marginBottom: 4 }}>
+                  Severity:
+                </label>
+                <select
+                  value={symptomSeverity}
+                  onChange={(e) => setSymptomSeverity(e.target.value)}
+                  style={{ width: "100%", padding: 8, borderRadius: 8, border: "1px solid var(--border)", backgroundColor: "var(--surface)" }}
+                >
+                  <option value="Mild">Mild</option>
+                  <option value="Moderate">Moderate</option>
+                  <option value="Severe">Severe</option>
+                </select>
+              </div>
+              <div>
+                <label style={{ fontSize: 12, fontWeight: 700, color: "var(--text-secondary)", display: "block", marginBottom: 4 }}>
+                  Onset / Duration:
+                </label>
+                <input
+                  type="text"
+                  value={symptomDuration}
+                  onChange={(e) => setSymptomDuration(e.target.value)}
+                  placeholder="e.g. 2 days, 1 week"
+                  style={{ width: "100%", padding: 8, borderRadius: 8, border: "1px solid var(--border)", boxSizing: "border-box" }}
+                />
+              </div>
+            </div>
+
+            <div>
+              <label style={{ fontSize: 12, fontWeight: 700, color: "var(--text-secondary)", display: "block", marginBottom: 4 }}>
+                Clinical Notes:
+              </label>
+              <textarea
+                rows={2}
+                value={symptomNotes}
+                onChange={(e) => setSymptomNotes(e.target.value)}
+                placeholder="Field observations, citizen description, or warning signs..."
+                style={{ width: "100%", padding: 8, borderRadius: 8, border: "1px solid var(--border)", boxSizing: "border-box" }}
+              />
+            </div>
+
+            <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 8 }}>
+              <button
+                type="button"
+                onClick={() => setShowSymptomsModal(false)}
+                style={{ padding: "10px 16px", borderRadius: 8, border: "1px solid var(--border)", backgroundColor: "var(--surface)", cursor: "pointer", fontWeight: 600 }}
+              >
+                Cancel
+              </button>
+              <button
+                id="save-symptoms-submit-btn"
+                type="button"
+                onClick={handleSaveSymptoms}
+                disabled={isSubmittingSymptoms}
+                style={{
+                  padding: "10px 20px",
+                  borderRadius: 8,
+                  border: "none",
+                  backgroundColor: "var(--primary)",
+                  color: "#FFF",
+                  fontWeight: 700,
+                  cursor: "pointer",
+                }}
+              >
+                {isSubmittingSymptoms ? "Saving..." : "Confirm & Save Symptoms"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Record Vitals Modal */}
+      {showVitalsModal && (
+        <div
+          style={{
+            position: "fixed",
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: "rgba(0,0,0,0.5)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 300,
+            padding: 16,
+          }}
+          onClick={() => setShowVitalsModal(false)}
+        >
+          <div
+            style={{
+              backgroundColor: "var(--surface)",
+              borderRadius: 12,
+              padding: 24,
+              maxWidth: 540,
+              width: "100%",
+              boxShadow: "0 10px 25px rgba(0,0,0,0.2)",
+              display: "flex",
+              flexDirection: "column",
+              gap: 14,
+              maxHeight: "90vh",
+              overflowY: "auto",
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: "var(--text-primary)" }}>
+              🩺 Record Field Vitals Observation
+            </h3>
+
+            {vitalsError && (
+              <div style={{ padding: "8px 12px", backgroundColor: "var(--urgent-bg)", color: "var(--urgent)", borderRadius: 6, fontSize: 12 }}>
+                {vitalsError}
+              </div>
+            )}
+
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+              <div>
+                <label style={{ fontSize: 12, fontWeight: 700, color: "var(--text-secondary)", display: "block", marginBottom: 4 }}>
+                  Systolic BP (mmHg)
+                </label>
+                <input
+                  id="vitals-systolic-input"
+                  type="number"
+                  placeholder="e.g. 120"
+                  value={systolic}
+                  onChange={(e) => setSystolic(e.target.value === "" ? "" : Number(e.target.value))}
+                  style={{ width: "100%", padding: 10, borderRadius: 8, border: "1px solid var(--border)", boxSizing: "border-box" }}
+                />
+              </div>
+
+              <div>
+                <label style={{ fontSize: 12, fontWeight: 700, color: "var(--text-secondary)", display: "block", marginBottom: 4 }}>
+                  Diastolic BP (mmHg)
+                </label>
+                <input
+                  id="vitals-diastolic-input"
+                  type="number"
+                  placeholder="e.g. 80"
+                  value={diastolic}
+                  onChange={(e) => setDiastolic(e.target.value === "" ? "" : Number(e.target.value))}
+                  style={{ width: "100%", padding: 10, borderRadius: 8, border: "1px solid var(--border)", boxSizing: "border-box" }}
+                />
+              </div>
+
+              <div>
+                <label style={{ fontSize: 12, fontWeight: 700, color: "var(--text-secondary)", display: "block", marginBottom: 4 }}>
+                  SpO₂ (%)
+                </label>
+                <input
+                  id="vitals-spo2-input"
+                  type="number"
+                  placeholder="e.g. 98"
+                  value={spo2}
+                  onChange={(e) => setSpo2(e.target.value === "" ? "" : Number(e.target.value))}
+                  style={{ width: "100%", padding: 10, borderRadius: 8, border: "1px solid var(--border)", boxSizing: "border-box" }}
+                />
+              </div>
+
+              <div>
+                <label style={{ fontSize: 12, fontWeight: 700, color: "var(--text-secondary)", display: "block", marginBottom: 4 }}>
+                  Pulse Rate (bpm)
+                </label>
+                <input
+                  id="vitals-pulse-input"
+                  type="number"
+                  placeholder="e.g. 76"
+                  value={pulse}
+                  onChange={(e) => setPulse(e.target.value === "" ? "" : Number(e.target.value))}
+                  style={{ width: "100%", padding: 10, borderRadius: 8, border: "1px solid var(--border)", boxSizing: "border-box" }}
+                />
+              </div>
+
+              <div>
+                <label style={{ fontSize: 12, fontWeight: 700, color: "var(--text-secondary)", display: "block", marginBottom: 4 }}>
+                  Temperature (°C)
+                </label>
+                <input
+                  id="vitals-temp-input"
+                  type="number"
+                  step="0.1"
+                  placeholder="e.g. 37.0"
+                  value={temp}
+                  onChange={(e) => setTemp(e.target.value === "" ? "" : Number(e.target.value))}
+                  style={{ width: "100%", padding: 10, borderRadius: 8, border: "1px solid var(--border)", boxSizing: "border-box" }}
+                />
+              </div>
+
+              <div>
+                <label style={{ fontSize: 12, fontWeight: 700, color: "var(--text-secondary)", display: "block", marginBottom: 4 }}>
+                  Weight (kg)
+                </label>
+                <input
+                  id="vitals-weight-input"
+                  type="number"
+                  step="0.5"
+                  placeholder="e.g. 65"
+                  value={weight}
+                  onChange={(e) => setWeight(e.target.value === "" ? "" : Number(e.target.value))}
+                  style={{ width: "100%", padding: 10, borderRadius: 8, border: "1px solid var(--border)", boxSizing: "border-box" }}
+                />
+              </div>
+
+              <div>
+                <label style={{ fontSize: 12, fontWeight: 700, color: "var(--text-secondary)", display: "block", marginBottom: 4 }}>
+                  Random Blood Glucose (mg/dL)
+                </label>
+                <input
+                  id="vitals-glucose-input"
+                  type="number"
+                  placeholder="e.g. 110"
+                  value={glucose}
+                  onChange={(e) => setGlucose(e.target.value === "" ? "" : Number(e.target.value))}
+                  style={{ width: "100%", padding: 10, borderRadius: 8, border: "1px solid var(--border)", boxSizing: "border-box" }}
+                />
+              </div>
+
+              <div>
+                <label style={{ fontSize: 12, fontWeight: 700, color: "var(--text-secondary)", display: "block", marginBottom: 4 }}>
+                  Respiratory Rate (/min)
+                </label>
+                <input
+                  id="vitals-resprate-input"
+                  type="number"
+                  placeholder="e.g. 18"
+                  value={respRate}
+                  onChange={(e) => setRespRate(e.target.value === "" ? "" : Number(e.target.value))}
+                  style={{ width: "100%", padding: 10, borderRadius: 8, border: "1px solid var(--border)", boxSizing: "border-box" }}
+                />
+              </div>
+            </div>
+
+            <div>
+              <label style={{ fontSize: 12, fontWeight: 700, color: "var(--text-secondary)", display: "block", marginBottom: 4 }}>
+                Observation Notes:
+              </label>
+              <textarea
+                rows={2}
+                value={vitalNotes}
+                onChange={(e) => setVitalNotes(e.target.value)}
+                placeholder="Field measurement equipment notes or observations..."
+                style={{ width: "100%", padding: 8, borderRadius: 8, border: "1px solid var(--border)", boxSizing: "border-box" }}
+              />
+            </div>
+
+            <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 8 }}>
+              <button
+                type="button"
+                onClick={() => setShowVitalsModal(false)}
+                style={{ padding: "10px 16px", borderRadius: 8, border: "1px solid var(--border)", backgroundColor: "var(--surface)", cursor: "pointer", fontWeight: 600 }}
+              >
+                Cancel
+              </button>
+              <button
+                id="save-vitals-submit-btn"
+                type="button"
+                onClick={handleSaveVitals}
+                disabled={isSubmittingVitals}
+                style={{
+                  padding: "10px 20px",
+                  borderRadius: 8,
+                  border: "none",
+                  backgroundColor: "var(--teal)",
+                  color: "#FFF",
+                  fontWeight: 700,
+                  cursor: "pointer",
+                }}
+              >
+                {isSubmittingVitals ? "Saving..." : "Save Vitals Observation"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* View Trends Modal */}
+      {showTrendsModal && (
+        <div
+          style={{
+            position: "fixed",
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: "rgba(0,0,0,0.5)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 300,
+            padding: 16,
+          }}
+          onClick={() => setShowTrendsModal(false)}
+        >
+          <div
+            style={{
+              backgroundColor: "var(--surface)",
+              borderRadius: 12,
+              padding: 24,
+              maxWidth: 720,
+              width: "100%",
+              boxShadow: "0 10px 25px rgba(0,0,0,0.2)",
+              display: "flex",
+              flexDirection: "column",
+              gap: 16,
+              maxHeight: "90vh",
+              overflowY: "auto",
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <h3 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: "var(--text-primary)" }}>
+                📊 Longitudinal Vital Trends ({caseData.citizen_name})
+              </h3>
+              <button
+                onClick={() => setShowTrendsModal(false)}
+                style={{ border: "none", backgroundColor: "transparent", fontSize: 18, cursor: "pointer" }}
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Filter Tabs */}
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+              {["ALL", "BP", "SPO2", "PULSE", "TEMP", "GLUCOSE", "WEIGHT"].map((f) => (
+                <button
+                  key={f}
+                  onClick={() => setTrendsFilter(f)}
+                  style={{
+                    padding: "6px 12px",
+                    borderRadius: 6,
+                    border: trendsFilter === f ? "2px solid var(--primary)" : "1px solid var(--border)",
+                    backgroundColor: trendsFilter === f ? "var(--primary-light)" : "var(--surface)",
+                    color: trendsFilter === f ? "var(--primary-dark)" : "var(--text-secondary)",
+                    fontSize: 12,
+                    fontWeight: 700,
+                    cursor: "pointer",
+                  }}
+                >
+                  {f}
+                </button>
+              ))}
+            </div>
+
+            {loadingTrends ? (
+              <div style={{ padding: 40, textAlign: "center", color: "var(--text-secondary)" }}>
+                Loading vital trends from PostgreSQL...
+              </div>
+            ) : trendsError ? (
+              <div style={{ padding: 20, textAlign: "center", color: "var(--urgent)" }}>
+                <div>{trendsError}</div>
+                <button
+                  onClick={handleOpenTrendsModal}
+                  style={{ marginTop: 10, padding: "6px 14px", borderRadius: 6, backgroundColor: "var(--primary)", color: "#FFF", border: "none", cursor: "pointer", fontWeight: 700 }}
+                >
+                  Retry
+                </button>
+              </div>
+            ) : trendsData.length === 0 ? (
+              <div style={{ padding: 30, textAlign: "center", color: "var(--text-secondary)", backgroundColor: "var(--neutral-bg)", borderRadius: 8 }}>
+                No historical vitals observations recorded yet for this beneficiary.
+              </div>
+            ) : (
+              <div style={{ overflowX: "auto" }}>
+                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+                  <thead>
+                    <tr style={{ backgroundColor: "var(--neutral-bg)", textAlign: "left", borderBottom: "2px solid var(--border)" }}>
+                      <th style={{ padding: "8px 12px" }}>Date & Time</th>
+                      <th style={{ padding: "8px 12px" }}>BP (mmHg)</th>
+                      <th style={{ padding: "8px 12px" }}>SpO₂</th>
+                      <th style={{ padding: "8px 12px" }}>Pulse</th>
+                      <th style={{ padding: "8px 12px" }}>Temp</th>
+                      <th style={{ padding: "8px 12px" }}>Glucose</th>
+                      <th style={{ padding: "8px 12px" }}>Recorded By</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {trendsData
+                      .filter((v) => {
+                        if (trendsFilter === "BP") return v.systolic_bp !== null;
+                        if (trendsFilter === "SPO2") return v.spo2 !== null;
+                        if (trendsFilter === "PULSE") return v.pulse !== null;
+                        if (trendsFilter === "TEMP") return v.temperature_c !== null;
+                        if (trendsFilter === "GLUCOSE") return v.glucose_mg_dl !== null;
+                        if (trendsFilter === "WEIGHT") return v.weight_kg !== null;
+                        return true;
+                      })
+                      .map((v, idx) => (
+                        <tr key={v.id || idx} style={{ borderBottom: "1px solid var(--border)" }}>
+                          <td style={{ padding: "10px 12px", whiteSpace: "nowrap" }}>
+                            {v.recorded_at ? new Date(v.recorded_at).toLocaleString() : "Recent"}
+                          </td>
+                          <td style={{ padding: "10px 12px", fontWeight: v.is_warning_sign ? 700 : 500, color: v.is_warning_sign ? "var(--urgent)" : "inherit" }}>
+                            {v.systolic_bp && v.diastolic_bp ? `${v.systolic_bp}/${v.diastolic_bp}` : "-"}
+                          </td>
+                          <td style={{ padding: "10px 12px" }}>{v.spo2 ? `${v.spo2}%` : "-"}</td>
+                          <td style={{ padding: "10px 12px" }}>{v.pulse ? `${v.pulse} bpm` : "-"}</td>
+                          <td style={{ padding: "10px 12px" }}>{v.temperature_c ? `${v.temperature_c}°C` : "-"}</td>
+                          <td style={{ padding: "10px 12px" }}>{v.glucose_mg_dl ? `${v.glucose_mg_dl} mg/dL` : "-"}</td>
+                          <td style={{ padding: "10px 12px", fontSize: 12, color: "var(--text-secondary)" }}>
+                            {v.recorded_by || "ASHA"}
+                          </td>
+                        </tr>
+                      ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            <div style={{ display: "flex", justifyContent: "flex-end" }}>
+              <button
+                onClick={() => setShowTrendsModal(false)}
+                style={{ padding: "8px 16px", borderRadius: 8, border: "1px solid var(--border)", backgroundColor: "var(--surface)", cursor: "pointer", fontWeight: 600 }}
+              >
+                Close Trends
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Prepare Referral Modal */}
+      {showReferralModal && (
+        <div
+          style={{
+            position: "fixed",
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: "rgba(0,0,0,0.5)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 300,
+            padding: 16,
+          }}
+          onClick={() => setShowReferralModal(false)}
+        >
+          <div
+            style={{
+              backgroundColor: "var(--surface)",
+              borderRadius: 12,
+              padding: 24,
+              maxWidth: 540,
+              width: "100%",
+              boxShadow: "0 10px 25px rgba(0,0,0,0.2)",
+              display: "flex",
+              flexDirection: "column",
+              gap: 14,
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: "var(--urgent)" }}>
+              🏥 Prepare Referral to Primary Health Center
+            </h3>
+
+            {referralError && (
+              <div style={{ padding: "8px 12px", backgroundColor: "var(--urgent-bg)", color: "var(--urgent)", borderRadius: 6, fontSize: 12 }}>
+                {referralError}
+              </div>
+            )}
+
+            <div>
+              <label style={{ fontSize: 12, fontWeight: 700, color: "var(--text-secondary)", display: "block", marginBottom: 4 }}>
+                Target Facility:
+              </label>
+              <div style={{ padding: "10px 12px", backgroundColor: "var(--neutral-bg)", borderRadius: 8, fontWeight: 700, fontSize: 14 }}>
+                {caseData.facility_name || caseData.assigned_facility_name || "Kalyanpur Primary Health Center"} ({caseData.assigned_facility_id || caseData.facility_id || "PHC-09"})
+              </div>
+            </div>
+
+            <div>
+              <label style={{ fontSize: 12, fontWeight: 700, color: "var(--text-secondary)", display: "block", marginBottom: 4 }}>
+                Referral Urgency:
+              </label>
+              <div style={{ display: "flex", gap: 8 }}>
+                {["ROUTINE", "URGENT", "EMERGENCY"].map((u) => (
+                  <button
+                    key={u}
+                    type="button"
+                    onClick={() => setReferralUrgency(u)}
+                    style={{
+                      flex: 1,
+                      padding: "8px",
+                      borderRadius: 8,
+                      border: referralUrgency === u ? "2px solid var(--urgent)" : "1px solid var(--border)",
+                      backgroundColor: referralUrgency === u ? "var(--urgent-bg)" : "var(--surface)",
+                      color: referralUrgency === u ? "var(--urgent)" : "var(--text-primary)",
+                      fontWeight: 700,
+                      fontSize: 12,
+                      cursor: "pointer",
+                    }}
+                  >
+                    {u}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <label style={{ fontSize: 12, fontWeight: 700, color: "var(--text-secondary)", display: "block", marginBottom: 4 }}>
+                Clinical Reason for Referral:
+              </label>
+              <textarea
+                id="referral-reason-textarea"
+                rows={3}
+                value={referralReason}
+                onChange={(e) => setReferralReason(e.target.value)}
+                placeholder="Clinical indications and reason for doctor review..."
+                style={{ width: "100%", padding: 10, borderRadius: 8, border: "1px solid var(--border)", boxSizing: "border-box" }}
+              />
+            </div>
+
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <input
+                type="checkbox"
+                id="referral-transport-chk"
+                checked={referralTransport}
+                onChange={(e) => setReferralTransport(e.target.checked)}
+              />
+              <label htmlFor="referral-transport-chk" style={{ fontSize: 13, color: "var(--text-primary)", fontWeight: 600 }}>
+                108/102 Emergency Ambulance or Transport Assistance Required
+              </label>
+            </div>
+
+            <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 8 }}>
+              <button
+                type="button"
+                onClick={() => setShowReferralModal(false)}
+                style={{ padding: "10px 16px", borderRadius: 8, border: "1px solid var(--border)", backgroundColor: "var(--surface)", cursor: "pointer", fontWeight: 600 }}
+              >
+                Cancel
+              </button>
+              <button
+                id="submit-referral-confirm-btn"
+                type="button"
+                onClick={handleSaveReferral}
+                disabled={isSubmittingReferral}
+                style={{
+                  padding: "10px 20px",
+                  borderRadius: 8,
+                  border: "none",
+                  backgroundColor: "var(--urgent)",
+                  color: "#FFF",
+                  fontWeight: 700,
+                  cursor: "pointer",
+                }}
+              >
+                {isSubmittingReferral ? "Submitting..." : "Submit Referral"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Safety Details Modal */}
       {showSafetyModal && (
@@ -1282,8 +2290,7 @@ export function AshaCitizenCaseScreen() {
               🚨 Deterministic Safety Assessment
             </h3>
             <div style={{ fontSize: 13, color: "var(--text-primary)", lineHeight: "20px", marginBottom: 14 }}>
-              <strong>Rule Triggered:</strong> Maternal Antenatal Danger Signs & Stage 2 Hypertension.<br />
-              <strong>Observed Vitals:</strong> Blood Pressure 150/100 mmHg.<br />
+              <strong>Rule Triggered:</strong> {caseData.safety_rule_reason || "Elevated clinical warning signs observed."}<br />
               <strong>Required Next Action:</strong> Priority PHC Medical Officer clinical evaluation within 24 hours.
             </div>
             <div style={{ fontSize: 11, color: "var(--text-secondary)", marginBottom: 16 }}>

@@ -448,6 +448,40 @@ export class AarogyaApiClient {
     });
   }
 
+  addAshaCaseSymptoms(caseId: string, data: { symptoms: string[]; onset_duration?: string; severity?: string; notes?: string; followup_id?: string }, idempotencyKey?: string) {
+    const headers: Record<string, string> = {};
+    if (idempotencyKey) headers["Idempotency-Key"] = idempotencyKey;
+    return this.request<any>(`/asha/cases/${encodeURIComponent(caseId)}/symptoms`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(data),
+    });
+  }
+
+  recordAshaCaseVitals(caseId: string, data: { systolic_bp?: number; diastolic_bp?: number; spo2?: number; pulse?: number; temperature_c?: number; weight_kg?: number; glucose_mg_dl?: number; respiratory_rate?: number; notes?: string; followup_id?: string }, idempotencyKey?: string) {
+    const headers: Record<string, string> = {};
+    if (idempotencyKey) headers["Idempotency-Key"] = idempotencyKey;
+    return this.request<any>(`/asha/cases/${encodeURIComponent(caseId)}/vitals`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(data),
+    });
+  }
+
+  getAshaCaseVitalsTrends(caseId: string) {
+    return this.request<any>(`/asha/cases/${encodeURIComponent(caseId)}/vitals/trends`);
+  }
+
+  referAshaCase(caseId: string, data: { facility_id: string; urgency?: string; reason: string; transport_required?: boolean }, idempotencyKey?: string) {
+    const headers: Record<string, string> = {};
+    if (idempotencyKey) headers["Idempotency-Key"] = idempotencyKey;
+    return this.request<any>(`/asha/cases/${encodeURIComponent(caseId)}/refer`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(data),
+    });
+  }
+
   getAshaFollowups(params?: { status_filter?: string; source_filter?: string; query_str?: string }) {
     const q = new URLSearchParams();
     if (params?.status_filter) q.set("status_filter", params.status_filter);

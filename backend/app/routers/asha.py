@@ -14,7 +14,8 @@ from app.schemas import (
     StandardResponse, AshaDashboardResponse, AshaTaskDTO, AshaAcknowledgeRequest,
     AshaVisitSubmitRequest, AshaReferralRequest, AshaContactResultRequest,
     AshaFollowUpDTO, AshaFollowUpSubmitRequest, TimelineEventDTO,
-    AshaContactResultInput, AshaAttendanceInput, AshaEscalateInput
+    AshaContactResultInput, AshaAttendanceInput, AshaEscalateInput,
+    AshaAddSymptomsRequest, AshaRecordVitalsRequest
 )
 from app.schemas.prescription import AshaAdherenceOutcomeRequest, AshaAdherenceEscalateRequest
 from app.dependencies import get_current_user, get_optional_user, require_asha, require_staff
@@ -222,7 +223,11 @@ def get_case_details_for_asha(case_id: str, db: Session = Depends(get_db), curre
             if latest_case:
                 case = latest_case
             else:
-                # Return citizen-level structured profile with NO_ACTIVE_CASE status
+                # Sanitize male pregnancy
+                is_male = citizen.sex and citizen.sex.strip().lower() in ["male", "m"]
+                is_pregnant = False if is_male else (citizen.is_pregnant or False)
+                gestational_weeks = None if is_male else (citizen.gestational_weeks if is_pregnant else None)
+
                 citizen_followups = [
                     {
                         "id": f.id,
@@ -250,8 +255,17 @@ def get_case_details_for_asha(case_id: str, db: Session = Depends(get_db), curre
                         "village_name": citizen.village_name or "Kalyanpur",
                         "preferred_language": citizen.preferred_language or "mr-IN",
                         "abha": citizen.abha_reference or "12-3456-7890-1234",
-                        "is_pregnant": citizen.is_pregnant or False,
-                        "gestational_weeks": citizen.gestational_weeks,
+                        "is_pregnant": is_pregnant,
+                        "gestational_weeks": gestational_weeks,
+                        "dynamic_context": {
+                            "type": "GENERAL",
+                            "title": "General Care Context",
+                            "description": "No additional program-specific context recorded."
+                        },
+                        "field_visit_status": "Not Started",
+                        "phc_referral_status": "Not Created",
+                        "doctor_review_status": "Not Required",
+                        "followup_status": "Assigned" if citizen_followups else "Not Assigned",
                         "safety_rule_triggered": False,
                         "safety_rule_reason": None,
                         "symptoms": [],
@@ -267,20 +281,66 @@ def get_case_details_for_asha(case_id: str, db: Session = Depends(get_db), curre
         if not case:
             raise HTTPException(status_code=404, detail={"code": "CASE_NOT_FOUND", "message": "Case not found"})
 
+    # Role-based authorization: check if assigned to a different ASHA worker
+    if current_user and current_user.role == UserRoleEnum.ASHA_WORKER:
+        if case.assigned_asha_id and case.assigned_asha_id != current_user.id:
+            raise HTTPException(status_code=403, detail={"code": "UNAUTHORIZED_CASE_ACCESS", "message": "Access denied: Case is assigned to a different ASHA worker."})
+
+    citizen = case.citizen
+    is_male = citizen and citizen.sex and citizen.sex.strip().lower() in ["male", "m"]
+    is_pregnant = False if is_male else (citizen.is_pregnant if citizen else False)
+    gestational_weeks = None if is_male else (citizen.gestational_weeks if citizen and is_pregnant else None)
+
+    # Dynamic context resolution
+    if is_pregnant and gestational_weeks:
+        trimester = 1 if gestational_weeks <= 12 else (2 if gestational_weeks <= 26 else 3)
+        anc_stage = f"ANC-{1 if gestational_weeks <= 12 else (2 if gestational_weeks <= 26 else (3 if gestational_weeks <= 34 else 4))}"
+        dynamic_context = {
+            "type": "ANTENATAL",
+            "title": "Antenatal Maternal Tracking",
+            "gestational_weeks": gestational_weeks,
+            "trimester": trimester,
+            "anc_stage": anc_stage,
+            "edd": "24 Feb 2027",
+            "description": f"Antenatal tracking at {gestational_weeks} weeks (Trimester {trimester})."
+        }
+    elif any(kw in (case.primary_concern or "").lower() for kw in ["hypertension", "bp", "blood pressure", "diabetes", "sugar", "heart", "cardio", "chronic"]):
+        dynamic_context = {
+            "type": "NCD_MONITORING",
+            "title": "NCD & Chronic Care Monitoring",
+            "description": "Longitudinal cardiovascular and metabolic health monitoring."
+        }
+    else:
+        dynamic_context = {
+            "type": "GENERAL",
+            "title": "General Care Context",
+            "description": "No additional program-specific context recorded."
+        }
+
     symptoms = [
-        {"term": s.normalized_term, "source": s.source_type.value, "recorded_by": s.recorded_by}
+        {"term": s.normalized_term, "source": s.source_type.value if hasattr(s.source_type, "value") else str(s.source_type), "recorded_by": s.recorded_by}
         for s in case.symptoms
     ]
+
+    # Vitals sorted newest first
+    sorted_vitals = sorted(case.vitals, key=lambda v: v.recorded_at or datetime.min.replace(tzinfo=timezone.utc), reverse=True)
     vitals = [
         {
+            "id": v.id,
             "systolic_bp": v.systolic_bp,
             "diastolic_bp": v.diastolic_bp,
             "temperature_c": v.temperature_c,
             "spo2": v.spo2,
             "pulse": v.pulse,
-            "recorded_at": v.recorded_at.isoformat()
+            "respiratory_rate": v.respiratory_rate,
+            "glucose_mg_dl": v.glucose_mg_dl,
+            "weight_kg": v.weight_kg,
+            "is_warning_sign": v.is_warning_sign,
+            "source_type": v.source_type.value if hasattr(v.source_type, "value") else str(v.source_type),
+            "recorded_by": v.recorded_by or "ASHA Worker",
+            "recorded_at": v.recorded_at.isoformat() if v.recorded_at else None
         }
-        for v in case.vitals
+        for v in sorted_vitals
     ]
 
     referrals = [
@@ -288,7 +348,7 @@ def get_case_details_for_asha(case_id: str, db: Session = Depends(get_db), curre
             "id": r.id,
             "reference": r.reference,
             "to_facility_id": r.to_facility_id,
-            "to_facility_name": r.to_facility_name,
+            "to_facility_name": r.to_facility_name or "Kalyanpur Primary Health Center",
             "urgency": r.urgency.value if hasattr(r.urgency, "value") else str(r.urgency),
             "reason": r.reason,
             "status": r.status.value if hasattr(r.status, "value") else str(r.status),
@@ -318,11 +378,12 @@ def get_case_details_for_asha(case_id: str, db: Session = Depends(get_db), curre
     followups = [
         {
             "id": f.id,
-            "due_at": f.due_at.isoformat(),
+            "due_at": f.due_at.isoformat() if f.due_at else None,
             "status": f.status,
             "source": f.source,
             "instructions": f.instructions,
             "result": f.result,
+            "started_at": f.started_at.isoformat() if f.started_at else None,
             "completed_at": f.completed_at.isoformat() if f.completed_at else None
         }
         for f in case.follow_ups
@@ -341,6 +402,52 @@ def get_case_details_for_asha(case_id: str, db: Session = Depends(get_db), curre
         for v in case.visits
     ]
 
+    # Care Coordination canonical statuses
+    if any(v.status == "COMPLETED" for v in case.visits):
+        field_visit_status = "Completed"
+    elif any(v.status == "IN_PROGRESS" for v in case.visits) or any(f.status == "IN_PROGRESS" for f in case.follow_ups):
+        field_visit_status = "In Progress"
+    elif case.status in [CaseStatusEnum.CITIZEN_CONTACTED, "CITIZEN_CONTACTED"]:
+        field_visit_status = "Scheduled (Today)"
+    else:
+        field_visit_status = "Not Started"
+
+    if case.referrals:
+        latest_ref = sorted(case.referrals, key=lambda r: r.created_at, reverse=True)[0]
+        ref_st = latest_ref.status.value if hasattr(latest_ref.status, "value") else str(latest_ref.status)
+        if ref_st in ["ACKNOWLEDGED", "DOCTOR_ACKNOWLEDGED"]:
+            phc_referral_status = "Acknowledged"
+        elif ref_st in ["PENDING_DOCTOR_REVIEW", "SUBMITTED", "NEW"]:
+            phc_referral_status = f"Referred ({latest_ref.to_facility_name or 'PHC-09 Kalyanpur'})"
+        else:
+            phc_referral_status = ref_st
+    elif case.status in [CaseStatusEnum.REFERRED_TO_PHC, "REFERRED_TO_PHC"]:
+        phc_referral_status = "Referred (PHC-09 Kalyanpur)"
+    else:
+        phc_referral_status = "Not Created"
+
+    if any(c.signed_at is not None for c in case.consultations):
+        doctor_review_status = "Completed (Prescription Signed)"
+    elif case.status in [CaseStatusEnum.DOCTOR_ACKNOWLEDGED, "DOCTOR_ACKNOWLEDGED"] or (case.referrals and any(r.status in ["ACKNOWLEDGED", "DOCTOR_ACKNOWLEDGED"] for r in case.referrals)):
+        doctor_review_status = "Reviewed by Doctor"
+    elif case.referrals or case.status in [CaseStatusEnum.REFERRED_TO_PHC, "REFERRED_TO_PHC"]:
+        doctor_review_status = "Pending Doctor Review"
+    else:
+        doctor_review_status = "Not Required"
+
+    if case.follow_ups:
+        latest_fup = sorted(case.follow_ups, key=lambda f: f.created_at or datetime.min.replace(tzinfo=timezone.utc), reverse=True)[0]
+        if latest_fup.status == "COMPLETED":
+            followup_status = "Completed"
+        elif latest_fup.status == "IN_PROGRESS":
+            followup_status = "In Progress"
+        elif latest_fup.status == "ESCALATED":
+            followup_status = "Escalated"
+        else:
+            followup_status = "Assigned"
+    else:
+        followup_status = "Not Assigned"
+
     return StandardResponse(
         data={
             "id": case.id,
@@ -349,15 +456,20 @@ def get_case_details_for_asha(case_id: str, db: Session = Depends(get_db), curre
             "status": case.status.value,
             "primary_concern": case.primary_concern,
             "citizen_id": case.citizen_id,
-            "citizen_name": case.citizen.display_name if case.citizen else "Unknown",
-            "citizen_age": case.citizen.age_estimate if case.citizen else 28,
-            "citizen_gender": case.citizen.sex if case.citizen and case.citizen.sex else "Female",
-            "citizen_phone": case.citizen.phone if case.citizen else "9876543210",
-            "village_name": case.citizen.village_name if case.citizen else "Kalyanpur",
-            "preferred_language": case.citizen.preferred_language if case.citizen and case.citizen.preferred_language else "mr-IN",
-            "abha": case.citizen.abha_reference if case.citizen and case.citizen.abha_reference else "12-3456-7890-1234",
-            "is_pregnant": case.citizen.is_pregnant if case.citizen else False,
-            "gestational_weeks": case.citizen.gestational_weeks if case.citizen else None,
+            "citizen_name": citizen.display_name if citizen else "Unknown",
+            "citizen_age": citizen.age_estimate if citizen else 28,
+            "citizen_gender": citizen.sex if citizen and citizen.sex else "Female",
+            "citizen_phone": citizen.phone if citizen else "9876543210",
+            "village_name": citizen.village_name if citizen else "Kalyanpur",
+            "preferred_language": citizen.preferred_language if citizen and citizen.preferred_language else "mr-IN",
+            "abha": citizen.abha_reference if citizen and citizen.abha_reference else "12-3456-7890-1234",
+            "is_pregnant": is_pregnant,
+            "gestational_weeks": gestational_weeks,
+            "dynamic_context": dynamic_context,
+            "field_visit_status": field_visit_status,
+            "phc_referral_status": phc_referral_status,
+            "doctor_review_status": doctor_review_status,
+            "followup_status": followup_status,
             "safety_rule_triggered": case.safety_rule_triggered,
             "safety_rule_reason": case.safety_rule_reason,
             "symptoms": symptoms,
@@ -369,6 +481,359 @@ def get_case_details_for_asha(case_id: str, db: Session = Depends(get_db), curre
             "created_at": case.created_at.isoformat()
         }
     )
+
+@router.post("/cases/{case_id}/symptoms", response_model=StandardResponse)
+def add_case_symptoms(
+    case_id: str,
+    req: AshaAddSymptomsRequest,
+    idempotency_key: Optional[str] = Header(None, alias="Idempotency-Key"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_staff)
+):
+    case = db.query(Case).filter((Case.id == case_id) | (Case.reference == case_id)).first()
+    if not case:
+        raise HTTPException(status_code=404, detail={"code": "CASE_NOT_FOUND", "message": "Case not found"})
+
+    # Role-based authorization
+    if current_user.role == UserRoleEnum.ASHA_WORKER and case.assigned_asha_id and case.assigned_asha_id != current_user.id:
+        raise HTTPException(status_code=403, detail={"code": "UNAUTHORIZED_CASE_ACCESS", "message": "Access denied: Case is assigned to a different ASHA worker."})
+
+    cached_resp = check_idempotency(db, idempotency_key, current_user.id, f"/asha/cases/{case_id}/symptoms", req.model_dump())
+    if cached_resp:
+        return cached_resp
+
+    if not req.symptoms or len(req.symptoms) == 0:
+        raise HTTPException(status_code=400, detail={"code": "INVALID_SYMPTOMS", "message": "At least one symptom must be provided."})
+
+    # Find or create active AshaVisit
+    active_visit = db.query(AshaVisit).filter(
+        AshaVisit.case_id == case.id,
+        AshaVisit.asha_worker_id == current_user.id,
+        AshaVisit.status.in_(["IN_PROGRESS", "SCHEDULED"])
+    ).first()
+    if not active_visit:
+        active_visit = AshaVisit(
+            reference=f"VISIT-2026-{case.reference.split('-')[-1] if case.reference else case.id[:6]}",
+            case_id=case.id,
+            asha_worker_id=current_user.id,
+            status="IN_PROGRESS",
+            notes=req.notes or "In-person field visit - symptoms confirmed",
+            started_at=datetime.now(timezone.utc)
+        )
+        db.add(active_visit)
+        db.flush()
+
+    # Link follow-up if present
+    if req.followup_id:
+        fup = db.query(FollowUp).filter(FollowUp.id == req.followup_id).first()
+        if fup and fup.status in ["PENDING", "ASSIGNED"]:
+            fup.status = "IN_PROGRESS"
+            fup.started_at = datetime.now(timezone.utc)
+
+    # Trim and deduplicate case-insensitively against existing symptoms
+    existing_terms = {s.normalized_term.strip().lower() for s in case.symptoms}
+    added_terms = []
+    for sym in req.symptoms:
+        cleaned = sym.strip()
+        if cleaned and cleaned.lower() not in existing_terms:
+            existing_terms.add(cleaned.lower())
+            new_obs = SymptomObservation(
+                case_id=case.id,
+                spoken_term=cleaned,
+                normalized_term=cleaned,
+                severity=req.severity or "Moderate",
+                source_type=InformationSourceEnum.ASHA_CONFIRMED,
+                recorded_by=current_user.name
+            )
+            db.add(new_obs)
+            added_terms.append(cleaned)
+
+    # Re-evaluate emergency / safety rules with updated symptoms and latest vitals
+    all_symptom_terms = [s.normalized_term for s in case.symptoms] + added_terms
+    latest_v = case.vitals[-1] if case.vitals else None
+    priority, rule_trig, rule_reason, _ = EmergencyRuleEvaluator.evaluate(
+        symptoms=all_symptom_terms,
+        is_pregnant=case.citizen.is_pregnant if case.citizen else False,
+        gestational_weeks=case.citizen.gestational_weeks if case.citizen else None,
+        systolic_bp=latest_v.systolic_bp if latest_v else None,
+        diastolic_bp=latest_v.diastolic_bp if latest_v else None,
+        spo2=latest_v.spo2 if latest_v else None,
+        temperature_c=latest_v.temperature_c if latest_v else None
+    )
+
+    if rule_trig:
+        case.priority = priority
+        case.safety_rule_triggered = True
+        case.safety_rule_reason = rule_reason
+
+    # Add audit log
+    audit = AuditLog(
+        actor_user_id=current_user.id,
+        actor_role="ASHA_WORKER",
+        action="SYMPTOMS_CONFIRMED",
+        resource_type="Case",
+        resource_id=case.id,
+        outcome="SUCCESS",
+        metadata_json={
+            "symptoms_added": added_terms,
+            "severity": req.severity,
+            "onset_duration": req.onset_duration,
+            "notes": req.notes,
+            "visit_id": active_visit.id
+        }
+    )
+    db.add(audit)
+    db.commit()
+    db.refresh(case)
+
+    symptoms_list = [
+        {"term": s.normalized_term, "source": s.source_type.value if hasattr(s.source_type, "value") else str(s.source_type), "recorded_by": s.recorded_by}
+        for s in case.symptoms
+    ]
+
+    res_data = {
+        "case_id": case.id,
+        "symptoms": symptoms_list,
+        "priority": case.priority.value,
+        "safety_rule_triggered": case.safety_rule_triggered,
+        "safety_rule_reason": case.safety_rule_reason,
+        "visit_id": active_visit.id
+    }
+
+    if idempotency_key:
+        record_idempotency(db, idempotency_key, current_user.id, "POST", f"/asha/cases/{case_id}/symptoms", "SYMPTOMS_CONFIRMED", req.model_dump(), 200, json.dumps({"data": res_data}), "Case", case.id)
+
+    return StandardResponse(data=res_data)
+
+@router.post("/cases/{case_id}/vitals", response_model=StandardResponse)
+def record_case_vitals(
+    case_id: str,
+    req: AshaRecordVitalsRequest,
+    idempotency_key: Optional[str] = Header(None, alias="Idempotency-Key"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_staff)
+):
+    case = db.query(Case).filter((Case.id == case_id) | (Case.reference == case_id)).first()
+    if not case:
+        raise HTTPException(status_code=404, detail={"code": "CASE_NOT_FOUND", "message": "Case not found"})
+
+    # Role-based authorization
+    if current_user.role == UserRoleEnum.ASHA_WORKER and case.assigned_asha_id and case.assigned_asha_id != current_user.id:
+        raise HTTPException(status_code=403, detail={"code": "UNAUTHORIZED_CASE_ACCESS", "message": "Access denied: Case is assigned to a different ASHA worker."})
+
+    cached_resp = check_idempotency(db, idempotency_key, current_user.id, f"/asha/cases/{case_id}/vitals", req.model_dump())
+    if cached_resp:
+        return cached_resp
+
+    # Validation: Prevent empty submissions
+    has_any_vital = any([
+        req.systolic_bp is not None,
+        req.diastolic_bp is not None,
+        req.spo2 is not None,
+        req.pulse is not None,
+        req.temperature_c is not None,
+        req.weight_kg is not None,
+        req.glucose_mg_dl is not None,
+        req.respiratory_rate is not None
+    ])
+    if not has_any_vital:
+        raise HTTPException(status_code=400, detail={"code": "EMPTY_VITALS", "message": "At least one vital measurement must be provided."})
+
+    # Validation: BP Pairing
+    if (req.systolic_bp is not None and req.diastolic_bp is None) or (req.diastolic_bp is not None and req.systolic_bp is None):
+        raise HTTPException(status_code=400, detail={"code": "INVALID_BP_PAIR", "message": "Both systolic and diastolic blood pressure are required when recording blood pressure."})
+
+    # Validation: Numeric ranges
+    if req.systolic_bp is not None and not (50 <= req.systolic_bp <= 300):
+        raise HTTPException(status_code=400, detail={"code": "RANGE_ERROR", "message": "Systolic BP must be between 50 and 300 mmHg."})
+    if req.diastolic_bp is not None and not (30 <= req.diastolic_bp <= 200):
+        raise HTTPException(status_code=400, detail={"code": "RANGE_ERROR", "message": "Diastolic BP must be between 30 and 200 mmHg."})
+    if req.spo2 is not None and not (50 <= req.spo2 <= 100):
+        raise HTTPException(status_code=400, detail={"code": "RANGE_ERROR", "message": "SpO2 must be between 50% and 100%."})
+    if req.pulse is not None and not (30 <= req.pulse <= 250):
+        raise HTTPException(status_code=400, detail={"code": "RANGE_ERROR", "message": "Pulse must be between 30 and 250 bpm."})
+    if req.temperature_c is not None and not (30.0 <= req.temperature_c <= 45.0):
+        raise HTTPException(status_code=400, detail={"code": "RANGE_ERROR", "message": "Temperature must be between 30.0°C and 45.0°C."})
+    if req.weight_kg is not None and not (1.0 <= req.weight_kg <= 300.0):
+        raise HTTPException(status_code=400, detail={"code": "RANGE_ERROR", "message": "Weight must be between 1.0 and 300.0 kg."})
+    if req.glucose_mg_dl is not None and not (20.0 <= req.glucose_mg_dl <= 1000.0):
+        raise HTTPException(status_code=400, detail={"code": "RANGE_ERROR", "message": "Blood glucose must be between 20 and 1000 mg/dL."})
+
+    # Find or create active AshaVisit
+    active_visit = db.query(AshaVisit).filter(
+        AshaVisit.case_id == case.id,
+        AshaVisit.asha_worker_id == current_user.id,
+        AshaVisit.status.in_(["IN_PROGRESS", "SCHEDULED"])
+    ).first()
+    if not active_visit:
+        active_visit = AshaVisit(
+            reference=f"VISIT-2026-{case.reference.split('-')[-1] if case.reference else case.id[:6]}",
+            case_id=case.id,
+            asha_worker_id=current_user.id,
+            status="IN_PROGRESS",
+            notes=req.notes or f"Field visit vitals recorded: BP {req.systolic_bp}/{req.diastolic_bp}",
+            started_at=datetime.now(timezone.utc)
+        )
+        db.add(active_visit)
+        db.flush()
+
+    # Link follow-up if provided
+    if req.followup_id:
+        fup = db.query(FollowUp).filter(FollowUp.id == req.followup_id).first()
+        if fup and fup.status in ["PENDING", "ASSIGNED"]:
+            fup.status = "IN_PROGRESS"
+            fup.started_at = datetime.now(timezone.utc)
+
+    # Evaluate deterministic safety rules
+    symptom_terms = [s.normalized_term for s in case.symptoms]
+    priority, rule_trig, rule_reason, _ = EmergencyRuleEvaluator.evaluate(
+        symptoms=symptom_terms,
+        is_pregnant=case.citizen.is_pregnant if case.citizen else False,
+        gestational_weeks=case.citizen.gestational_weeks if case.citizen else None,
+        systolic_bp=req.systolic_bp,
+        diastolic_bp=req.diastolic_bp,
+        spo2=req.spo2,
+        temperature_c=req.temperature_c
+    )
+
+    if rule_trig:
+        case.priority = priority
+        case.safety_rule_triggered = True
+        case.safety_rule_reason = rule_reason
+
+    # Create VitalRecord
+    vital = VitalRecord(
+        case_id=case.id,
+        systolic_bp=req.systolic_bp,
+        diastolic_bp=req.diastolic_bp,
+        temperature_c=req.temperature_c,
+        spo2=req.spo2,
+        pulse=req.pulse,
+        respiratory_rate=req.respiratory_rate,
+        glucose_mg_dl=req.glucose_mg_dl,
+        weight_kg=req.weight_kg,
+        is_warning_sign=rule_trig,
+        source_type=InformationSourceEnum.ASHA_CONFIRMED,
+        recorded_by=current_user.name
+    )
+    db.add(vital)
+
+    # Add audit log
+    audit = AuditLog(
+        actor_user_id=current_user.id,
+        actor_role="ASHA_WORKER",
+        action="VITALS_RECORDED",
+        resource_type="VitalRecord",
+        resource_id=case.id,
+        outcome="SUCCESS",
+        metadata_json={
+            "systolic_bp": req.systolic_bp,
+            "diastolic_bp": req.diastolic_bp,
+            "spo2": req.spo2,
+            "pulse": req.pulse,
+            "temperature_c": req.temperature_c,
+            "weight_kg": req.weight_kg,
+            "glucose_mg_dl": req.glucose_mg_dl,
+            "is_warning_sign": rule_trig,
+            "visit_id": active_visit.id
+        }
+    )
+    db.add(audit)
+    db.commit()
+    db.refresh(vital)
+    db.refresh(case)
+
+    res_data = {
+        "vital_id": vital.id,
+        "case_id": case.id,
+        "systolic_bp": vital.systolic_bp,
+        "diastolic_bp": vital.diastolic_bp,
+        "temperature_c": vital.temperature_c,
+        "spo2": vital.spo2,
+        "pulse": vital.pulse,
+        "weight_kg": vital.weight_kg,
+        "glucose_mg_dl": vital.glucose_mg_dl,
+        "respiratory_rate": vital.respiratory_rate,
+        "is_warning_sign": vital.is_warning_sign,
+        "recorded_at": vital.recorded_at.isoformat() if vital.recorded_at else None,
+        "recorded_by": vital.recorded_by,
+        "source_type": vital.source_type.value if hasattr(vital.source_type, "value") else str(vital.source_type),
+        "priority": case.priority.value,
+        "safety_rule_triggered": case.safety_rule_triggered,
+        "safety_rule_reason": case.safety_rule_reason,
+        "visit_id": active_visit.id
+    }
+
+    if idempotency_key:
+        record_idempotency(db, idempotency_key, current_user.id, "POST", f"/asha/cases/{case_id}/vitals", "VITALS_RECORDED", req.model_dump(), 200, json.dumps({"data": res_data}), "VitalRecord", vital.id)
+
+    return StandardResponse(data=res_data)
+
+@router.get("/cases/{case_id}/vitals/trends", response_model=StandardResponse)
+def get_case_vitals_trends(
+    case_id: str,
+    db: Session = Depends(get_db),
+    current_user: Optional[User] = Depends(get_optional_user)
+):
+    case = db.query(Case).filter((Case.id == case_id) | (Case.reference == case_id)).first()
+    if not case:
+        citizen_lookup_id = case_id.replace("citizen-", "")
+        citizen = db.query(CitizenProfile).filter((CitizenProfile.id == citizen_lookup_id) | (CitizenProfile.id == case_id)).first()
+        if citizen:
+            all_cases = db.query(Case).filter(Case.citizen_id == citizen.id).all()
+            case_ids = [c.id for c in all_cases]
+            vitals = db.query(VitalRecord).filter(VitalRecord.case_id.in_(case_ids)).order_by(VitalRecord.recorded_at.asc()).all()
+            trends_data = [
+                {
+                    "id": v.id,
+                    "case_id": v.case_id,
+                    "systolic_bp": v.systolic_bp,
+                    "diastolic_bp": v.diastolic_bp,
+                    "temperature_c": v.temperature_c,
+                    "spo2": v.spo2,
+                    "pulse": v.pulse,
+                    "glucose_mg_dl": v.glucose_mg_dl,
+                    "weight_kg": v.weight_kg,
+                    "respiratory_rate": v.respiratory_rate,
+                    "is_warning_sign": v.is_warning_sign,
+                    "source_type": v.source_type.value if hasattr(v.source_type, "value") else str(v.source_type),
+                    "recorded_by": v.recorded_by,
+                    "recorded_at": v.recorded_at.isoformat() if v.recorded_at else None
+                }
+                for v in vitals
+            ]
+            return StandardResponse(data=trends_data)
+        raise HTTPException(status_code=404, detail={"code": "CASE_NOT_FOUND", "message": "Case not found"})
+
+    # Role-based authorization
+    if current_user and current_user.role == UserRoleEnum.ASHA_WORKER and case.assigned_asha_id and case.assigned_asha_id != current_user.id:
+        raise HTTPException(status_code=403, detail={"code": "UNAUTHORIZED_CASE_ACCESS", "message": "Access denied: Case is assigned to a different ASHA worker."})
+
+    # Fetch all vitals for this beneficiary across all linked cases or this case
+    linked_case_ids = [c.id for c in db.query(Case).filter(Case.citizen_id == case.citizen_id).all()] if case.citizen_id else [case.id]
+    vitals = db.query(VitalRecord).filter(VitalRecord.case_id.in_(linked_case_ids)).order_by(VitalRecord.recorded_at.asc()).all()
+
+    trends_data = [
+        {
+            "id": v.id,
+            "case_id": v.case_id,
+            "systolic_bp": v.systolic_bp,
+            "diastolic_bp": v.diastolic_bp,
+            "temperature_c": v.temperature_c,
+            "spo2": v.spo2,
+            "pulse": v.pulse,
+            "glucose_mg_dl": v.glucose_mg_dl,
+            "weight_kg": v.weight_kg,
+            "respiratory_rate": v.respiratory_rate,
+            "is_warning_sign": v.is_warning_sign,
+            "source_type": v.source_type.value if hasattr(v.source_type, "value") else str(v.source_type),
+            "recorded_by": v.recorded_by,
+            "recorded_at": v.recorded_at.isoformat() if v.recorded_at else None
+        }
+        for v in vitals
+    ]
+
+    return StandardResponse(data=trends_data)
 
 @router.post("/cases/{case_id}/acknowledge", response_model=StandardResponse)
 def acknowledge_case(
@@ -683,6 +1148,24 @@ def refer_case_to_phc(
     if not case:
         raise HTTPException(status_code=404, detail={"code": "CASE_NOT_FOUND", "message": "Case not found"})
 
+    # Role-based authorization
+    if current_user.role == UserRoleEnum.ASHA_WORKER and case.assigned_asha_id and case.assigned_asha_id != current_user.id:
+        raise HTTPException(status_code=403, detail={"code": "UNAUTHORIZED_CASE_ACCESS", "message": "Access denied: Case is assigned to a different ASHA worker."})
+
+    # Check if active referral already exists for case
+    existing_ref = db.query(Referral).filter(Referral.case_id == case.id).first()
+    if existing_ref:
+        return StandardResponse(
+            data={
+                "referral_id": existing_ref.id,
+                "referral_reference": existing_ref.reference,
+                "case_id": case.id,
+                "status": case.status.value,
+                "facility_name": existing_ref.to_facility_name or "Kalyanpur Primary Health Center",
+                "created_at": existing_ref.created_at.isoformat() if existing_ref.created_at else datetime.now(timezone.utc).isoformat()
+            }
+        )
+
     try:
         referral = ReferralService.create_referral(
             db=db,
@@ -690,6 +1173,27 @@ def refer_case_to_phc(
             asha_user=current_user,
             req=req
         )
+        referral.to_facility_name = "Kalyanpur Primary Health Center"
+        referral.to_facility_id = req.facility_id or "PHC-09"
+        case.status = CaseStatusEnum.REFERRED_TO_PHC
+
+        audit = AuditLog(
+            actor_user_id=current_user.id,
+            actor_role="ASHA_WORKER",
+            action="PHC_REFERRAL_SUBMITTED",
+            resource_type="Referral",
+            resource_id=referral.id,
+            outcome="SUCCESS",
+            metadata_json={
+                "facility_id": referral.to_facility_id,
+                "facility_name": referral.to_facility_name,
+                "urgency": referral.urgency.value if hasattr(referral.urgency, "value") else str(referral.urgency),
+                "reason": referral.reason
+            }
+        )
+        db.add(audit)
+        db.commit()
+        db.refresh(referral)
     except ValueError as e:
         raise HTTPException(status_code=400, detail={"code": "INVALID_STATE_TRANSITION", "message": str(e)})
 
@@ -699,7 +1203,7 @@ def refer_case_to_phc(
             "referral_reference": referral.reference,
             "case_id": case.id,
             "status": case.status.value,
-            "facility_name": referral.to_facility_name,
+            "facility_name": referral.to_facility_name or "Kalyanpur Primary Health Center",
             "created_at": referral.created_at.isoformat()
         }
     )
@@ -1128,9 +1632,22 @@ def get_case_timeline(case_id: str, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail={"code": "CASE_NOT_FOUND", "message": "Case not found"})
 
     events: List[TimelineEventDTO] = []
+    seen_keys = set()
+
+    def add_evt(evt: TimelineEventDTO):
+        # Normalize timezone to UTC if naive
+        ts = evt.timestamp
+        if ts.tzinfo is None:
+            ts = ts.replace(tzinfo=timezone.utc)
+            evt.timestamp = ts
+        dedup_key = f"{evt.event_type}:{ts.strftime('%Y%m%d%H%M%S')}:{evt.title}"
+        if dedup_key not in seen_keys and evt.id not in seen_keys:
+            seen_keys.add(dedup_key)
+            seen_keys.add(evt.id)
+            events.append(evt)
 
     # 1. Citizen case creation
-    events.append(TimelineEventDTO(
+    add_evt(TimelineEventDTO(
         id=f"evt-{case.id}-create",
         timestamp=case.created_at,
         event_type="CASE_CREATED",
@@ -1141,24 +1658,47 @@ def get_case_timeline(case_id: str, db: Session = Depends(get_db)):
         badge_type="warning" if case.priority == CasePriorityEnum.URGENT else "info"
     ))
 
-    # 2. Audits for acknowledgement and contact
-    audits = db.query(AuditLog).filter(AuditLog.resource_id == case.id).order_by(AuditLog.created_at.asc()).all()
+    # 2. Audits for acknowledgement, contact, symptoms, vitals, and followups
+    resource_ids = [case.id] + [f.id for f in case.follow_ups] + [v.id for v in case.visits] + [r.id for r in case.referrals]
+    audits = db.query(AuditLog).filter(AuditLog.resource_id.in_(resource_ids)).order_by(AuditLog.created_at.asc()).all()
     for a in audits:
-        events.append(TimelineEventDTO(
+        badge = "success"
+        if "URGENT" in a.action or "ESCALATE" in a.action or "UNREACHABLE" in a.action:
+            badge = "warning"
+        title = a.action.replace("_", " ").title()
+        if a.action == "SYMPTOMS_CONFIRMED":
+            title = "Symptoms Confirmed by ASHA"
+        elif a.action == "VITALS_RECORDED":
+            title = "Field Vitals Recorded"
+        elif a.action == "FOLLOWUP_STARTED":
+            title = "Follow-up Visit Started"
+        elif a.action == "PHC_REFERRAL_SUBMITTED":
+            title = "PHC Referral Submitted"
+            
+        desc = f"Action completed by {a.actor_role}"
+        if a.metadata_json and isinstance(a.metadata_json, dict):
+            if "symptoms_added" in a.metadata_json:
+                desc = f"Confirmed symptoms: {', '.join(a.metadata_json.get('symptoms_added', []))}"
+            elif "systolic_bp" in a.metadata_json:
+                desc = f"Vitals BP: {a.metadata_json.get('systolic_bp')}/{a.metadata_json.get('diastolic_bp')} mmHg, SpO2: {a.metadata_json.get('spo2')}%"
+            elif "reason" in a.metadata_json:
+                desc = f"Reason: {a.metadata_json.get('reason')}"
+
+        add_evt(TimelineEventDTO(
             id=a.id,
             timestamp=a.created_at,
             event_type=a.action,
-            title=a.action.replace("_", " ").title(),
-            description=f"Action completed by {a.actor_role}",
+            title=title,
+            description=desc,
             actor_role=a.actor_role,
-            badge_type="success"
+            badge_type=badge
         ))
 
     # 3. Field Visits
     for v in case.visits:
-        events.append(TimelineEventDTO(
+        add_evt(TimelineEventDTO(
             id=v.id,
-            timestamp=v.completed_at or v.started_at,
+            timestamp=v.completed_at or v.started_at or v.created_at,
             event_type="FIELD_VISIT",
             title=f"Field Visit: {v.reference or 'Completed'}",
             description=v.notes or "Field vitals & triage recorded",
@@ -1168,24 +1708,24 @@ def get_case_timeline(case_id: str, db: Session = Depends(get_db)):
 
     # 4. Referrals
     for r in case.referrals:
-        events.append(TimelineEventDTO(
+        add_evt(TimelineEventDTO(
             id=r.id,
             timestamp=r.created_at,
             event_type="PHC_REFERRAL",
             title=f"PHC Referral Submitted ({r.reference or 'REF'})",
-            description=f"Referred to {r.to_facility_name}. Urgency: {r.urgency.value if hasattr(r.urgency, 'value') else r.urgency}. Status: {r.status}",
+            description=f"Referred to {r.to_facility_name or 'Kalyanpur Primary Health Center'}. Urgency: {r.urgency.value if hasattr(r.urgency, 'value') else r.urgency}. Status: {r.status}",
             actor_role="ASHA_WORKER",
             badge_type="danger" if r.urgency == CasePriorityEnum.URGENT else "warning"
         ))
 
     # 5. Consultations
     for c in case.consultations:
-        events.append(TimelineEventDTO(
+        add_evt(TimelineEventDTO(
             id=c.id,
-            timestamp=c.signed_at or c.completed_at,
+            timestamp=c.signed_at or c.completed_at or c.created_at,
             event_type="DOCTOR_CONSULTATION",
             title="Doctor Consultation & Prescription Signed",
-            description=f"Diagnosis: {c.confirmed_diagnosis}. Care plan: {c.care_plan_summary or 'Standard regimen'}",
+            description=f"Diagnosis: {c.confirmed_diagnosis or 'Evaluation complete'}. Care plan: {c.care_plan_summary or 'Standard regimen'}",
             actor_role="PHC_DOCTOR",
             actor_name=c.doctor_name,
             badge_type="success"
@@ -1193,12 +1733,12 @@ def get_case_timeline(case_id: str, db: Session = Depends(get_db)):
 
     # 6. Follow-ups
     for f in case.follow_ups:
-        events.append(TimelineEventDTO(
+        add_evt(TimelineEventDTO(
             id=f.id,
-            timestamp=f.completed_at or f.created_at,
+            timestamp=f.completed_at or f.started_at or f.created_at,
             event_type="FOLLOW_UP",
             title=f"ASHA Follow-up Task ({f.status})",
-            description=f"Instructions: {f.instructions}" + (f" | Outcome: {f.result}" if f.result else f" | Due by: {f.due_at.strftime('%d %b %Y')}"),
+            description=f"Instructions: {f.instructions}" + (f" | Outcome: {f.result}" if f.result else (f" | Due by: {f.due_at.strftime('%d %b %Y')}" if f.due_at else "")),
             actor_role="ASHA_WORKER",
             badge_type="success" if f.status == "COMPLETED" else "warning"
         ))
@@ -1472,11 +2012,40 @@ def start_followup(
         
     f = db.query(FollowUp).filter(FollowUp.id == followup_id).first()
     if not f:
-        raise HTTPException(status_code=404, detail="FollowUp not found")
+        raise HTTPException(status_code=404, detail={"code": "FOLLOWUP_NOT_FOUND", "message": "Follow-up task not found."})
+
+    # Role-based authorization
+    if current_user.role == UserRoleEnum.ASHA_WORKER and f.assigned_user_id and f.assigned_user_id != current_user.id:
+        raise HTTPException(status_code=403, detail={"code": "UNAUTHORIZED_FOLLOWUP_ACCESS", "message": "Access denied: Follow-up is assigned to a different ASHA worker."})
+
+    if f.status == "COMPLETED":
+        raise HTTPException(status_code=409, detail={"code": "FOLLOWUP_ALREADY_COMPLETED", "message": "Follow-up task has already been completed."})
         
     old_status = f.status
-    if f.status == "PENDING":
+    if f.status in ["PENDING", "ASSIGNED", "SCHEDULED"]:
         f.status = "IN_PROGRESS"
+        f.started_at = datetime.now(timezone.utc)
+
+    # Link or resume active AshaVisit
+    visit_id = None
+    if f.case_id:
+        active_visit = db.query(AshaVisit).filter(
+            AshaVisit.case_id == f.case_id,
+            AshaVisit.asha_worker_id == current_user.id,
+            AshaVisit.status.in_(["IN_PROGRESS", "SCHEDULED"])
+        ).first()
+        if not active_visit:
+            active_visit = AshaVisit(
+                reference=f"VISIT-2026-{f.id[:6]}",
+                case_id=f.case_id,
+                asha_worker_id=current_user.id,
+                status="IN_PROGRESS",
+                notes=f.instructions or "Active follow-up visit initiated",
+                started_at=datetime.now(timezone.utc)
+            )
+            db.add(active_visit)
+            db.flush()
+        visit_id = active_visit.id
     
     if old_status != "IN_PROGRESS":
         audit = AuditLog(
@@ -1485,13 +2054,21 @@ def start_followup(
             action="FOLLOWUP_STARTED",
             resource_type="FollowUp",
             resource_id=f.id,
-            outcome="SUCCESS"
+            outcome="SUCCESS",
+            metadata_json={"visit_id": visit_id, "case_id": f.case_id}
         )
         db.add(audit)
         
     db.commit()
+    db.refresh(f)
     
-    res_data = {"followup_id": f.id, "status": f.status}
+    res_data = {
+        "followup_id": f.id,
+        "status": f.status,
+        "started_at": f.started_at.isoformat() if f.started_at else None,
+        "visit_id": visit_id,
+        "case_id": f.case_id
+    }
     if idempotency_key:
         import json
         record_idempotency(db, idempotency_key, current_user.id, "POST", f"/asha/followups/{followup_id}/start", "FOLLOWUP_STARTED", {}, 200, json.dumps({"data": res_data}), "FollowUp", f.id)
