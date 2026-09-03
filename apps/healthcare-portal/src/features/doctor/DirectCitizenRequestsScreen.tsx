@@ -67,9 +67,32 @@ export function DirectCitizenRequestsScreen() {
 
   // Live Chat Drawer State for CHAT channel
   const [activeChatReq, setActiveChatReq] = useState<any>(null);
+  const activeChatReqRef = React.useRef<any>(null);
+  activeChatReqRef.current = activeChatReq;
+
   const [chatMessage, setChatMessage] = useState("");
   const [sendingMsg, setSendingMsg] = useState(false);
   const chatDrawerScrollRef = React.useRef<HTMLDivElement>(null);
+  const isChatPollingRef = React.useRef<boolean>(false);
+
+  // Helper for message deduplication and chronological sorting
+  const mergeMessagesCanonical = (existing: any[] = [], incoming: any[] = []) => {
+    const map = new Map<string, any>();
+    for (const m of existing) {
+      const key = m.client_message_id || m.id || m.message_id;
+      if (key) map.set(String(key), m);
+    }
+    for (const m of incoming) {
+      const key = m.client_message_id || m.id || m.message_id;
+      if (key) {
+        const prev = map.get(String(key));
+        map.set(String(key), prev ? { ...prev, ...m } : m);
+      }
+    }
+    const combined = Array.from(map.values());
+    combined.sort((a, b) => (a.created_at || "").localeCompare(b.created_at || ""));
+    return combined;
+  };
 
   const fetchRequests = async () => {
     try {
@@ -103,11 +126,24 @@ export function DirectCitizenRequestsScreen() {
         }
       }
 
-      // If active chat req is open, refresh its detail
-      if (activeChatReq) {
-        const updated = items.find((r: any) => r.id === activeChatReq.id || r.service_request_id === activeChatReq.id);
+      // If active chat req is open, refresh its status and metadata without losing messages
+      const currentActive = activeChatReqRef.current;
+      if (currentActive) {
+        const updated = items.find((r: any) =>
+          r.id === currentActive.id ||
+          r.service_request_id === currentActive.id ||
+          r.id === currentActive.service_request_id ||
+          r.request_reference === currentActive.request_reference
+        );
         if (updated) {
-          setActiveChatReq((prev: any) => ({ ...prev, ...updated }));
+          setActiveChatReq((prev: any) => {
+            if (!prev) return prev;
+            return {
+              ...prev,
+              ...updated,
+              messages: prev.messages || []
+            };
+          });
         }
       }
     } catch (err: any) {
@@ -138,21 +174,16 @@ export function DirectCitizenRequestsScreen() {
         }
       }
       if (detail) {
-        // Canonical message deduplication
-        if (Array.isArray(detail.messages)) {
-          const seen = new Set<string>();
-          const deduped: any[] = [];
-          for (const m of detail.messages) {
-            const key = m.client_message_id || m.id;
-            if (!seen.has(key)) {
-              seen.add(key);
-              deduped.push(m);
-            }
-          }
-          deduped.sort((a, b) => (a.created_at || "").localeCompare(b.created_at || ""));
-          detail.messages = deduped;
-        }
-        setActiveChatReq(detail);
+        setActiveChatReq((prev: any) => {
+          const prevMessages = prev?.messages || [];
+          const newMessages = Array.isArray(detail.messages) ? detail.messages : [];
+          const merged = mergeMessagesCanonical(prevMessages, newMessages);
+          return {
+            ...(prev || {}),
+            ...detail,
+            messages: merged
+          };
+        });
       }
     } catch (err) {
       console.error("Failed to load chat details", err);
@@ -160,6 +191,8 @@ export function DirectCitizenRequestsScreen() {
   };
 
   useRealtime((event, data) => {
+    const currentActive = activeChatReqRef.current;
+
     if (
       [
         "DOCTOR_REQUEST_CREATED",
@@ -173,18 +206,18 @@ export function DirectCitizenRequestsScreen() {
       ].includes(event)
     ) {
       fetchRequests();
-      if (activeChatReq) {
+      if (currentActive) {
         const convId = data?.conversation_id || data?.request_id;
         const srvId = data?.service_request_id;
         if (
           !convId ||
-          convId === activeChatReq.id ||
-          convId === activeChatReq.conversation_id ||
-          srvId === activeChatReq.id ||
-          srvId === activeChatReq.service_request_id ||
-          data?.request_reference === activeChatReq.request_reference
+          convId === currentActive.id ||
+          convId === currentActive.conversation_id ||
+          srvId === currentActive.id ||
+          srvId === currentActive.service_request_id ||
+          data?.request_reference === currentActive.request_reference
         ) {
-          fetchChatConversation(activeChatReq.id || activeChatReq.conversation_id);
+          fetchChatConversation(currentActive.id || currentActive.conversation_id);
         }
       }
     }
@@ -194,26 +227,104 @@ export function DirectCitizenRequestsScreen() {
         "doctor_chat.message_created",
         "CHAT_MESSAGE_CREATED",
         "DOCTOR_REQUEST_MESSAGE_SENT",
-        "doctor_chat.message_read",
-        "CHAT_MESSAGE_READ"
+        "conversation.message.created"
       ].includes(event)
     ) {
       fetchRequests();
-      if (activeChatReq) {
+      if (currentActive && data) {
         const convId = data?.conversation_id || data?.request_id;
         const srvId = data?.service_request_id;
-        if (
-          convId === activeChatReq.id ||
-          convId === activeChatReq.conversation_id ||
-          srvId === activeChatReq.id ||
-          srvId === activeChatReq.service_request_id ||
-          data?.request_reference === activeChatReq.request_reference
-        ) {
-          fetchChatConversation(activeChatReq.id || activeChatReq.conversation_id);
+        const reqRef = data?.request_reference;
+
+        const isMatch =
+          convId === currentActive.id ||
+          convId === currentActive.conversation_id ||
+          srvId === currentActive.id ||
+          srvId === currentActive.service_request_id ||
+          (reqRef && reqRef === currentActive.request_reference);
+
+        if (isMatch) {
+          // 1. Immediately inject & merge message into activeChatReq
+          const incomingMsg = {
+            id: data.id || data.message_id || `msg-${Date.now()}`,
+            conversation_id: convId || currentActive.id,
+            service_request_id: srvId || currentActive.service_request_id || currentActive.id,
+            sender_role: data.sender_role || (data.sender_type === "DOCTOR" || data.sender_role === "PHC_DOCTOR" ? "PHC_DOCTOR" : "CITIZEN"),
+            sender_type: data.sender_type || (data.sender_role === "PHC_DOCTOR" ? "DOCTOR" : "CITIZEN"),
+            sender_name: data.sender_name || (data.sender_type === "DOCTOR" || data.sender_role === "PHC_DOCTOR" ? "Dr. Medical Officer" : "Patient"),
+            body: data.body || data.message_text || "",
+            message_text: data.message_text || data.body || "",
+            client_message_id: data.client_message_id || data.id,
+            status: data.status || "DELIVERED",
+            created_at: data.created_at || new Date().toISOString()
+          };
+
+          setActiveChatReq((prev: any) => {
+            if (!prev) return prev;
+            const updated = mergeMessagesCanonical(prev.messages || [], [incomingMsg]);
+            return {
+              ...prev,
+              messages: updated
+            };
+          });
+
+          // Mark read if it is from citizen
+          if (incomingMsg.sender_role === "CITIZEN" || incomingMsg.sender_type === "CITIZEN") {
+            apiClient.markDoctorChatRead(currentActive.id || currentActive.conversation_id, incomingMsg.id).catch(() => {});
+          }
+
+          // 2. Fetch full conversation in background to sync any metadata
+          fetchChatConversation(currentActive.id || currentActive.conversation_id);
+        }
+      }
+    }
+
+    if (
+      [
+        "doctor_chat.message_read",
+        "CHAT_MESSAGE_READ",
+        "conversation.message.read"
+      ].includes(event)
+    ) {
+      if (currentActive && data) {
+        const convId = data?.conversation_id || data?.request_id;
+        if (convId === currentActive.id || convId === currentActive.conversation_id) {
+          setActiveChatReq((prev: any) => {
+            if (!prev || !prev.messages) return prev;
+            return {
+              ...prev,
+              messages: prev.messages.map((m: any) =>
+                m.sender_role === "PHC_DOCTOR" || m.sender_type === "DOCTOR"
+                  ? { ...m, status: "READ" }
+                  : m
+              )
+            };
+          });
         }
       }
     }
   });
+
+  // 3-second active chat polling fallback while drawer is open
+  useEffect(() => {
+    if (!activeChatReq?.id && !activeChatReq?.conversation_id) return;
+    const reqId = activeChatReq.id || activeChatReq.conversation_id;
+
+    const pollChat = async () => {
+      if (isChatPollingRef.current) return;
+      isChatPollingRef.current = true;
+      try {
+        await fetchChatConversation(reqId);
+      } catch (err) {
+        console.error("Chat polling error", err);
+      } finally {
+        isChatPollingRef.current = false;
+      }
+    };
+
+    const chatInterval = setInterval(pollChat, 3000);
+    return () => clearInterval(chatInterval);
+  }, [activeChatReq?.id, activeChatReq?.conversation_id]);
 
   // Auto-scroll doctor chat drawer when messages change
   React.useEffect(() => {
@@ -364,17 +475,42 @@ export function DirectCitizenRequestsScreen() {
   const handleSendDoctorMessage = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!chatMessage.trim() || sendingMsg || !activeChatReq) return;
-    setSendingMsg(true);
     const textToSend = chatMessage.trim();
     const reqId = activeChatReq.id || activeChatReq.conversation_id || activeChatReq.service_request_id;
     const clientMsgId = `dmsg-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+
+    // Optimistic local doctor bubble
+    const optimisticMsg = {
+      id: clientMsgId,
+      client_message_id: clientMsgId,
+      conversation_id: activeChatReq.id || activeChatReq.conversation_id,
+      service_request_id: activeChatReq.service_request_id || activeChatReq.id,
+      sender_role: "PHC_DOCTOR",
+      sender_type: "DOCTOR",
+      sender_name: "Dr. Medical Officer",
+      body: textToSend,
+      message_text: textToSend,
+      status: "SENDING",
+      created_at: new Date().toISOString()
+    };
+
+    setActiveChatReq((prev: any) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        messages: mergeMessagesCanonical(prev.messages || [], [optimisticMsg])
+      };
+    });
+
+    setChatMessage("");
+    setSendingMsg(true);
+
     try {
       try {
         await apiClient.sendDoctorChatMessage(reqId, textToSend, clientMsgId);
       } catch (_) {
         await apiClient.sendDoctorReplyMessage(reqId, textToSend, clientMsgId);
       }
-      setChatMessage("");
       await fetchChatConversation(reqId);
       await fetchRequests();
     } catch (err) {
