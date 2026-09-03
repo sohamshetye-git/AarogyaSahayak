@@ -20,7 +20,7 @@ from app.schemas.citizen import (
     CitizenOtpRequestDTO, CitizenOtpVerifyDTO, CitizenRefreshTokenDTO, CitizenOnboardingRequestDTO,
     GuestSessionCreateDTO, GuestSessionUpdateDTO, GuestSessionMigrateDTO
 )
-from app.schemas.teleconsultation import TeleconsultationMessageCreateDTO
+from app.schemas.teleconsultation import TeleconsultationMessageCreateDTO, TeleconsultationSymptomsUpdateDTO
 from app.services.case_service import CaseService
 from app.services.citizen_service import CitizenService
 from app.services.citizen_auth_service import CitizenAuthService
@@ -687,6 +687,43 @@ def create_doctor_request(
     res = CitizenService.create_doctor_request(db, profile.id, req)
     return StandardResponse(data=res)
 
+@router.get("/doctor/requests/{request_ref}", response_model=StandardResponse)
+def get_doctor_request_detail(
+    request_ref: str,
+    db: Session = Depends(get_db),
+    current_user: Optional[User] = Depends(get_optional_user)
+):
+    from app.services.teleconsultation_service import TeleconsultationService
+    profile = CitizenService.get_or_create_default_profile(db, current_user)
+    tele_req, srv_req = TeleconsultationService.resolve_canonical_request(db, request_ref)
+    if not tele_req and not srv_req:
+        raise HTTPException(status_code=404, detail="Doctor consultation request not found")
+
+    target_citizen_id = (tele_req.citizen_id if tele_req else None) or (srv_req.citizen_id if srv_req else None)
+    if target_citizen_id and profile and profile.id != target_citizen_id:
+        if current_user and (tele_req and tele_req.citizen and tele_req.citizen.user_id != current_user.id):
+            raise HTTPException(status_code=403, detail="Forbidden: You do not have access to this request")
+
+    detail = TeleconsultationService.get_request_detail(db, tele_req.id if tele_req else srv_req.id)
+    return StandardResponse(data=detail)
+
+@router.post("/doctor/requests/{request_ref}/update-symptoms", response_model=StandardResponse)
+def update_doctor_request_symptoms(
+    request_ref: str,
+    dto: TeleconsultationSymptomsUpdateDTO,
+    db: Session = Depends(get_db),
+    current_user: Optional[User] = Depends(get_optional_user)
+):
+    profile = CitizenService.get_or_create_default_profile(db, current_user)
+    updated = CitizenService.update_doctor_request_symptoms(
+        db=db,
+        citizen_id=profile.id,
+        request_id=request_ref,
+        new_symptoms=dto.new_symptoms,
+        notes=getattr(dto, "notes", None)
+    )
+    return StandardResponse(data=updated)
+
 @router.get("/doctor/requests/{request_ref}/conversation", response_model=StandardResponse)
 def get_doctor_request_conversation(
     request_ref: str,
@@ -696,16 +733,16 @@ def get_doctor_request_conversation(
     from app.services.teleconsultation_service import TeleconsultationService
     profile = CitizenService.get_or_create_default_profile(db, current_user)
     tele_req, srv_req = TeleconsultationService.resolve_canonical_request(db, request_ref)
-    if not tele_req:
+    if not tele_req and not srv_req:
         raise HTTPException(status_code=404, detail="Doctor consultation request not found")
 
     # Security check: verify citizen identity or allow if same user/profile or unassigned session
-    target_citizen_id = tele_req.citizen_id or (srv_req.citizen_id if srv_req else None)
+    target_citizen_id = (tele_req.citizen_id if tele_req else None) or (srv_req.citizen_id if srv_req else None)
     if target_citizen_id and profile and profile.id != target_citizen_id:
-        if current_user and (tele_req.citizen and tele_req.citizen.user_id != current_user.id):
+        if current_user and (tele_req and tele_req.citizen and tele_req.citizen.user_id != current_user.id):
             raise HTTPException(status_code=403, detail="Forbidden: You do not have access to this conversation")
 
-    detail = TeleconsultationService.get_request_detail(db, tele_req.id)
+    detail = TeleconsultationService.get_request_detail(db, tele_req.id if tele_req else srv_req.id)
     return StandardResponse(data=detail)
 
 @router.get("/doctor/requests/{request_ref}/messages", response_model=StandardResponse)

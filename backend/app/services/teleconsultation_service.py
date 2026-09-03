@@ -483,6 +483,10 @@ class TeleconsultationService:
         tele_id = tele_req.id if tele_req else None
         cli_id = client_message_id or f"msg-{uuid.uuid4().hex[:12]}"
 
+        from app.services.recent_activity_service import normalize_actor_name
+        if role == "PHC_DOCTOR":
+            sender_name = normalize_actor_name(sender_name, role="PHC_DOCTOR")
+
         # 1. Check idempotency in DoctorChatMessage if client_message_id provided
         if client_message_id:
             from app.models import DoctorChatMessage
@@ -499,9 +503,12 @@ class TeleconsultationService:
         if not thread and tele_id:
             thread = db.query(DoctorChatThread).filter(DoctorChatThread.id == tele_id).first()
 
+        now_dt = datetime.now(timezone.utc)
+        msg_id = str(uuid.uuid4())
+
         if thread:
             doc_msg = DoctorChatMessage(
-                id=str(uuid.uuid4()),
+                id=msg_id,
                 conversation_id=thread.id,
                 service_request_id=srv_id,
                 sender_role=role,
@@ -512,8 +519,8 @@ class TeleconsultationService:
                 client_message_id=cli_id,
                 status="DELIVERED",
                 delivery_status="DELIVERED",
-                created_at=datetime.now(timezone.utc),
-                delivered_at=datetime.now(timezone.utc)
+                created_at=now_dt,
+                delivered_at=now_dt
             )
             db.add(doc_msg)
 
@@ -521,13 +528,13 @@ class TeleconsultationService:
         tele_msg = None
         if tele_id:
             tele_msg = TeleconsultationMessage(
-                id=str(uuid.uuid4()),
+                id=msg_id,
                 request_id=tele_id,
                 sender_type="DOCTOR" if role == "PHC_DOCTOR" else "CITIZEN",
                 sender_id=sender_id,
                 sender_name=sender_name,
                 message_text=clean_text,
-                created_at=datetime.now(timezone.utc)
+                created_at=now_dt
             )
             db.add(tele_msg)
 

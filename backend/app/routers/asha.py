@@ -1173,8 +1173,10 @@ def refer_case_to_phc(
             asha_user=current_user,
             req=req
         )
-        referral.to_facility_name = "Kalyanpur Primary Health Center"
-        referral.to_facility_id = req.facility_id or "PHC-09"
+        if req.facility_id:
+            referral.to_facility_id = req.facility_id
+        if case.assigned_facility_name:
+            referral.to_facility_name = case.assigned_facility_name
         case.status = CaseStatusEnum.REFERRED_TO_PHC
 
         audit = AuditLog(

@@ -13,6 +13,19 @@ interface DoctorConsultationSummaryScreenProps {
   onViewMedicines: () => void;
 }
 
+const formatDoctorName = (name?: string | null): string => {
+  if (!name || name.trim() === "") return "Dr. Abhinav Sharma";
+  let trimmed = name.trim();
+  while (trimmed.toLowerCase().startsWith("dr. ") || trimmed.toLowerCase().startsWith("dr ")) {
+    if (trimmed.toLowerCase().startsWith("dr. ")) {
+      trimmed = trimmed.substring(4).trim();
+    } else if (trimmed.toLowerCase().startsWith("dr ")) {
+      trimmed = trimmed.substring(3).trim();
+    }
+  }
+  return `Dr. ${trimmed}`;
+};
+
 export const DoctorConsultationSummaryScreen: React.FC<DoctorConsultationSummaryScreenProps> = ({
   requestId,
   onBackToHome,
@@ -69,7 +82,7 @@ export const DoctorConsultationSummaryScreen: React.FC<DoctorConsultationSummary
           Consultation Completed
         </h2>
         <p style={{ fontSize: 12, opacity: 0.9, margin: 0 }}>
-          Dr. {data?.doctor?.name || "Abhinav Sharma"} • Kalyanpur PHC
+          {formatDoctorName(data?.doctor?.name)} • Kalyanpur PHC
         </p>
       </div>
 

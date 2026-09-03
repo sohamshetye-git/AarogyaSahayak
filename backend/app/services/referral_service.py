@@ -438,11 +438,16 @@ def create_referral(
     trans = transport_assistance_required or (getattr(req, "transport_required", False) if req else False)
 
     num = db.query(Referral).count() + 1
+    fac_name = "Kalyanpur Primary Health Center"
+    if case and case.assigned_facility_name:
+        fac_name = case.assigned_facility_name
+
     ref = Referral(
         reference=f"REF-2026-{num:04d}",
         case_id=cid,
         from_asha_id=asha_id,
         to_facility_id=fac_id,
+        to_facility_name=fac_name,
         urgency=urg,
         reason=reas,
         status="PENDING_DOCTOR_REVIEW",
@@ -452,8 +457,7 @@ def create_referral(
         created_at=utc_now()
     )
     db.add(ref)
-    db.commit()
-    db.refresh(ref)
+    db.flush()
     return ref
 
 

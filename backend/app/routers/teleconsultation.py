@@ -157,13 +157,14 @@ def update_symptoms(
     current_user: Optional[User] = Depends(get_optional_user)
 ):
     profile = CitizenService.get_or_create_default_profile(db, current_user)
-    intake_dto = TeleconsultationIntakeUpdateDTO(symptoms=dto.new_symptoms)
-    updated = TeleconsultationService.update_draft_intake(db, request_id, profile.id, intake_dto)
-    return StandardResponse(data={
-        "id": updated.id,
-        "priority": updated.priority,
-        "safety_rule_triggered": updated.safety_rule_triggered
-    })
+    updated = CitizenService.update_doctor_request_symptoms(
+        db=db,
+        citizen_id=profile.id,
+        request_id=request_id,
+        new_symptoms=dto.new_symptoms,
+        notes=getattr(dto, "notes", None)
+    )
+    return StandardResponse(data=updated)
 
 @router.get("/{request_id}/summary", response_model=StandardResponse)
 def get_consultation_summary(

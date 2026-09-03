@@ -15,7 +15,7 @@ from app.models import (
     CasePriorityEnum, CaseStatusEnum, UserRoleEnum, Consultation, Prescription, InvestigationOrder,
     FollowUp, Notification, Facility, WorkerProfile, AuditLog, utc_now,
     CareHandoff, SharingConsent, ServiceRequestStatusHistory,
-    TeleconsultationRequest, TeleconsultationMessage,
+    TeleconsultationRequest, TeleconsultationMessage, TeleconsultationStatusHistory,
     DoctorChatThread, DoctorChatMessage
 )
 from app.schemas.citizen import (
@@ -85,47 +85,6 @@ class CitizenService:
 
         return profile
 
-    @staticmethod
-    def get_beneficiaries(db: Session, citizen_id: str) -> List[Dict[str, Any]]:
-        from app.mappers.household_mapper import map_household_member_to_beneficiary_dict
-        profile = db.query(CitizenProfile).filter(CitizenProfile.id == citizen_id).first()
-        if not profile:
-            return []
-
-        members = db.query(HouseholdMember).filter(
-            HouseholdMember.citizen_id == citizen_id,
-            HouseholdMember.is_active == True
-        ).all()
-        if not members:
-            # Return self if no explicit household members seeded yet
-            return [{
-                "id": profile.id,
-                "beneficiary_id": profile.id,
-                "citizen_id": profile.id,
-                "full_name": profile.display_name,
-                "display_name": f"{profile.display_name} (Myself)",
-                "relationship": "SELF",
-                "relationship_type": "SELF",
-                "age": profile.age_estimate,
-                "sex": profile.sex,
-                "gender": profile.sex,
-                "is_pregnant": profile.is_pregnant,
-                "gestational_weeks": profile.gestational_weeks,
-                "abha_number": profile.abha_reference or profile.abha_number or None
-            }]
-
-        results = []
-        for m in members:
-            dto = map_household_member_to_beneficiary_dict(m, citizen_id=citizen_id)
-            # Add legacy field keys for compatibility with older consumers
-            dto["id"] = dto["beneficiaryId"]
-            dto["full_name"] = dto["displayName"]
-            dto["is_pregnant"] = getattr(m, "is_pregnant", False)
-            dto["gestational_weeks"] = getattr(m, "gestational_weeks", None)
-            dto["abha_number"] = getattr(m, "abha_reference", None)
-            results.append(dto)
-
-        return results
 
     @staticmethod
     def update_language(db: Session, citizen_id: str, preferred_language: str) -> CitizenProfile:
@@ -2167,24 +2126,50 @@ class CitizenService:
             Case.status != CaseStatusEnum.COMPLETED
         ).order_by(Case.created_at.desc()).first()
 
-        results = [
+        results: List[Dict[str, Any]] = [
             {
+                "id": profile.id,
                 "beneficiary_id": profile.id,
+                "beneficiaryId": profile.id,
                 "citizen_id": profile.id,
+                "citizenId": profile.id,
                 "household_member_id": None,
+                "householdMemberId": None,
                 "profile_id": profile.id,
+                "profileId": profile.id,
+                "full_name": profile.display_name,
                 "display_name": profile.display_name,
+                "displayName": profile.display_name,
                 "relationship": "SELF",
+                "relationship_type": "SELF",
                 "age": profile.age_estimate or 28,
                 "gender": (profile.sex or "FEMALE").upper(),
+                "sex": (profile.sex or "FEMALE").upper(),
                 "is_registered_patient": True,
-                "existing_case_id": self_active_case.id if self_active_case else None
+                "isRegisteredPatient": True,
+                "existing_case_id": self_active_case.id if self_active_case else None,
+                "existingCaseId": self_active_case.id if self_active_case else None
             }
         ]
 
-        members = db.query(HouseholdMember).filter(HouseholdMember.citizen_id == citizen_id).all()
+        seen_beneficiary_ids = {str(profile.id)}
+
+        members = db.query(HouseholdMember).filter(
+            HouseholdMember.citizen_id == citizen_id,
+            HouseholdMember.is_active == True
+        ).all()
+
         for m in members:
-            # Check if this member has an active case
+            # Skip if this household record represents the authenticated citizen profile (SELF)
+            if (
+                str(m.id) in seen_beneficiary_ids or
+                str(m.id) == str(profile.id) or
+                (getattr(m, "linked_citizen_profile_id", None) and str(m.linked_citizen_profile_id) == str(profile.id)) or
+                getattr(m, "is_self", False) or
+                (m.relationship_type and m.relationship_type.upper() == "SELF")
+            ):
+                continue
+
             rel = (m.relationship_type or "OTHER").upper()
             if rel not in ["SELF", "CHILD", "SPOUSE", "PARENT", "OTHER"]:
                 if rel in ["MOTHER", "FATHER"]:
@@ -2196,20 +2181,246 @@ class CitizenService:
                 else:
                     rel = "OTHER"
 
+            seen_beneficiary_ids.add(str(m.id))
             results.append({
-                "beneficiary_id": m.id,
-                "citizen_id": profile.id,
-                "household_member_id": m.id,
+                "id": str(m.id),
+                "beneficiary_id": str(m.id),
+                "beneficiaryId": str(m.id),
+                "citizen_id": str(profile.id),
+                "citizenId": str(profile.id),
+                "household_member_id": str(m.id),
+                "householdMemberId": str(m.id),
                 "profile_id": None,
+                "profileId": None,
+                "full_name": m.full_name,
                 "display_name": m.full_name,
+                "displayName": m.full_name,
                 "relationship": rel,
+                "relationship_type": rel,
                 "age": m.age,
                 "gender": (m.sex or "UNKNOWN").upper(),
+                "sex": (m.sex or "UNKNOWN").upper(),
                 "is_registered_patient": True,
-                "existing_case_id": None
+                "isRegisteredPatient": True,
+                "existing_case_id": None,
+                "existingCaseId": None
             })
 
         return results
+
+    @staticmethod
+    def update_doctor_request_symptoms(
+        db: Session,
+        citizen_id: str,
+        request_id: str,
+        new_symptoms: List[str],
+        notes: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        Updates symptoms and recalculates triage priority for an active Doctor Consultation request.
+        - Resolves canonical request (UUID, DOCREQ-*, TR-*, case_id).
+        - Validates and normalizes symptoms without case-insensitive duplicates.
+        - Creates a new version of CareHandoff for audit history preservation.
+        - Evaluates deterministic safety rules and updates priority.
+        - Appends a SYMPTOMS_UPDATED audit event and broadcasts realtime events.
+        """
+        from app.services.teleconsultation_service import TeleconsultationService
+        from app.safety.emergency_rules import EmergencyRuleEvaluator
+        from app.services.event_bus import publish_domain_event
+
+        tele_req, srv_req = TeleconsultationService.resolve_canonical_request(db, request_id)
+        if not srv_req and not tele_req:
+            raise HTTPException(status_code=404, detail=f"Doctor consultation request '{request_id}' not found")
+
+        # Validate input symptoms
+        if not new_symptoms:
+            raise HTTPException(status_code=400, detail="At least one symptom is required.")
+
+        normalized_inputs = []
+        for s in new_symptoms:
+            if s and isinstance(s, str):
+                clean = " ".join(s.strip().split())
+                if clean:
+                    normalized_inputs.append(clean)
+
+        if not normalized_inputs:
+            raise HTTPException(status_code=400, detail="Please enter a valid non-empty symptom.")
+
+        profile = db.query(CitizenProfile).filter(CitizenProfile.id == citizen_id).first()
+
+        # Extract current existing symptoms
+        existing_symptoms = []
+        if srv_req and srv_req.details and isinstance(srv_req.details.get("symptoms"), list):
+            existing_symptoms = list(srv_req.details["symptoms"])
+        elif tele_req and isinstance(tele_req.symptoms, list):
+            existing_symptoms = list(tele_req.symptoms)
+
+        # Append new symptoms without case-insensitive duplicates
+        seen_syms = {s.lower() for s in existing_symptoms}
+        merged_symptoms = list(existing_symptoms)
+        for sym in normalized_inputs:
+            if sym.lower() not in seen_syms:
+                seen_syms.add(sym.lower())
+                merged_symptoms.append(sym.title())
+
+        # Determine maternal/pregnancy context for emergency triage
+        is_pregnant = profile.is_pregnant if profile else False
+        gestational_weeks = profile.gestational_weeks if profile else None
+        target_ben_id = (srv_req.beneficiary_id if srv_req else None) or (tele_req.household_member_id if tele_req else None)
+        if target_ben_id and target_ben_id != citizen_id:
+            hm = db.query(HouseholdMember).filter(HouseholdMember.id == target_ben_id).first()
+            if hm:
+                is_pregnant = hm.is_pregnant
+                gestational_weeks = hm.gestational_weeks
+
+        # Run deterministic re-triage rules
+        chief_complaint = (
+            (srv_req.details.get("chief_complaint") if srv_req and srv_req.details else None) or
+            (tele_req.chief_complaint if tele_req else None) or
+            merged_symptoms[0]
+        )
+        eval_symptoms = [s.lower() for s in merged_symptoms]
+        if chief_complaint and chief_complaint.lower() not in eval_symptoms:
+            eval_symptoms.append(chief_complaint.lower())
+
+        calc_priority, is_trig, trig_reason, trig_guidance = EmergencyRuleEvaluator.evaluate(
+            symptoms=eval_symptoms,
+            is_pregnant=is_pregnant,
+            gestational_weeks=gestational_weeks
+        )
+        priority_val = calc_priority.value
+        guidance = trig_guidance if is_trig else "Please stay calm and monitor your symptoms."
+
+        # Version CareHandoff
+        target_srv_id = srv_req.id if srv_req else (tele_req.service_request_id if tele_req else None)
+        latest_handoff = None
+        new_version = 1
+        if target_srv_id:
+            latest_handoff = db.query(CareHandoff).filter(
+                CareHandoff.service_request_id == target_srv_id
+            ).order_by(CareHandoff.version.desc()).first()
+            if latest_handoff:
+                new_version = latest_handoff.version + 1
+
+        new_handoff = CareHandoff(
+            version=new_version,
+            service_request_id=target_srv_id,
+            citizen_id=citizen_id,
+            beneficiary_id=target_ben_id,
+            chat_session_id=srv_req.chat_session_id if srv_req else None,
+            citizen_need_id=(srv_req.citizen_need_id or srv_req.need_id) if srv_req else None,
+            case_id=srv_req.case_id if srv_req else (tele_req.case_id if tele_req else None),
+            consent_id=latest_handoff.consent_id if latest_handoff else None,
+            request_type="DOCTOR_CONSULTATION",
+            requested_channel=(srv_req.requested_channel if srv_req else (tele_req.mode if tele_req else "CHAT")),
+            recipient_role="PHC_DOCTOR",
+            source="CITIZEN_UPDATE",
+            citizen_summary=f"Updated symptoms: {', '.join(merged_symptoms)}.",
+            chief_concern=chief_complaint,
+            structured_payload={
+                **(latest_handoff.structured_payload if latest_handoff and latest_handoff.structured_payload else {}),
+                "symptoms": [{"code": s.upper().replace(" ", "_"), "display": s, "status": "CONFIRMED"} for s in merged_symptoms],
+                "version": new_version,
+                "notes": notes,
+                "updated_at": datetime.now(timezone.utc).isoformat()
+            },
+            safety_snapshot={
+                "priority": priority_val,
+                "triggered_rule_ids": ["EMERGENCY-RULE-01"] if is_trig else [],
+                "citizen_message": guidance,
+                "evaluated_at": datetime.now(timezone.utc).isoformat()
+            },
+            created_at=datetime.now(timezone.utc)
+        )
+        db.add(new_handoff)
+        db.flush()
+
+        # Update ServiceRequest
+        if srv_req:
+            srv_req.priority = priority_val
+            srv_req.handoff_id = new_handoff.id
+            if not srv_req.details:
+                srv_req.details = {}
+            srv_req.details["symptoms"] = merged_symptoms
+            srv_req.details["chief_complaint"] = chief_complaint
+            srv_req.details["updated_at"] = datetime.now(timezone.utc).isoformat()
+
+            # Record status/audit event
+            hist = ServiceRequestStatusHistory(
+                service_request_id=srv_req.id,
+                from_status=srv_req.status,
+                to_status=srv_req.status,
+                actor_role="CITIZEN",
+                actor_id=citizen_id,
+                reason=f"SYMPTOMS_UPDATED: Added {', '.join(normalized_inputs)}. Priority recalculated to {priority_val}."
+            )
+            db.add(hist)
+
+        # Update TeleconsultationRequest
+        if tele_req:
+            tele_req.priority = priority_val
+            tele_req.symptoms = merged_symptoms
+            tele_req.safety_rule_triggered = is_trig
+            tele_req.safety_reason = trig_reason
+            tele_req.version = (tele_req.version or 1) + 1
+
+            thist = TeleconsultationStatusHistory(
+                request_id=tele_req.id,
+                from_status=tele_req.status,
+                to_status=tele_req.status,
+                changed_by_user_id=citizen_id,
+                changed_by_role="CITIZEN",
+                notes=f"SYMPTOMS_UPDATED: Added {', '.join(normalized_inputs)}. Priority recalculated to {priority_val}."
+            )
+            db.add(thist)
+
+        # Sync Case priority
+        target_case_id = (srv_req.case_id if srv_req else None) or (tele_req.case_id if tele_req else None)
+        if target_case_id:
+            case_obj = db.query(Case).filter(Case.id == target_case_id).first()
+            if case_obj:
+                case_obj.priority = CasePriorityEnum.URGENT if priority_val == "URGENT" else (CasePriorityEnum.HIGH if priority_val == "HIGH" else CasePriorityEnum.ROUTINE)
+                case_obj.safety_rule_triggered = is_trig
+                case_obj.safety_rule_reason = trig_reason
+
+        db.commit()
+        if srv_req:
+            db.refresh(srv_req)
+        if tele_req:
+            db.refresh(tele_req)
+
+        # Realtime notification dispatch
+        event_data = {
+            "service_request_id": srv_req.id if srv_req else (tele_req.service_request_id if tele_req else None),
+            "request_id": tele_req.id if tele_req else (srv_req.id if srv_req else None),
+            "conversation_id": tele_req.id if tele_req else (srv_req.id if srv_req else None),
+            "request_reference": srv_req.request_reference if srv_req else (tele_req.public_reference if tele_req else None),
+            "case_id": target_case_id,
+            "citizen_id": citizen_id,
+            "beneficiary_id": target_ben_id,
+            "symptoms": merged_symptoms,
+            "new_symptoms": normalized_inputs,
+            "priority": priority_val,
+            "safety_rule_triggered": is_trig,
+            "safety_reason": trig_reason,
+            "handoff_version": new_version,
+            "timestamp": datetime.now(timezone.utc).isoformat()
+        }
+        publish_domain_event("REQUEST_CONTEXT_UPDATED", event_data)
+        publish_domain_event("CARE_HANDOFF_UPDATED", event_data)
+        publish_domain_event("DOCTOR_DIRECT_REQUEST_STATUS_UPDATED", event_data)
+
+        return {
+            "id": tele_req.id if tele_req else (srv_req.id if srv_req else request_id),
+            "service_request_id": srv_req.id if srv_req else (tele_req.service_request_id if tele_req else None),
+            "request_reference": srv_req.request_reference if srv_req else (tele_req.public_reference if tele_req else None),
+            "priority": priority_val,
+            "symptoms": merged_symptoms,
+            "safety_rule_triggered": is_trig,
+            "safety_reason": trig_reason,
+            "handoff_version": new_version,
+            "status": srv_req.status if srv_req else (tele_req.status if tele_req else "WAITING_FOR_DOCTOR")
+        }
 
     @staticmethod
     def get_citizen_profile_detail(db: Session, citizen_id: str) -> Dict[str, Any]:

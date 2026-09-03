@@ -130,11 +130,12 @@ def _post_message_handler(
         profile = CitizenService.get_or_create_default_profile(db, current_user)
         thread, srv_req, tele_req, detected_role = _authorize_conversation_access(db, conversation_id, current_user, profile)
 
+        from app.services.recent_activity_service import normalize_actor_name
         # Determine sender role & identity
         if current_user and current_user.role in ["PHC_DOCTOR", "DISTRICT_ADMIN", "SYSTEM_ADMIN"]:
             sender_role = "PHC_DOCTOR"
             sender_id = current_user.id
-            sender_name = f"Dr. {current_user.name}"
+            sender_name = normalize_actor_name(current_user.name, role="PHC_DOCTOR")
         else:
             sender_role = "CITIZEN"
             sender_id = profile.id if profile else (current_user.id if current_user else None)

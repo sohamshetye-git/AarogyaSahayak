@@ -110,19 +110,37 @@ export const DoctorRequestWizard: React.FC<DoctorRequestWizardProps> = ({
         const res: any = await apiClient.getCitizenBeneficiaries();
         const rawItems = res?.items || res?.data?.items || (Array.isArray(res) ? res : []);
         
-        // Canonical normalization into BeneficiaryOption[]
-        const normalized: BeneficiaryOption[] = rawItems.map((item: any) => ({
-          beneficiaryId: String(item.beneficiary_id || item.id),
-          citizenId: item.citizen_id || null,
-          householdMemberId: item.household_member_id || null,
-          profileId: item.profile_id || null,
-          displayName: item.display_name || item.full_name || "Citizen",
-          relationship: item.relationship || (item.relationship_type as any) || "SELF",
-          age: item.age ?? null,
-          gender: item.gender || (item.sex ? String(item.sex).toUpperCase() : null),
-          isRegisteredPatient: item.is_registered_patient ?? true,
-          existingCaseId: item.existing_case_id || null
-        }));
+        // Canonical deduplication by beneficiaryId and SELF profile
+        const seenIds = new Set<string>();
+        let selfAdded = false;
+        const normalized: BeneficiaryOption[] = [];
+
+        for (const item of rawItems) {
+          const bId = String(item.beneficiary_id || item.beneficiaryId || item.id);
+          const rawRel = String(item.relationship || item.relationship_type || "SELF").toUpperCase();
+          const isSelf = rawRel === "SELF" || item.is_self === true || (item.citizen_id && (item.citizen_id === item.beneficiary_id || item.citizen_id === item.id));
+
+          if (isSelf) {
+            if (selfAdded) continue; // Only one SELF option allowed
+            selfAdded = true;
+          }
+
+          if (seenIds.has(bId)) continue;
+          seenIds.add(bId);
+
+          normalized.push({
+            beneficiaryId: bId,
+            citizenId: item.citizen_id || item.citizenId || null,
+            householdMemberId: isSelf ? null : (item.household_member_id || item.householdMemberId || bId),
+            profileId: item.profile_id || item.profileId || null,
+            displayName: item.display_name || item.displayName || item.full_name || "Citizen",
+            relationship: (isSelf ? "SELF" : rawRel) as any,
+            age: item.age ?? null,
+            gender: item.gender || (item.sex ? String(item.sex).toUpperCase() : null),
+            isRegisteredPatient: item.is_registered_patient ?? item.isRegisteredPatient ?? true,
+            existingCaseId: item.existing_case_id || item.existingCaseId || null
+          });
+        }
 
         if (isMounted) {
           if (normalized.length === 0) {
@@ -545,7 +563,7 @@ export const DoctorRequestWizard: React.FC<DoctorRequestWizardProps> = ({
                       </div>
                       <div>
                         <div style={{ fontSize: 15, fontWeight: 800, color: "#0F172A" }}>
-                          {isSelf ? (b.displayName ? `${b.displayName} (${t("common.myself", "Myself")})` : t("common.myself", "Myself")) : b.displayName}
+                          {isSelf ? (b.displayName ? `${b.displayName.replace(/\s*\((?:Myself|मी स्वतः|खुद)\)/gi, "").trim()} (${t("common.myself", "Myself")})` : t("common.myself", "Myself")) : b.displayName}
                         </div>
                         <div style={{ fontSize: 12, color: "#64748B" }}>
                           {relLabel} {b.age ? `• ${b.age} ${t("common.age", "yrs")}` : ""} {b.gender ? `• ${b.gender}` : ""}

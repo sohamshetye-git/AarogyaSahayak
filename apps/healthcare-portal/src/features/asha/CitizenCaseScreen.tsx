@@ -403,6 +403,8 @@ export function AshaCitizenCaseScreen() {
   };
 
   // Referral Handlers
+  const [referralSuccessBanner, setReferralSuccessBanner] = useState<{ reference: string; facilityName: string } | null>(null);
+
   const handleOpenReferralModal = () => {
     setReferralUrgency(caseData.priority === "URGENT" ? "URGENT" : "ROUTINE");
     setReferralReason(caseData.safety_rule_reason || caseData.primary_concern || "Clinical evaluation recommended at PHC.");
@@ -419,17 +421,27 @@ export function AshaCitizenCaseScreen() {
     setIsSubmittingReferral(true);
     setReferralError(null);
     const targetFacilityId = caseData.assigned_facility_id || caseData.facility_id || "PHC-09";
+    const idempotencyKey = `ref-${caseData.id}-${Date.now()}`;
     try {
-      await apiClient.referAshaCase(caseData.id, {
-        facility_id: targetFacilityId,
-        urgency: referralUrgency,
-        reason: referralReason,
-        transport_required: referralTransport,
-      });
+      const resp = await apiClient.referAshaCase(
+        caseData.id,
+        {
+          facility_id: targetFacilityId,
+          urgency: referralUrgency,
+          reason: referralReason.trim(),
+          transport_required: referralTransport,
+        },
+        idempotencyKey
+      );
+      const refData = resp?.data || resp;
       setShowReferralModal(false);
+      setReferralSuccessBanner({
+        reference: refData?.referral_reference || refData?.reference || "REF-CREATED",
+        facilityName: refData?.facility_name || caseData.assigned_facility_name || "Kalyanpur Primary Health Center",
+      });
       await fetchCase();
     } catch (err: any) {
-      setReferralError(err.message || "Failed to submit referral.");
+      setReferralError(err.message || "Failed to submit referral. Please retry.");
     } finally {
       setIsSubmittingReferral(false);
     }
@@ -778,6 +790,45 @@ export function AshaCitizenCaseScreen() {
           </button>
         </div>
       </div>
+
+      {referralSuccessBanner && (
+        <div
+          id="referral-success-banner"
+          style={{
+            backgroundColor: "#E8F5E9",
+            border: "1px solid #A5D6A7",
+            borderRadius: 10,
+            padding: "14px 20px",
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            gap: 12,
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <span style={{ fontSize: 20 }}>✅</span>
+            <div>
+              <strong style={{ color: "#2E7D32", fontSize: 14 }}>PHC Referral Submitted Successfully</strong>
+              <div style={{ color: "#1B5E20", fontSize: 13, marginTop: 2 }}>
+                Referral Reference: <strong>{referralSuccessBanner.reference}</strong> · Sent to <strong>{referralSuccessBanner.facilityName}</strong>. Case status updated to <strong>REFERRED_TO_PHC</strong> (Doctor Review Pending).
+              </div>
+            </div>
+          </div>
+          <button
+            onClick={() => setReferralSuccessBanner(null)}
+            style={{
+              border: "none",
+              backgroundColor: "transparent",
+              color: "#2E7D32",
+              fontWeight: 700,
+              cursor: "pointer",
+              fontSize: 16,
+            }}
+          >
+            ✕
+          </button>
+        </div>
+      )}
 
       {/* 2. Patient Header Card */}
       <div
@@ -1412,11 +1463,18 @@ export function AshaCitizenCaseScreen() {
                   cursor: "pointer",
                 }}
               >
-                🏥 Prepare Referral to Kalyanpur PHC
+                🏥 Prepare Referral to {caseData.assigned_facility_name || caseData.facility_name || "Kalyanpur Primary Health Center"}
               </button>
             ) : (
-              <div style={{ padding: "10px", backgroundColor: "#E8F5E9", color: "#2E7D32", borderRadius: 6, fontSize: 12, fontWeight: 700, textAlign: "center" }}>
-                ✓ Referral active at Kalyanpur PHC. Duplicate referral prevented.
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                <div style={{ padding: "10px", backgroundColor: "#E8F5E9", color: "#2E7D32", borderRadius: 6, fontSize: 12, fontWeight: 700, textAlign: "center" }}>
+                  ✓ Referral active at {caseData.assigned_facility_name || caseData.facility_name || "Kalyanpur Primary Health Center"}. Doctor review pending.
+                </div>
+                {caseData.referrals && caseData.referrals.length > 0 && (
+                  <div style={{ fontSize: 11, color: "var(--text-secondary)", textAlign: "center" }}>
+                    Ref: <strong>{caseData.referrals[0].reference || caseData.referrals[0].id}</strong> · Status: <strong>{caseData.referrals[0].status}</strong>
+                  </div>
+                )}
               </div>
             )}
           </div>

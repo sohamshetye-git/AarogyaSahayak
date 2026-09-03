@@ -138,6 +138,20 @@ export function DirectCitizenRequestsScreen() {
         }
       }
       if (detail) {
+        // Canonical message deduplication
+        if (Array.isArray(detail.messages)) {
+          const seen = new Set<string>();
+          const deduped: any[] = [];
+          for (const m of detail.messages) {
+            const key = m.client_message_id || m.id;
+            if (!seen.has(key)) {
+              seen.add(key);
+              deduped.push(m);
+            }
+          }
+          deduped.sort((a, b) => (a.created_at || "").localeCompare(b.created_at || ""));
+          detail.messages = deduped;
+        }
         setActiveChatReq(detail);
       }
     } catch (err) {
@@ -153,11 +167,26 @@ export function DirectCitizenRequestsScreen() {
         "CONSULTATION_STARTED",
         "CONSULTATION_COMPLETED",
         "CARE_HANDOFF_UPDATED",
+        "REQUEST_CONTEXT_UPDATED",
         "CITIZEN_DOCTOR_REQUEST_SUBMITTED",
         "DOCTOR_DIRECT_REQUEST_STATUS_UPDATED"
       ].includes(event)
     ) {
       fetchRequests();
+      if (activeChatReq) {
+        const convId = data?.conversation_id || data?.request_id;
+        const srvId = data?.service_request_id;
+        if (
+          !convId ||
+          convId === activeChatReq.id ||
+          convId === activeChatReq.conversation_id ||
+          srvId === activeChatReq.id ||
+          srvId === activeChatReq.service_request_id ||
+          data?.request_reference === activeChatReq.request_reference
+        ) {
+          fetchChatConversation(activeChatReq.id || activeChatReq.conversation_id);
+        }
+      }
     }
 
     if (
@@ -177,7 +206,8 @@ export function DirectCitizenRequestsScreen() {
           convId === activeChatReq.id ||
           convId === activeChatReq.conversation_id ||
           srvId === activeChatReq.id ||
-          srvId === activeChatReq.service_request_id
+          srvId === activeChatReq.service_request_id ||
+          data?.request_reference === activeChatReq.request_reference
         ) {
           fetchChatConversation(activeChatReq.id || activeChatReq.conversation_id);
         }

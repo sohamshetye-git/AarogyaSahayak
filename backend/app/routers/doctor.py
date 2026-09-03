@@ -3622,44 +3622,14 @@ def get_doctor_direct_requests(
         bm = r.beneficiary
         patient_profile_id = citizen.id if citizen else None
 
-        # Fetch messages if any
-        messages_data = []
-        chat_msgs = db.query(DoctorChatMessage).filter(
-            (DoctorChatMessage.service_request_id == r.id) |
-            (DoctorChatMessage.conversation_id.in_(
-                db.query(DoctorChatThread.id).filter(DoctorChatThread.service_request_id == r.id)
-            ))
-        ).order_by(DoctorChatMessage.created_at.asc()).all()
-
-        for m in chat_msgs:
-            messages_data.append({
-                "id": m.id,
-                "sender_type": "DOCTOR" if m.sender_role == "PHC_DOCTOR" else "CITIZEN",
-                "sender_role": m.sender_role,
-                "sender_name": m.sender_name,
-                "message_text": m.body,
-                "body": m.body,
-                "created_at": m.created_at.isoformat() if m.created_at else ""
-            })
+        # Fetch deduplicated messages via DoctorChatService
+        from app.services.doctor_chat_service import DoctorChatService
+        messages_data = DoctorChatService.get_messages(db, r.id)
 
         tele_req_ids = [t[0] for t in db.query(TeleconsultationRequest.id).filter(
             (TeleconsultationRequest.service_request_id == r.id) |
             (TeleconsultationRequest.public_reference == r.request_reference)
         ).all()]
-        if tele_req_ids:
-            t_msgs = db.query(TeleconsultationMessage).filter(
-                TeleconsultationMessage.request_id.in_(tele_req_ids)
-            ).order_by(TeleconsultationMessage.created_at.asc()).all()
-            for m in t_msgs:
-                messages_data.append({
-                    "id": m.id,
-                    "sender_type": m.sender_type or "CITIZEN",
-                    "sender_role": "PHC_DOCTOR" if m.sender_type == "DOCTOR" else "CITIZEN",
-                    "sender_name": m.sender_name or "Participant",
-                    "message_text": m.message_text,
-                    "body": m.message_text,
-                    "created_at": m.created_at.isoformat() if m.created_at else ""
-                })
 
         chief = handoff.chief_concern if handoff else (r.details or {}).get("chief_complaint") or "Teleconsultation Request"
 
@@ -3740,6 +3710,7 @@ def get_doctor_direct_requests_summary(
     })
 
 @router.post("/direct-requests/{request_id}/messages", response_model=StandardResponse)
+@router.post("/direct-requests/{request_id}/chat-messages", response_model=StandardResponse)
 def send_doctor_chat_message(
     request_id: str,
     dto: TeleconsultationMessageCreateDTO,
@@ -3760,12 +3731,15 @@ def send_doctor_chat_message(
         raise HTTPException(status_code=400, detail="Message text cannot be empty")
 
     target_req_id = tele_req.id if tele_req else target_srv.id
+    from app.services.recent_activity_service import normalize_actor_name
+    doctor_clean_name = normalize_actor_name(current_user.name, role="PHC_DOCTOR")
+
     msg = TeleconsultationService.send_message(
         db=db,
         request_id=target_req_id,
         sender_type="DOCTOR",
         sender_role="PHC_DOCTOR",
-        sender_name=f"Dr. {current_user.name}",
+        sender_name=doctor_clean_name,
         message_text=body_text,
         sender_id=current_user.id,
         client_message_id=dto.client_message_id,
@@ -3790,7 +3764,7 @@ def send_doctor_chat_message(
         "sender_user_id": getattr(msg, "sender_user_id", current_user.id),
         "sender_role": msg_sender_role,
         "sender_type": msg_sender_type,
-        "sender_name": getattr(msg, "sender_name", f"Dr. {current_user.name}"),
+        "sender_name": getattr(msg, "sender_name", doctor_clean_name),
         "message_type": getattr(msg, "message_type", "TEXT"),
         "body": msg_body,
         "message_text": msg_body,
@@ -3812,6 +3786,7 @@ def get_doctor_direct_request_detail(
         TeleconsultationRequest, TeleconsultationMessage, DoctorChatThread, DoctorChatMessage
     )
     from app.services.teleconsultation_service import TeleconsultationService
+    from app.services.doctor_chat_service import DoctorChatService
     tele_req, r = TeleconsultationService.resolve_canonical_request(db, request_id)
     if not r and not tele_req:
         raise HTTPException(status_code=404, detail="Direct citizen request not found")
@@ -3828,60 +3803,8 @@ def get_doctor_direct_request_detail(
     citizen = r.citizen
     bm = r.beneficiary
 
-    # Fetch messages
-    messages_data = []
-    chat_msgs = db.query(DoctorChatMessage).filter(
-        (DoctorChatMessage.service_request_id == r.id) |
-        (DoctorChatMessage.conversation_id.in_(
-            db.query(DoctorChatThread.id).filter(DoctorChatThread.service_request_id == r.id)
-        ))
-    ).order_by(DoctorChatMessage.created_at.asc()).all()
-
-    for m in chat_msgs:
-        messages_data.append({
-            "id": m.id,
-            "conversation_id": m.conversation_id,
-            "service_request_id": m.service_request_id or r.id,
-            "sender_user_id": m.sender_user_id,
-            "sender_role": m.sender_role,
-            "sender_type": "DOCTOR" if m.sender_role == "PHC_DOCTOR" else "CITIZEN",
-            "sender_name": m.sender_name or (f"Dr. {current_user.name}" if m.sender_role == "PHC_DOCTOR" else "Patient"),
-            "message_type": "TEXT",
-            "body": m.body,
-            "message_text": m.body,
-            "client_message_id": m.client_message_id,
-            "status": m.status or "DELIVERED",
-            "created_at": m.created_at.isoformat() if m.created_at else "",
-            "delivered_at": m.delivered_at.isoformat() if m.delivered_at else None,
-            "read_at": m.read_at.isoformat() if m.read_at else None
-        })
-
-    tele_req_ids = [t[0] for t in db.query(TeleconsultationRequest.id).filter(
-        (TeleconsultationRequest.service_request_id == r.id) |
-        (TeleconsultationRequest.public_reference == r.request_reference)
-    ).all()]
-    if tele_req_ids:
-        t_msgs = db.query(TeleconsultationMessage).filter(
-            TeleconsultationMessage.request_id.in_(tele_req_ids)
-        ).order_by(TeleconsultationMessage.created_at.asc()).all()
-        for m in t_msgs:
-            messages_data.append({
-                "id": m.id,
-                "conversation_id": tele_req.id if tele_req else r.id,
-                "service_request_id": r.id,
-                "sender_user_id": m.sender_id,
-                "sender_role": "PHC_DOCTOR" if m.sender_type == "DOCTOR" else "CITIZEN",
-                "sender_type": m.sender_type,
-                "sender_name": m.sender_name or "Participant",
-                "message_type": "TEXT",
-                "body": m.message_text,
-                "message_text": m.message_text,
-                "client_message_id": None,
-                "status": "DELIVERED",
-                "created_at": m.created_at.isoformat() if m.created_at else "",
-                "delivered_at": None,
-                "read_at": None
-            })
+    # Fetch canonical deduplicated messages
+    messages_data = DoctorChatService.get_messages(db, r.id)
 
     chief = handoff.chief_concern if handoff else (r.details or {}).get("chief_complaint") or "Care Handoff Request"
 

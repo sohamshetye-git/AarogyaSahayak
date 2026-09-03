@@ -30,6 +30,19 @@ interface LocalChatMessage {
   created_at: string;
 }
 
+const formatDoctorName = (name?: string | null): string => {
+  if (!name || name.trim() === "") return "PHC Medical Officer";
+  let trimmed = name.trim();
+  while (trimmed.toLowerCase().startsWith("dr. ") || trimmed.toLowerCase().startsWith("dr ")) {
+    if (trimmed.toLowerCase().startsWith("dr. ")) {
+      trimmed = trimmed.substring(4).trim();
+    } else if (trimmed.toLowerCase().startsWith("dr ")) {
+      trimmed = trimmed.substring(3).trim();
+    }
+  }
+  return `Dr. ${trimmed}`;
+};
+
 export const DoctorWaitingRoomScreen: React.FC<DoctorWaitingRoomScreenProps> = ({
   requestId,
   onJoinConsultation,
@@ -45,6 +58,8 @@ export const DoctorWaitingRoomScreen: React.FC<DoctorWaitingRoomScreenProps> = (
   const [showSymptomModal, setShowSymptomModal] = useState(false);
   const [newSymptomText, setNewSymptomText] = useState("");
   const [isSubmittingMessage, setIsSubmittingMessage] = useState(false);
+  const [isUpdatingSymptoms, setIsUpdatingSymptoms] = useState(false);
+  const [symptomModalError, setSymptomModalError] = useState<string | null>(null);
   const [errorNotice, setErrorNotice] = useState<string | null>(null);
   const [connectionState, setConnectionState] = useState<"ONLINE" | "RECONNECTING" | "OFFLINE">("ONLINE");
 
@@ -126,7 +141,19 @@ export const DoctorWaitingRoomScreen: React.FC<DoctorWaitingRoomScreenProps> = (
                      !serverMsgs.some((s) => s.client_message_id === p.client_message_id || s.id === p.id)
             );
 
-            return [...serverMsgs, ...pendingOptimistic];
+            // Deduplicate by message id & client_message_id
+            const seen = new Set<string>();
+            const deduplicated: LocalChatMessage[] = [];
+            for (const msg of [...serverMsgs, ...pendingOptimistic]) {
+              const key = msg.client_message_id || msg.id;
+              if (!seen.has(key)) {
+                seen.add(key);
+                deduplicated.push(msg);
+              }
+            }
+
+            deduplicated.sort((a, b) => (a.created_at || "").localeCompare(b.created_at || ""));
+            return deduplicated;
           });
         }
 
@@ -203,7 +230,9 @@ export const DoctorWaitingRoomScreen: React.FC<DoctorWaitingRoomScreenProps> = (
                   : m
               );
             }
-            return [...prev, newMsg];
+            const updated = [...prev, newMsg];
+            updated.sort((a, b) => (a.created_at || "").localeCompare(b.created_at || ""));
+            return updated;
           });
 
           // If doctor sent the message, mark it read
@@ -229,7 +258,9 @@ export const DoctorWaitingRoomScreen: React.FC<DoctorWaitingRoomScreenProps> = (
         event === "DOCTOR_REQUEST_ACCEPTED" ||
         event === "CONSULTATION_STARTED" ||
         event === "CONSULTATION_COMPLETED" ||
-        event === "DOCTOR_DIRECT_REQUEST_STATUS_UPDATED"
+        event === "DOCTOR_DIRECT_REQUEST_STATUS_UPDATED" ||
+        event === "REQUEST_CONTEXT_UPDATED" ||
+        event === "CARE_HANDOFF_UPDATED"
       ) {
         fetchStatus();
       }
@@ -321,14 +352,27 @@ export const DoctorWaitingRoomScreen: React.FC<DoctorWaitingRoomScreenProps> = (
   };
 
   const handleUpdateSymptoms = async () => {
-    if (!newSymptomText.trim()) return;
+    const trimmed = newSymptomText.trim();
+    if (!trimmed) {
+      setSymptomModalError(t("waiting_room.symptom_empty_error", "Please enter a symptom description."));
+      return;
+    }
+
+    setIsUpdatingSymptoms(true);
+    setSymptomModalError(null);
+
     try {
-      await apiClient.updateDoctorRequestSymptoms(requestId, [newSymptomText.trim()]);
+      await apiClient.updateDoctorRequestSymptoms(requestId, [trimmed]);
       setNewSymptomText("");
       setShowSymptomModal(false);
+      setSymptomModalError(null);
       await fetchStatus();
-    } catch (err) {
+    } catch (err: any) {
       console.error("Failed to update symptoms", err);
+      const safeMsg = err?.message || err?.error?.message || t("waiting_room.update_symptom_failed", "Failed to update symptoms. Please tap Retry.");
+      setSymptomModalError(safeMsg);
+    } finally {
+      setIsUpdatingSymptoms(false);
     }
   };
 
@@ -502,7 +546,7 @@ export const DoctorWaitingRoomScreen: React.FC<DoctorWaitingRoomScreenProps> = (
                 </div>
                 <div>
                   <div style={{ fontSize: 14, fontWeight: 800, color: "#0F172A" }}>
-                    {data?.doctor?.name ? `Dr. ${data.doctor.name}` : (data?.assigned_doctor_name ? `Dr. ${data.assigned_doctor_name}` : (data?.doctor_name ? `Dr. ${data.doctor_name}` : "PHC Medical Officer"))}
+                    {formatDoctorName(data?.doctor?.name || data?.assigned_doctor_name || data?.doctor_name)}
                   </div>
                   <div style={{ fontSize: 11, color: isCompleted ? "#64748B" : (isAccepted ? "#16A34A" : "#D97706"), fontWeight: 700, display: "flex", alignItems: "center", gap: 4 }}>
                     <span style={{ width: 7, height: 7, borderRadius: "50%", backgroundColor: isCompleted ? "#94A3B8" : (isAccepted ? "#16A34A" : "#F59E0B") }} />
@@ -567,7 +611,7 @@ export const DoctorWaitingRoomScreen: React.FC<DoctorWaitingRoomScreenProps> = (
                       }}
                     >
                       <div style={{ fontSize: 10, opacity: 0.85, marginBottom: 3, fontWeight: 700, display: "flex", justifyContent: "space-between", gap: 8 }}>
-                        <span>{isCitizenMsg ? (m.sender_name || t("common.you", "You")) : (m.sender_name || t("common.doctor", "Dr. Medical Officer"))}</span>
+                        <span>{isCitizenMsg ? (m.sender_name || t("common.you", "You")) : (formatDoctorName(m.sender_name) || t("common.doctor", "Dr. Medical Officer"))}</span>
                         <span>
                           {m.created_at ? new Date(m.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : ""}
                         </span>
@@ -735,7 +779,10 @@ export const DoctorWaitingRoomScreen: React.FC<DoctorWaitingRoomScreenProps> = (
             <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
               <button
                 id="btn-waiting-room-update-symptoms"
-                onClick={() => setShowSymptomModal(true)}
+                onClick={() => {
+                  setSymptomModalError(null);
+                  setShowSymptomModal(true);
+                }}
                 style={{ padding: "6px 12px", backgroundColor: "#EFF6FF", color: "#2563EB", border: "1px solid #BFDBFE", borderRadius: 10, fontSize: 12, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", gap: 4 }}
               >
                 <Plus size={14} /> {t("waiting_room.update_symptoms", "Update Symptoms")}
@@ -757,7 +804,7 @@ export const DoctorWaitingRoomScreen: React.FC<DoctorWaitingRoomScreenProps> = (
           <div style={{ backgroundColor: "#FFFFFF", borderRadius: 20, padding: 20, width: "100%", maxWidth: 380, boxShadow: "0 20px 40px rgba(0,0,0,0.2)" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
               <div style={{ fontSize: 16, fontWeight: 800 }}>{t("waiting_room.update_symptoms_title", "Update Symptoms")}</div>
-              <button onClick={() => setShowSymptomModal(false)} style={{ border: "none", background: "transparent", cursor: "pointer" }}>
+              <button onClick={() => !isUpdatingSymptoms && setShowSymptomModal(false)} disabled={isUpdatingSymptoms} style={{ border: "none", background: "transparent", cursor: isUpdatingSymptoms ? "not-allowed" : "pointer" }}>
                 <X size={20} />
               </button>
             </div>
@@ -766,16 +813,49 @@ export const DoctorWaitingRoomScreen: React.FC<DoctorWaitingRoomScreenProps> = (
             </p>
             <input
               type="text"
+              id="input-waiting-room-symptom"
               value={newSymptomText}
-              onChange={(e) => setNewSymptomText(e.target.value)}
+              disabled={isUpdatingSymptoms}
+              onChange={(e) => {
+                setNewSymptomText(e.target.value);
+                if (symptomModalError) setSymptomModalError(null);
+              }}
               placeholder={t("waiting_room.update_symptoms_placeholder", "e.g. Fever increased, dizziness...")}
-              style={{ width: "100%", padding: 10, borderRadius: 10, border: "1.5px solid #CBD5E1", fontSize: 13, marginBottom: 14 }}
+              style={{ width: "100%", padding: 10, borderRadius: 10, border: `1.5px solid ${symptomModalError ? "#EF4444" : "#CBD5E1"}`, fontSize: 13, marginBottom: 10, boxSizing: "border-box" }}
             />
+            {symptomModalError && (
+              <div style={{ padding: "6px 10px", backgroundColor: "#FEF2F2", border: "1px solid #FECACA", borderRadius: 8, color: "#DC2626", fontSize: 12, fontWeight: 600, marginBottom: 12, display: "flex", alignItems: "center", gap: 6 }}>
+                <AlertTriangle size={13} />
+                <span>{symptomModalError}</span>
+              </div>
+            )}
             <button
+              id="btn-waiting-room-submit-symptom"
               onClick={handleUpdateSymptoms}
-              style={{ width: "100%", padding: 12, backgroundColor: "#2563EB", color: "#FFFFFF", fontWeight: 800, borderRadius: 12, border: "none", cursor: "pointer" }}
+              disabled={isUpdatingSymptoms || !newSymptomText.trim()}
+              style={{
+                width: "100%",
+                padding: 12,
+                backgroundColor: (isUpdatingSymptoms || !newSymptomText.trim()) ? "#94A3B8" : "#2563EB",
+                color: "#FFFFFF",
+                fontWeight: 800,
+                borderRadius: 12,
+                border: "none",
+                cursor: (isUpdatingSymptoms || !newSymptomText.trim()) ? "not-allowed" : "pointer",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 6
+              }}
             >
-              {t("waiting_room.submit_retriage", "Submit & Re-triage")}
+              {isUpdatingSymptoms ? (
+                <>
+                  <Loader2 size={16} className="animate-spin" />
+                  <span>{t("common.updating", "Updating & Re-triaging...")}</span>
+                </>
+              ) : (
+                <span>{t("waiting_room.submit_retriage", "Submit & Re-triage")}</span>
+              )}
             </button>
           </div>
         </div>
