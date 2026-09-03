@@ -1064,9 +1064,9 @@ class DoctorInvestigationItemDTO(BaseModel):
     investigation_reference: str
     citizen_id: str
     citizen_name: str
-    citizen_age: int
-    citizen_gender: str
-    village_name: str
+    citizen_age: Optional[int] = 30
+    citizen_gender: Optional[str] = "Female"
+    village_name: Optional[str] = "Kalyanpur"
     clinical_context: Optional[str] = "General"
     case_id: str
     case_reference: str
@@ -1103,9 +1103,9 @@ class TestDetailDTO(BaseModel):
 class PatientDetailDTO(BaseModel):
     citizen_id: str
     name: str
-    age: int
-    gender: str
-    village: str
+    age: Optional[int] = 30
+    gender: Optional[str] = "Female"
+    village: Optional[str] = "Kalyanpur"
 
 class CaseDetailDTO(BaseModel):
     case_id: str

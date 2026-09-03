@@ -173,6 +173,17 @@ def to_doctor_investigation_dto(order: InvestigationOrder) -> DoctorInvestigatio
         elif cit.chronic_conditions:
             clinical_ctx = "NCD Health"
 
+    age_val = 30
+    gender_val = "Female"
+    village_val = "Kalyanpur"
+    if cit:
+        if cit.age_estimate is not None:
+            age_val = cit.age_estimate
+        if cit.sex:
+            gender_val = cit.sex
+        if cit.village_name:
+            village_val = cit.village_name
+
     return DoctorInvestigationItemDTO(
         id=order.id,
         reference=order.reference,
@@ -180,9 +191,9 @@ def to_doctor_investigation_dto(order: InvestigationOrder) -> DoctorInvestigatio
         investigation_reference=order.reference,
         citizen_id=cit.id if cit else "",
         citizen_name=cit.display_name if cit else "Citizen",
-        citizen_age=cit.age_estimate if cit else 30,
-        citizen_gender=cit.sex if cit else "Female",
-        village_name=cit.village_name if cit else "Kalyanpur",
+        citizen_age=age_val,
+        citizen_gender=gender_val,
+        village_name=village_val,
         clinical_context=clinical_ctx,
         case_id=case.id if case else "",
         case_reference=case.reference if case else "",

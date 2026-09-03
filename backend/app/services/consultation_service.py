@@ -1,9 +1,11 @@
+import uuid
 import random
 from datetime import datetime, timedelta, timezone
 from sqlalchemy.orm import Session
 from app.models import (
     Case, Consultation, Prescription, PrescriptionItem, TestOrder, FollowUp,
-    User, AuditLog, Notification, CaseStatusEnum, CasePriorityEnum, UserRoleEnum, Referral
+    User, AuditLog, Notification, CaseStatusEnum, CasePriorityEnum, UserRoleEnum, Referral,
+    InvestigationOrder, InvestigationSample, utc_now
 )
 from app.schemas import DoctorConsultationSubmitRequest
 from app.services.case_service import CaseService
@@ -102,17 +104,79 @@ class ConsultationService:
                     status=d_test.status or "ORDERED"
                 )
                 db.add(t_order)
+
+                # Persist canonical InvestigationOrder for Doctor Workspace & Citizen portal
+                inv_ref = f"INV-{datetime.now(timezone.utc).year}-{uuid.uuid4().hex[:6].upper()}"
+                now_utc = utc_now()
+                inv_order = InvestigationOrder(
+                    reference=inv_ref,
+                    citizen_id=case.citizen_id,
+                    case_id=case.id,
+                    consultation_id=consultation.id,
+                    ordered_by_doctor_id=doctor_user.id,
+                    facility_id=facility_id,
+                    test_name=d_test.test_name,
+                    test_code=d_test.test_code,
+                    category=d_test.category or "GENERAL",
+                    priority=d_test.priority or "ROUTINE",
+                    clinical_reason=d_test.clinical_reason or req.confirmed_diagnosis,
+                    specimen_type=d_test.specimen_type or "Blood / Urine",
+                    preparation_instructions=d_test.preparation_instructions or "Standard preparation",
+                    collection_location=d_test.collection_location or "PHC Kalyanpur Sample Collection Counter",
+                    ordered_at=now_utc,
+                    due_at=now_utc + timedelta(days=1),
+                    expected_result_at=now_utc + timedelta(days=2),
+                    status="SAMPLE_PENDING"
+                )
+                db.add(inv_order)
+                db.flush()
+                db.add(InvestigationSample(
+                    investigation_order_id=inv_order.id,
+                    sample_reference=f"SMP-{inv_order.reference}",
+                    collection_status="PENDING"
+                ))
         elif req.investigation_orders:
             for test in req.investigation_orders:
+                t_priority = "URGENT" if case.priority == CasePriorityEnum.URGENT else "ROUTINE"
                 t_order = TestOrder(
                     consultation_id=consultation.id,
                     test_name=test,
-                    priority="URGENT" if case.priority == CasePriorityEnum.URGENT else "ROUTINE",
+                    priority=t_priority,
                     reason=req.confirmed_diagnosis,
                     facility_id=facility_id,
                     status="ORDERED"
                 )
                 db.add(t_order)
+
+                # Persist canonical InvestigationOrder for Doctor Workspace & Citizen portal
+                inv_ref = f"INV-{datetime.now(timezone.utc).year}-{uuid.uuid4().hex[:6].upper()}"
+                now_utc = utc_now()
+                inv_order = InvestigationOrder(
+                    reference=inv_ref,
+                    citizen_id=case.citizen_id,
+                    case_id=case.id,
+                    consultation_id=consultation.id,
+                    ordered_by_doctor_id=doctor_user.id,
+                    facility_id=facility_id,
+                    test_name=test,
+                    category="GENERAL",
+                    priority=t_priority,
+                    clinical_reason=req.confirmed_diagnosis or "Consultation order",
+                    specimen_type="Blood / Urine",
+                    preparation_instructions="Standard preparation",
+                    collection_location="PHC Kalyanpur Sample Collection Counter",
+                    ordered_at=now_utc,
+                    due_at=now_utc + timedelta(days=1),
+                    expected_result_at=now_utc + timedelta(days=2),
+                    status="SAMPLE_PENDING"
+                )
+                db.add(inv_order)
+                db.flush()
+                db.add(InvestigationSample(
+                    investigation_order_id=inv_order.id,
+                    sample_reference=f"SMP-{inv_order.reference}",
+                    collection_status="PENDING"
+                ))
 
         # Create ASHA Follow-up Directive
         if req.asha_followup_directive or req.asha_followup_instructions or req.followup_due_days:

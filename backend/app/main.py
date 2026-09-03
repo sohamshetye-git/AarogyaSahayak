@@ -120,7 +120,7 @@ async def generic_exception_handler(request: Request, exc: Exception):
     request_id = getattr(request.state, "request_id", str(uuid.uuid4()))
     logger.error(f"Unhandled Exception on {request.method} {request.url.path} [request_id={request_id}]: {exc}", exc_info=True)
     origin = request.headers.get("origin", "*")
-    error_msg = "Registration or service request could not be completed. Please try again."
+    error_msg = "An unexpected error occurred while processing your request. Please try again."
     err_detail = str(exc) if settings.ENVIRONMENT in ("staging", "development", "local") else None
     return JSONResponse(
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
