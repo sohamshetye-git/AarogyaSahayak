@@ -1355,7 +1355,7 @@ def get_doctor_case_timeline(
                 )
             )
         for rx in cons.prescriptions:
-            med_list = [f"{item.medicine} ({item.strength or ''} {item.dose})" for item in rx.items]
+            med_list = [f"{getattr(item, 'generic_name_snapshot', None) or getattr(item, 'medicine', '')} ({item.strength or ''} {item.dose or ''})".strip() for item in rx.items]
             events_raw.append(
                 DoctorTimelineEventDTO(
                     event_id=f"evt-rx-{rx.id}",
@@ -1364,7 +1364,7 @@ def get_doctor_case_timeline(
                     safe_description=f"Prescribed: {', '.join(med_list) if med_list else 'Medications prescribed'}.",
                     actor_name=cons.doctor_name,
                     actor_role="PHC_DOCTOR",
-                    occurred_at=rx.issued_at or cons.created_at,
+                    occurred_at=getattr(rx, "signed_at", None) or getattr(rx, "created_at", None) or cons.created_at,
                     source_entity_type="PRESCRIPTION",
                     source_entity_id=rx.id,
                     category="CONSULTATION"
