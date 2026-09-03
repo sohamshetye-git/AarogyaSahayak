@@ -184,21 +184,29 @@ def to_doctor_investigation_dto(order: InvestigationOrder) -> DoctorInvestigatio
         if cit.village_name:
             village_val = cit.village_name
 
+    cit_id = cit.id if cit else (order.citizen_id or "")
+    case_id_val = case.id if case else (order.case_id or (cons.case_id if cons else ""))
+    case_ref_val = case.reference if case else (cons.case.reference if cons and getattr(cons, "case", None) else "")
+    cons_id_val = cons.id if cons else (order.consultation_id or None)
+    cons_ref_val = cons.reference if cons else None
+
     return DoctorInvestigationItemDTO(
         id=order.id,
         reference=order.reference,
         investigation_id=order.id,
+        investigation_order_id=order.id,
         investigation_reference=order.reference,
-        citizen_id=cit.id if cit else "",
+        citizen_id=cit_id,
+        patient_id=cit_id,
         citizen_name=cit.display_name if cit else "Citizen",
         citizen_age=age_val,
         citizen_gender=gender_val,
         village_name=village_val,
         clinical_context=clinical_ctx,
-        case_id=case.id if case else "",
-        case_reference=case.reference if case else "",
-        consultation_id=cons.id if cons else None,
-        consultation_reference=cons.reference if cons else None,
+        case_id=case_id_val,
+        case_reference=case_ref_val,
+        consultation_id=cons_id_val,
+        consultation_reference=cons_ref_val,
         referral_id=order.referral_id,
         ordering_doctor_name=doc.name if doc else "Dr. Abhinav Sharma",
         test_name=order.test_name,

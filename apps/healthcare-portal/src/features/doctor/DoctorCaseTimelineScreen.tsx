@@ -11,8 +11,15 @@ export function DoctorCaseTimelineScreen() {
   const [searchParams] = useSearchParams();
 
   const returnTo = searchParams.get("returnTo");
+  const highlightOrder = searchParams.get("highlightOrder");
   const backTarget = returnTo || doctorPaths.dashboard();
-  const backLabel = returnTo && returnTo.includes("consultations") ? "← Back to Consultations" : returnTo ? "← Back" : "← Back to Dashboard";
+  const backLabel = returnTo && returnTo.includes("investigations")
+    ? "← Back to Investigations"
+    : returnTo && returnTo.includes("consultations")
+    ? "← Back to Consultations"
+    : returnTo
+    ? "← Back"
+    : "← Back to Dashboard";
 
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -367,6 +374,13 @@ export function DoctorCaseTimelineScreen() {
 
             {filteredEvents.map((ev: any) => {
               const badge = getCategoryBadge(ev.category);
+              const isHighlighted = Boolean(
+                highlightOrder &&
+                (ev.source_entity_id === highlightOrder ||
+                  ev.event_id?.includes(highlightOrder) ||
+                  ev.safe_description?.includes(highlightOrder) ||
+                  ev.title?.includes(highlightOrder))
+              );
               return (
                 <div key={ev.event_id} style={{ display: "flex", gap: 16, alignItems: "flex-start", zIndex: 1 }}>
                   {/* Category Circle Icon */}
@@ -389,10 +403,26 @@ export function DoctorCaseTimelineScreen() {
                   </div>
 
                   {/* Content Box */}
-                  <div style={{ flex: 1, backgroundColor: "var(--neutral-bg)", padding: 14, borderRadius: 10, border: "1px solid var(--border)" }}>
+                  <div
+                    style={{
+                      flex: 1,
+                      backgroundColor: isHighlighted ? "#f0f9ff" : "var(--neutral-bg)",
+                      padding: 14,
+                      borderRadius: 10,
+                      border: isHighlighted ? "2px solid #0284c7" : "1px solid var(--border)",
+                      boxShadow: isHighlighted ? "0 0 0 3px rgba(2, 132, 199, 0.15)" : undefined,
+                    }}
+                  >
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 8, marginBottom: 4 }}>
-                      <div style={{ fontSize: 14, fontWeight: 700, color: "var(--text-primary)" }}>
-                        {ev.title}
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                        <span style={{ fontSize: 14, fontWeight: 700, color: "var(--text-primary)" }}>
+                          {ev.title}
+                        </span>
+                        {isHighlighted && (
+                          <span style={{ padding: "2px 8px", backgroundColor: "#0284c7", color: "#ffffff", borderRadius: 4, fontSize: 11, fontWeight: 700 }}>
+                            Linked Investigation Order
+                          </span>
+                        )}
                       </div>
                       <div style={{ fontSize: 12, color: "var(--text-secondary)", fontWeight: 600 }}>
                         {new Date(ev.occurred_at).toLocaleString([], { dateStyle: "medium", timeStyle: "short" })}

@@ -1433,6 +1433,81 @@ def get_doctor_case_timeline(
                 )
             )
 
+    # (i) Canonical Investigation Orders
+    from app.models import InvestigationOrder
+    cons_ids = [c.id for c in case.consultations]
+    inv_orders = db.query(InvestigationOrder).filter(
+        (InvestigationOrder.case_id == case.id) | (InvestigationOrder.consultation_id.in_(cons_ids) if cons_ids else False)
+    ).all()
+
+    for inv in inv_orders:
+        doctor_name = inv.ordered_by_doctor.name if inv.ordered_by_doctor else "Dr. Abhinav Sharma"
+        events_raw.append(
+            DoctorTimelineEventDTO(
+                event_id=f"evt-inv-order-{inv.id}",
+                event_type="INVESTIGATION_ORDERED",
+                title=f"Investigation Ordered: {inv.test_name}",
+                safe_description=f"Order Ref: {inv.reference} • Category: {inv.category} • Priority: {inv.priority} • Status: {inv.status}",
+                actor_name=doctor_name,
+                actor_role="PHC_DOCTOR",
+                occurred_at=inv.ordered_at or inv.created_at,
+                source_entity_type="INVESTIGATION_ORDER",
+                source_entity_id=inv.id,
+                category="INVESTIGATION"
+            )
+        )
+        if inv.sample and inv.sample.collected_at:
+            collector = inv.sample.collected_by.name if getattr(inv.sample, "collected_by", None) else "Lab Technician"
+            events_raw.append(
+                DoctorTimelineEventDTO(
+                    event_id=f"evt-inv-sample-{inv.sample.id}",
+                    event_type="INVESTIGATION_SAMPLE_COLLECTED",
+                    title=f"Sample Collected: {inv.test_name}",
+                    safe_description=f"Sample Ref: {inv.sample.sample_reference or 'N/A'} • Status: {inv.sample.collection_status}",
+                    actor_name=collector,
+                    actor_role="STAFF",
+                    occurred_at=inv.sample.collected_at,
+                    source_entity_type="INVESTIGATION_SAMPLE",
+                    source_entity_id=inv.sample.id,
+                    category="INVESTIGATION"
+                )
+            )
+        if inv.result and inv.result.resulted_at:
+            entered_by = inv.result.entered_by.name if getattr(inv.result, "entered_by", None) else "Lab Technician"
+            if inv.result.items:
+                res_parts = [f"{i.parameter_name}: {i.value} {i.unit or ''}".strip() for i in inv.result.items[:2]]
+                res_summary = f"Result: {', '.join(res_parts)}"
+            events_raw.append(
+                DoctorTimelineEventDTO(
+                    event_id=f"evt-inv-result-{inv.result.id}",
+                    event_type="INVESTIGATION_RESULT_RECORDED",
+                    title=f"Investigation Result: {inv.test_name}",
+                    safe_description=f"{res_summary} • Status: {inv.status}",
+                    actor_name=entered_by,
+                    actor_role="STAFF",
+                    occurred_at=inv.result.resulted_at,
+                    source_entity_type="INVESTIGATION_RESULT",
+                    source_entity_id=inv.result.id,
+                    category="INVESTIGATION"
+                )
+            )
+        if inv.result and getattr(inv.result, "review", None) and inv.result.review.reviewed_at:
+            rev_doc = inv.result.review.doctor.name if getattr(inv.result.review, "doctor", None) else "Dr. Abhinav Sharma"
+            events_raw.append(
+                DoctorTimelineEventDTO(
+                    event_id=f"evt-inv-review-{inv.result.review.id}",
+                    event_type="INVESTIGATION_REVIEWED",
+                    title=f"Investigation Reviewed: {inv.test_name}",
+                    safe_description=f"Review Note: {inv.result.review.review_note or 'Reviewed'} • Outcome: {inv.result.review.outcome}",
+                    actor_name=rev_doc,
+                    actor_role="PHC_DOCTOR",
+                    occurred_at=inv.result.review.reviewed_at,
+                    source_entity_type="INVESTIGATION_REVIEW",
+                    source_entity_id=inv.result.review.id,
+                    category="INVESTIGATION"
+                )
+            )
+
     def norm_time(dt):
         if dt is None:
             return datetime.now(timezone.utc)

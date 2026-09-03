@@ -188,7 +188,11 @@ export const DoctorInvestigationDetailScreen: React.FC = () => {
           )}
           {(order.case_id || order.case?.case_id) && (
             <button
-              onClick={() => navigate(doctorRoutes.caseTimeline(order.case_id || order.case?.case_id))}
+              onClick={() => {
+                const cId = order.case_id || order.case?.case_id;
+                const oId = order.investigation_order_id || order.investigation_id || order.id || investigationId;
+                navigate(doctorRoutes.caseTimeline(cId, `/doctor/investigations/${encodeURIComponent(oId)}`, oId));
+              }}
               style={{ padding: "0.4rem 0.85rem", borderRadius: "6px", border: "1px solid #cbd5e1", background: "#fff", cursor: "pointer", fontWeight: 600, fontSize: "0.8rem" }}
             >
               View Case Timeline

@@ -1,5 +1,5 @@
 import React from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import { doctorRoutes } from "../doctorRoutes";
 import { formatIndiaDateTime } from "../utils/dateFormatter";
 
@@ -21,6 +21,18 @@ export const InvestigationCard: React.FC<InvestigationCardProps> = ({
   onRequestRecollection,
 }) => {
   const navigate = useNavigate();
+  const location = useLocation();
+
+  const handleViewTimeline = () => {
+    const caseId = item.case_id || item.case?.id || (typeof item.case === "string" ? item.case : null);
+    if (!caseId) {
+      alert("Canonical case ID is missing for this investigation order.");
+      return;
+    }
+    const returnUrl = `${location.pathname}${location.search}`;
+    const orderId = item.investigation_order_id || item.investigation_id || item.id;
+    navigate(doctorRoutes.caseTimeline(caseId, returnUrl, orderId));
+  };
 
   const getStatusBadgeStyle = (status: string) => {
     switch (status) {
@@ -350,22 +362,20 @@ export const InvestigationCard: React.FC<InvestigationCardProps> = ({
           </button>
         )}
 
-        {item.case_id && (
-          <button
-            onClick={() => navigate(doctorRoutes.caseTimeline(item.case_id))}
-            style={{
-              padding: "0.4rem 0.8rem",
-              borderRadius: "6px",
-              border: "1px solid var(--border, #cbd5e1)",
-              background: "none",
-              color: "var(--text-secondary, #475569)",
-              fontSize: "0.8rem",
-              cursor: "pointer",
-            }}
-          >
-            View Timeline
-          </button>
-        )}
+        <button
+          onClick={handleViewTimeline}
+          style={{
+            padding: "0.4rem 0.8rem",
+            borderRadius: "6px",
+            border: "1px solid var(--border, #cbd5e1)",
+            background: "none",
+            color: "var(--text-secondary, #475569)",
+            fontSize: "0.8rem",
+            cursor: "pointer",
+          }}
+        >
+          View Timeline
+        </button>
       </div>
     </div>
   );

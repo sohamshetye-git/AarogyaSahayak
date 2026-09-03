@@ -400,6 +400,7 @@ class ClinicalWorkSummaryResponseData(BaseModel):
 
 class DoctorInvestigationItemDTO(BaseModel):
     id: str
+    investigation_order_id: Optional[str] = None
     test_name: str
     priority: str
     reason: Optional[str] = None
@@ -411,6 +412,7 @@ class DoctorInvestigationItemDTO(BaseModel):
     consultation_id: str
     consultation_reference: str
     citizen_id: str
+    patient_id: Optional[str] = None
     citizen_name: str
     citizen_age: Optional[int] = None
     citizen_gender: Optional[str] = None
@@ -1077,8 +1079,10 @@ class DoctorInvestigationItemDTO(BaseModel):
     id: str
     reference: str
     investigation_id: str
+    investigation_order_id: Optional[str] = None
     investigation_reference: str
     citizen_id: str
+    patient_id: Optional[str] = None
     citizen_name: str
     citizen_age: Optional[int] = 30
     citizen_gender: Optional[str] = "Female"

@@ -46,8 +46,20 @@ export const doctorPaths = {
   patient: (citizenId: string, returnTo?: string) => `/doctor/patients/${encodeURIComponent(citizenId)}${returnTo ? `?returnTo=${encodeURIComponent(returnTo)}` : ""}`,
   patientRecord: (citizenId: string, returnTo?: string) => `/doctor/patients/${encodeURIComponent(citizenId)}${returnTo ? `?returnTo=${encodeURIComponent(returnTo)}` : ""}`,
   patients: (filters?: DoctorRouteFilters) => `/doctor/patients${buildQuery(filters)}`,
-  timeline: (caseId: string) => `/doctor/cases/${encodeURIComponent(caseId)}/timeline`,
-  caseTimeline: (caseId: string) => `/doctor/cases/${encodeURIComponent(caseId)}/timeline`,
+  timeline: (caseId: string, returnTo?: string, highlightOrderId?: string) => {
+    const params = new URLSearchParams();
+    if (returnTo) params.append("returnTo", returnTo);
+    if (highlightOrderId) params.append("highlightOrder", highlightOrderId);
+    const qs = params.toString();
+    return `/doctor/cases/${encodeURIComponent(caseId)}/timeline${qs ? `?${qs}` : ""}`;
+  },
+  caseTimeline: (caseId: string, returnTo?: string, highlightOrderId?: string) => {
+    const params = new URLSearchParams();
+    if (returnTo) params.append("returnTo", returnTo);
+    if (highlightOrderId) params.append("highlightOrder", highlightOrderId);
+    const qs = params.toString();
+    return `/doctor/cases/${encodeURIComponent(caseId)}/timeline${qs ? `?${qs}` : ""}`;
+  },
 
   // Follow-ups & Escalations
   followUps: (filters?: DoctorRouteFilters) => `/doctor/followups${buildQuery(filters)}`,
