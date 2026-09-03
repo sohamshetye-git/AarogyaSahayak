@@ -1,13 +1,135 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query, Path, status
 from sqlalchemy.orm import Session
+from typing import Optional
 from app.database import get_db
-from app.schemas import StandardResponse, AdminDashboardResponse, SystemHealthResponse
+from app.schemas import (
+    StandardResponse, AdminDashboardResponse, SystemHealthResponse,
+    StaffCreateRequest, StaffUpdateRequest, StaffTransferRequest, StaffSuspendRequest
+)
 from app.services.aggregation_service import AggregationService
+from app.services.staff_service import StaffManagementService
 from app.dependencies import require_admin, require_staff, RoleChecker
 from app.models import User, UserRoleEnum
 from app.config import settings
 
 router = APIRouter(prefix="/admin", tags=["District Health Officer / Admin"])
+
+# --- Staff Management Endpoints ---
+
+@router.get("/staff", response_model=StandardResponse)
+def list_district_staff(
+    search: Optional[str] = Query(None, description="Search by name, ID, or phone"),
+    role: Optional[str] = Query(None, description="Filter by role: ASHA_WORKER or PHC_DOCTOR"),
+    status: Optional[str] = Query(None, description="Filter by status: ACTIVE or SUSPENDED"),
+    facility_id: Optional[str] = Query(None, description="Filter by assigned facility ID"),
+    page: int = Query(1, ge=1),
+    limit: int = Query(20, ge=1, le=100),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin)
+):
+    """
+    List staff members in admin's district with summary counts, search, and filtering.
+    """
+    res = StaffManagementService.list_staff(
+        db=db,
+        admin_user=current_user,
+        search=search,
+        role=role,
+        status_filter=status,
+        facility_id=facility_id,
+        page=page,
+        limit=limit
+    )
+    return StandardResponse(data=res.model_dump())
+
+@router.post("/staff", response_model=StandardResponse, status_code=status.HTTP_201_CREATED)
+def create_district_staff(
+    req: StaffCreateRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin)
+):
+    """
+    Atomically creates a new ASHA worker or PHC doctor with collision-safe Staff ID and temporary password.
+    """
+    res = StaffManagementService.create_staff(db=db, admin_user=current_user, req=req)
+    return StandardResponse(data=res.model_dump())
+
+@router.get("/staff/{staff_id}", response_model=StandardResponse)
+def get_district_staff_detail(
+    staff_id: str = Path(..., description="User ID or Staff ID"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin)
+):
+    """
+    Get detailed profile of a staff member within admin's authorized district.
+    """
+    res = StaffManagementService.get_staff_detail(db=db, admin_user=current_user, staff_id_or_user_id=staff_id)
+    return StandardResponse(data=res.model_dump())
+
+@router.patch("/staff/{staff_id}", response_model=StandardResponse)
+def update_district_staff(
+    req: StaffUpdateRequest,
+    staff_id: str = Path(..., description="User ID or Staff ID"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin)
+):
+    """
+    Update details for a staff member within admin's authorized district.
+    """
+    res = StaffManagementService.update_staff(db=db, admin_user=current_user, staff_id_or_user_id=staff_id, req=req)
+    return StandardResponse(data=res.model_dump())
+
+@router.post("/staff/{staff_id}/suspend", response_model=StandardResponse)
+def suspend_district_staff(
+    req: Optional[StaffSuspendRequest] = None,
+    staff_id: str = Path(..., description="User ID or Staff ID"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin)
+):
+    """
+    Suspends a staff member, immediately blocking login and protected API access.
+    """
+    reason = req.reason if req else None
+    res = StaffManagementService.suspend_staff(db=db, admin_user=current_user, staff_id_or_user_id=staff_id, reason=reason)
+    return StandardResponse(data=res.model_dump())
+
+@router.post("/staff/{staff_id}/reactivate", response_model=StandardResponse)
+def reactivate_district_staff(
+    staff_id: str = Path(..., description="User ID or Staff ID"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin)
+):
+    """
+    Reactivates a suspended staff member, restoring access while preserving historical attribution.
+    """
+    res = StaffManagementService.reactivate_staff(db=db, admin_user=current_user, staff_id_or_user_id=staff_id)
+    return StandardResponse(data=res.model_dump())
+
+@router.post("/staff/{staff_id}/transfer", response_model=StandardResponse)
+def transfer_district_staff(
+    req: StaffTransferRequest,
+    staff_id: str = Path(..., description="User ID or Staff ID"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin)
+):
+    """
+    Transfers a staff member to a new PHC facility or village coverage area.
+    """
+    res = StaffManagementService.transfer_staff(db=db, admin_user=current_user, staff_id_or_user_id=staff_id, req=req)
+    return StandardResponse(data=res.model_dump())
+
+@router.post("/staff/{staff_id}/reset-password", response_model=StandardResponse)
+def reset_district_staff_password(
+    staff_id: str = Path(..., description="User ID or Staff ID"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin)
+):
+    """
+    Resets a staff member's password to a new temporary password and sets must_change_password=True.
+    """
+    res = StaffManagementService.reset_staff_password(db=db, admin_user=current_user, staff_id_or_user_id=staff_id)
+    return StandardResponse(data=res.model_dump())
+
 
 @router.get("/dashboard", response_model=StandardResponse)
 def get_admin_dashboard(

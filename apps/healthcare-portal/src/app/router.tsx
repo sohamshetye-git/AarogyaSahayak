@@ -38,7 +38,9 @@ import { DoctorAlertDetailScreen } from "../features/doctor/DoctorAlertDetailScr
 
 // Admin Feature Screens
 import { AdminDashboardScreen } from "../features/admin/AdminDashboardScreen";
+import { StaffManagementScreen } from "../features/admin/StaffManagementScreen";
 import { AdminReferralAnalyticsScreen, AdminSchemeAnalyticsScreen, AdminSystemHealthScreen } from "../features/admin/SecondaryScreens";
+import { ChangePasswordScreen } from "../auth/ChangePasswordScreen";
 
 // Login wrapper that automatically redirects if authenticated
 function PublicLoginRoute() {
@@ -47,6 +49,10 @@ function PublicLoginRoute() {
 
   useEffect(() => {
     if (isAuthenticated && user) {
+      if (user.must_change_password) {
+        navigate("/auth/change-password", { replace: true });
+        return;
+      }
       const uRole = String(user.role).toUpperCase();
       if (uRole === "PHC_DOCTOR" || uRole.includes("DOCTOR")) {
         navigate("/doctor/dashboard", { replace: true });
@@ -71,6 +77,10 @@ function ProtectedRoute({ allowedRoles }: { allowedRoles?: UserRole[] }) {
 
   if (!isAuthenticated || !user) {
     return <Navigate to="/login" replace />;
+  }
+
+  if (user.must_change_password) {
+    return <Navigate to="/auth/change-password" replace />;
   }
 
   const uRole = String(user.role).toUpperCase();
@@ -101,6 +111,7 @@ export function AppRouter() {
   return (
     <Routes>
       <Route path="/login" element={<PublicLoginRoute />} />
+      <Route path="/auth/change-password" element={<ChangePasswordScreen />} />
 
       {/* ASHA Routes */}
       <Route element={<ProtectedRoute allowedRoles={[UserRole.ASHA_WORKER]} />}>
@@ -150,6 +161,7 @@ export function AppRouter() {
       {/* District Admin Routes */}
       <Route element={<ProtectedRoute allowedRoles={[UserRole.DISTRICT_ADMIN]} />}>
         <Route path="/admin/dashboard" element={<AdminDashboardScreen />} />
+        <Route path="/admin/staff" element={<StaffManagementScreen />} />
         <Route path="/admin/alerts" element={<AdminDashboardScreen />} />
         <Route path="/admin/referrals" element={<AdminReferralAnalyticsScreen />} />
         <Route path="/admin/schemes" element={<AdminSchemeAnalyticsScreen />} />

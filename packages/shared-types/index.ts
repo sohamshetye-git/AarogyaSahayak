@@ -66,6 +66,8 @@ export enum SyncStatus {
 
 export interface UserSession {
   id: string;
+  identifier?: string;
+  staff_id?: string;
   name: string;
   phone?: string;
   email?: string;
@@ -74,8 +76,101 @@ export interface UserSession {
   facility_name?: string;
   village_ids?: string[];
   district_id?: string;
+  district_name?: string;
   preferred_language?: string;
   village_name?: string;
+  must_change_password?: boolean;
+  account_status?: string;
+}
+
+export interface StaffMemberDTO {
+  id: string;
+  staff_id: string;
+  identifier: string;
+  name: string;
+  role: string;
+  phone?: string;
+  phone_masked?: string;
+  email?: string;
+  employee_id?: string;
+  assigned_facility_id?: string;
+  assigned_facility_name?: string;
+  district_id?: string;
+  district_name?: string;
+  village_ids?: string[];
+  village_name?: string;
+  coverage_area?: string;
+  medical_registration_number?: string;
+  specialization?: string;
+  preferred_language?: string;
+  account_status: string;
+  must_change_password: boolean;
+  last_login_at?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface StaffSummaryCountsDTO {
+  total: number;
+  active: number;
+  suspended: number;
+  asha_workers: number;
+  phc_doctors: number;
+}
+
+export interface StaffListResponseData {
+  summary: StaffSummaryCountsDTO;
+  staff: StaffMemberDTO[];
+  total: number;
+  page: number;
+  limit: number;
+}
+
+export interface StaffCreateInput {
+  name: string;
+  role: "ASHA_WORKER" | "PHC_DOCTOR" | string;
+  phone: string;
+  email?: string;
+  employee_id?: string;
+  preferred_language?: string;
+  district?: string;
+  district_id?: string;
+  assigned_facility_id?: string;
+  village_name?: string;
+  village_ids?: string[];
+  coverage_area?: string;
+  medical_registration_number?: string;
+  specialization?: string;
+}
+
+export interface StaffUpdateInput {
+  name?: string;
+  phone?: string;
+  email?: string;
+  preferred_language?: string;
+  village_name?: string;
+  coverage_area?: string;
+  specialization?: string;
+  medical_registration_number?: string;
+}
+
+export interface StaffTransferInput {
+  facility_id?: string;
+  facility_name?: string;
+  village_name?: string;
+  village_ids?: string[];
+  coverage_area?: string;
+  reason?: string;
+}
+
+export interface StaffCredentialsResponse {
+  staff_id: string;
+  identifier: string;
+  name: string;
+  role: string;
+  temporary_password: string;
+  must_change_password: boolean;
+  notice: string;
 }
 
 export interface AuthResponse {
@@ -83,6 +178,7 @@ export interface AuthResponse {
   refresh_token: string;
   token_type: string;
   user: UserSession;
+
 }
 
 export interface CitizenOtpRequestResponse {

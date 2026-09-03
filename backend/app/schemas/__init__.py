@@ -31,6 +31,14 @@ class UserSessionDTO(BaseModel):
     facility_name: Optional[str] = None
     village_ids: Optional[List[str]] = None
     district_id: Optional[str] = None
+    must_change_password: bool = False
+    staff_id: Optional[str] = None
+    account_status: str = "ACTIVE"
+
+class ChangePasswordRequest(BaseModel):
+    old_password: str = Field(..., description="Current password or temporary password")
+    new_password: str = Field(..., min_length=6, description="New secure password")
+
 
 class UserPreferencesUpdateRequest(BaseModel):
     preferred_language: str = Field(..., pattern="^(en-IN|hi-IN|mr-IN)$", description="User preferred language code")
@@ -674,6 +682,96 @@ class SystemHealthResponse(BaseModel):
     database_connected: bool = True
     integration_mode: str = "mock"
     services: Dict[str, str]
+
+# --- Staff Management Schemas ---
+class StaffCreateRequest(BaseModel):
+    name: str = Field(..., min_length=2, max_length=150, description="Full legal name")
+    role: str = Field(..., description="Role: ASHA_WORKER or PHC_DOCTOR")
+    phone: str = Field(..., min_length=10, max_length=15, description="Phone number")
+    email: Optional[str] = None
+    employee_id: Optional[str] = None
+    preferred_language: str = "mr-IN"
+    district: Optional[str] = None
+    district_id: Optional[str] = None
+    assigned_facility_id: Optional[str] = None
+    # ASHA specific
+    village_name: Optional[str] = None
+    village_ids: Optional[List[str]] = None
+    coverage_area: Optional[str] = None
+    # Doctor specific
+    medical_registration_number: Optional[str] = None
+    specialization: Optional[str] = None
+
+class StaffUpdateRequest(BaseModel):
+    name: Optional[str] = None
+    phone: Optional[str] = None
+    email: Optional[str] = None
+    preferred_language: Optional[str] = None
+    village_name: Optional[str] = None
+    coverage_area: Optional[str] = None
+    specialization: Optional[str] = None
+    medical_registration_number: Optional[str] = None
+
+class StaffTransferRequest(BaseModel):
+    facility_id: Optional[str] = None
+    facility_name: Optional[str] = None
+    village_name: Optional[str] = None
+    village_ids: Optional[List[str]] = None
+    coverage_area: Optional[str] = None
+    reason: Optional[str] = None
+
+class StaffSuspendRequest(BaseModel):
+    reason: Optional[str] = None
+
+class StaffMemberDTO(BaseModel):
+    id: str
+    staff_id: str
+    identifier: str
+    name: str
+    role: str
+    phone: Optional[str] = None
+    phone_masked: Optional[str] = None
+    email: Optional[str] = None
+    employee_id: Optional[str] = None
+    assigned_facility_id: Optional[str] = None
+    assigned_facility_name: Optional[str] = None
+    district_id: Optional[str] = None
+    district_name: Optional[str] = None
+    village_ids: Optional[List[str]] = None
+    village_name: Optional[str] = None
+    coverage_area: Optional[str] = None
+    medical_registration_number: Optional[str] = None
+    specialization: Optional[str] = None
+    preferred_language: str = "mr-IN"
+    account_status: str = "ACTIVE"
+    must_change_password: bool = False
+    last_login_at: Optional[datetime] = None
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+class StaffSummaryCountsDTO(BaseModel):
+    total: int = 0
+    active: int = 0
+    suspended: int = 0
+    asha_workers: int = 0
+    phc_doctors: int = 0
+
+class StaffListResponseData(BaseModel):
+    summary: StaffSummaryCountsDTO
+    staff: List[StaffMemberDTO]
+    total: int
+    page: int
+    limit: int
+
+class StaffCredentialsResponse(BaseModel):
+    staff_id: str
+    identifier: str
+    name: str
+    role: str
+    temporary_password: str
+    must_change_password: bool = True
+    notice: str = "Save these credentials now. The temporary password will not be shown again."
+
 
 # --- Patient Registration Schemas ---
 class MedicationItemInput(BaseModel):

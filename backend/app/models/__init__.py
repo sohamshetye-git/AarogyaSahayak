@@ -66,11 +66,17 @@ class User(Base):
     role = Column(Enum(UserRoleEnum), nullable=False, default=UserRoleEnum.CITIZEN)
     preferred_language = Column(String(10), default="mr-IN")
     is_active = Column(Boolean, default=True)
+    account_status = Column(String(50), default="ACTIVE") # ACTIVE, SUSPENDED
+    staff_id = Column(String(50), unique=True, index=True, nullable=True)
+    must_change_password = Column(Boolean, default=False)
+    created_by_admin_id = Column(String(36), ForeignKey("users.id"), nullable=True)
+    last_login_at = Column(DateTime, nullable=True)
+    password_changed_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=utc_now)
     updated_at = Column(DateTime, default=utc_now, onupdate=utc_now)
 
     citizen_profile = relationship("CitizenProfile", back_populates="user", uselist=False)
-    worker_profile = relationship("WorkerProfile", back_populates="user", uselist=False)
+    worker_profile = relationship("WorkerProfile", back_populates="user", uselist=False, foreign_keys="[WorkerProfile.user_id]")
 
 class CitizenProfile(Base):
     __tablename__ = "citizen_profiles"
@@ -183,10 +189,14 @@ class WorkerProfile(Base):
     district_id = Column(String(36), nullable=True)
     district_name = Column(String(150), default="District 04")
     village_ids = Column(JSON, nullable=True) # List of assigned village IDs
-    professional_registration = Column(String(100), nullable=True)
+    village_name = Column(String(150), nullable=True)
+    coverage_area = Column(String(200), nullable=True)
+    professional_registration = Column(String(100), nullable=True) # e.g. medical registration number
+    employee_id = Column(String(50), unique=True, index=True, nullable=True)
+    specialization = Column(String(100), nullable=True)
     created_at = Column(DateTime, default=utc_now)
 
-    user = relationship("User", back_populates="worker_profile")
+    user = relationship("User", back_populates="worker_profile", foreign_keys=[user_id])
 
 # Import Facility models
 from app.models.facilities import (

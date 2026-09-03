@@ -25,8 +25,13 @@ export function LoginScreen() {
 
     try {
       const user = await login(loginId, password);
-      const roleStr = String(user.role).toUpperCase();
+      
+      if (user.must_change_password) {
+        window.location.href = "/auth/change-password";
+        return;
+      }
 
+      const roleStr = String(user.role).toUpperCase();
       let targetPath = "/asha/dashboard";
       if (roleStr === "PHC_DOCTOR" || roleStr.includes("DOCTOR")) {
         targetPath = "/doctor/dashboard";

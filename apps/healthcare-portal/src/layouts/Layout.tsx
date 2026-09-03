@@ -103,6 +103,7 @@ export function AppLayout({ children, pageTitle, onBack }: LayoutProps) {
   } else if (role === UserRole.DISTRICT_ADMIN) {
     navItems = [
       { path: "/admin/dashboard", label: t("navigation.dashboard", "Overview"), Icon: HomeIcon },
+      { path: "/admin/staff", label: t("navigation.staff_management", "Staff Management"), Icon: UserPlusIcon },
       { path: "/admin/alerts", label: t("navigation.cluster_alerts", "Cluster Alerts"), Icon: ActivityIcon },
       { path: "/admin/referrals", label: t("navigation.referral_trends", "Referral Trends"), Icon: TrendingUpIcon },
       { path: "/admin/schemes", label: t("navigation.scheme_analytics", "Scheme Analytics"), Icon: SchemeIcon },
@@ -136,6 +137,7 @@ export function AppLayout({ children, pageTitle, onBack }: LayoutProps) {
     if (path.includes("/doctor/patients")) return t("navigation.patients", "Patients");
     if (path.includes("/doctor/prescriptions")) return t("navigation.prescriptions", "Prescriptions");
     if (path.includes("/doctor/reports")) return t("navigation.reports", "Reports");
+    if (path.includes("/admin/staff")) return t("navigation.staff_management", "Staff Management");
     if (path.includes("/admin/alerts")) return t("navigation.cluster_alerts", "Cluster Alerts");
     if (path.includes("/admin/referrals")) return t("navigation.referral_trends", "Referral Trends");
     if (path.includes("/admin/schemes")) return t("navigation.scheme_analytics", "Scheme Analytics");

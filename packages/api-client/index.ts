@@ -365,6 +365,13 @@ export class AarogyaApiClient {
     });
   }
 
+  changePassword(oldPassword: string, newPassword: string) {
+    return this.request<any>("/auth/change-password", {
+      method: "POST",
+      body: JSON.stringify({ old_password: oldPassword, new_password: newPassword }),
+    });
+  }
+
   updateUserPreferences(preferredLanguage: string) {
     return this.patch<any>("/auth/me/preferences", {
       preferred_language: preferredLanguage,
@@ -1098,6 +1105,64 @@ export class AarogyaApiClient {
   getAdminDashboard() {
     return this.request<any>("/admin/dashboard");
   }
+
+  getAdminStaffList(params?: { search?: string; role?: string; status?: string; facility_id?: string; page?: number; limit?: number }) {
+    const searchParams = new URLSearchParams();
+    if (params?.search) searchParams.append("search", params.search);
+    if (params?.role) searchParams.append("role", params.role);
+    if (params?.status) searchParams.append("status", params.status);
+    if (params?.facility_id) searchParams.append("facility_id", params.facility_id);
+    if (params?.page) searchParams.append("page", String(params.page));
+    if (params?.limit) searchParams.append("limit", String(params.limit));
+
+    const qs = searchParams.toString();
+    return this.request<any>(`/admin/staff${qs ? `?${qs}` : ""}`);
+  }
+
+  createStaff(data: any) {
+    return this.request<any>("/admin/staff", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  }
+
+  getStaffDetail(staffId: string) {
+    return this.request<any>(`/admin/staff/${encodeURIComponent(staffId)}`);
+  }
+
+  updateStaff(staffId: string, data: any) {
+    return this.request<any>(`/admin/staff/${encodeURIComponent(staffId)}`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    });
+  }
+
+  suspendStaff(staffId: string, reason?: string) {
+    return this.request<any>(`/admin/staff/${encodeURIComponent(staffId)}/suspend`, {
+      method: "POST",
+      body: JSON.stringify({ reason: reason || "Administrative suspension" }),
+    });
+  }
+
+  reactivateStaff(staffId: string) {
+    return this.request<any>(`/admin/staff/${encodeURIComponent(staffId)}/reactivate`, {
+      method: "POST",
+    });
+  }
+
+  transferStaff(staffId: string, data: any) {
+    return this.request<any>(`/admin/staff/${encodeURIComponent(staffId)}/transfer`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  }
+
+  resetStaffPassword(staffId: string) {
+    return this.request<any>(`/admin/staff/${encodeURIComponent(staffId)}/reset-password`, {
+      method: "POST",
+    });
+  }
+
 
   getAdminReferralAnalytics() {
     return this.request<any>("/admin/referrals/analytics");

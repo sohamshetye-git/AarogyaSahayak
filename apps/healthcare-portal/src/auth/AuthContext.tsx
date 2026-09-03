@@ -12,6 +12,7 @@ interface AuthContextType {
   isLoading: boolean;
   login: (identifier: string, password: string) => Promise<UserSession>;
   logout: () => Promise<void>;
+  updateUser: (updatedData: Partial<UserSession>) => void;
   checkPendingOfflineData: () => Promise<{ pendingCount: number; draftsCount: number }>;
   logoutWithChoice: (choice: 'SYNC_AND_LOGOUT' | 'KEEP_DATA' | 'FORCE_DELETE') => Promise<void>;
 }
@@ -130,6 +131,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     ashaSyncService.setUser(null, null);
   };
 
+  const updateUser = (updatedData: Partial<UserSession>) => {
+    if (!user) return;
+    const merged = { ...user, ...updatedData };
+    setUser(merged);
+    localStorage.setItem("aarogya_user", JSON.stringify(merged));
+  };
+
   const logout = async () => {
     // Non-destructive logout by default (preserves scoped data safely on device)
     await logoutWithChoice('KEEP_DATA');
@@ -144,6 +152,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         isLoading,
         login,
         logout,
+        updateUser,
         checkPendingOfflineData,
         logoutWithChoice
       }}
