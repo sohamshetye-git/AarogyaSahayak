@@ -529,7 +529,7 @@ export function DoctorFollowupsScreen() {
                   </div>
                   <div style={{ color: "var(--text-secondary)" }}>{fup.directive || fup.instructions || "Conduct ASHA home follow-up."}</div>
                   <div style={{ fontSize: 11, color: "var(--text-disabled)", marginTop: 4, display: "flex", justifyContent: "space-between" }}>
-                    <span>Assigned Doctor: <strong>{fup.created_by_doctor_name || fup.assigned_doctor_name || "Dr. Abhinav Sharma"}</strong></span>
+                    <span>Assigned Doctor: <strong>{fup.created_by_doctor_name || fup.assigned_doctor_name || "Medical Officer"}</strong></span>
                     <span>Due Date: <strong>{fup.due_at ? new Date(fup.due_at).toLocaleDateString() : "Today"}</strong></span>
                   </div>
                 </div>

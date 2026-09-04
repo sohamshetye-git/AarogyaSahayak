@@ -239,7 +239,7 @@ export function DoctorReportsScreen() {
             PHC Operational & Clinical Reports
           </h1>
           <div style={{ fontSize: 13, color: "var(--text-secondary)", marginTop: 4 }}>
-            {overviewData?.facility?.facility_name || "Kalyanpur Primary Health Centre"} · Medical Officer: {overviewData?.facility?.doctor_name || "Dr. Abhinav Sharma"} · Refreshed: {lastRefreshed} · Live Sync Active
+            {overviewData?.facility?.facility_name || "Assigned Primary Health Centre"} · Medical Officer: {overviewData?.facility?.doctor_name || "Medical Officer"} · Refreshed: {lastRefreshed} · Live Sync Active
           </div>
         </div>
 

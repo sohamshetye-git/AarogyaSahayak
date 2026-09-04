@@ -870,7 +870,7 @@ export function DoctorPatientRecordScreen() {
                     <td style={{ padding: "10px 12px", color: "var(--text-secondary)" }}>
                       {inv.ordered_at ? new Date(inv.ordered_at).toLocaleDateString() : "Today"}
                     </td>
-                    <td style={{ padding: "10px 12px" }}>{inv.ordering_doctor_name || "Dr. Abhinav Sharma"}</td>
+                    <td style={{ padding: "10px 12px" }}>{inv.ordering_doctor_name || "Medical Officer"}</td>
                     <td style={{ padding: "10px 12px", fontWeight: 600 }}>{inv.result_preview || inv.result || "Pending"}</td>
                     <td style={{ padding: "10px 12px" }}>
                       <button

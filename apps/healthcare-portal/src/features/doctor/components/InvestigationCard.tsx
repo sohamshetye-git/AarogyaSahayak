@@ -155,7 +155,7 @@ export const InvestigationCard: React.FC<InvestigationCardProps> = ({
 
         <div>
           <div style={{ color: "var(--text-secondary, #64748b)", fontSize: "0.75rem" }}>Ordering Doctor</div>
-          <div>{item.ordering_doctor_name || "Dr. Abhinav Sharma"}</div>
+          <div>{item.ordering_doctor_name || "Medical Officer"}</div>
         </div>
 
         <div>

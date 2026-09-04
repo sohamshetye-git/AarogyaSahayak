@@ -253,7 +253,7 @@ export const DoctorInvestigationDetailScreen: React.FC = () => {
             <div><strong>Preparation Instructions:</strong> {order.order?.preparation_instructions || order.preparation_instructions || "Not recorded"}</div>
             <div><strong>Collection Location:</strong> {order.order?.collection_location || order.collection_location || "PHC Kalyanpur"}</div>
             <div><strong>Ordered Date:</strong> {formatIndiaDateTime(order.order?.ordered_at || order.ordered_at)}</div>
-            <div><strong>Ordering Doctor:</strong> {order.order?.ordered_by || order.ordering_doctor_name || "Dr. Abhinav Sharma"}</div>
+            <div><strong>Ordering Doctor:</strong> {order.order?.ordered_by || order.ordering_doctor_name || "Medical Officer"}</div>
           </div>
         </div>
 

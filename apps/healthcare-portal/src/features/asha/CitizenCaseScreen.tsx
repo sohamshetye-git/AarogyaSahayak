@@ -712,7 +712,7 @@ export function AshaCitizenCaseScreen() {
         category: "Clinical Escalation",
         due: "Within 24 Hours",
         source: "ASHA Field Referral",
-        worker: "Dr. Abhinav Sharma (Kalyanpur PHC)"
+        worker: "PHC Medical Officer"
       };
     }
     if (status === "NEW") {
@@ -721,7 +721,7 @@ export function AshaCitizenCaseScreen() {
         category: "Urgent Triage",
         due: "Immediate",
         source: "Citizen Mobile Voice Intake",
-        worker: "Sita Patel (ASHA Worker)"
+        worker: "Assigned ASHA Worker"
       };
     }
     return {

@@ -148,7 +148,7 @@ export function DoctorAlertsScreen() {
             PHC Clinical & Operational Alerts Workspace
           </h1>
           <div style={{ fontSize: 13, color: "var(--text-secondary)", marginTop: 4 }}>
-            Kalyanpur Primary Health Centre · Medical Officer: Dr. Abhinav Sharma · Refreshed: {lastRefreshed} · Real-Time WS Active
+            PHC Clinical Center · Medical Officer Desk · Refreshed: {lastRefreshed} · Real-Time WS Active
           </div>
         </div>
 

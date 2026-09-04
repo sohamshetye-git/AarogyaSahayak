@@ -202,7 +202,7 @@ export function DoctorDashboardScreen() {
             {t("doctor.phc_doctor_dashboard", "PHC Doctor Dashboard")}
           </h1>
           <div style={{ fontSize: 14, color: "var(--text-secondary)", marginTop: 4 }}>
-            {data?.facility_name || "Kalyanpur Primary Health Center"} · {data?.doctor_name || "Dr. Abhinav Sharma"} ({data?.doctor_role || "PHC Medical Officer"})
+            {data?.facility_name || "Assigned Primary Health Centre"} · {data?.doctor_name || "Medical Officer"} ({data?.doctor_role || "PHC Medical Officer"})
           </div>
         </div>
 

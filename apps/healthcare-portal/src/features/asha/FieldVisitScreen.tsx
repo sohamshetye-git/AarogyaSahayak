@@ -644,7 +644,7 @@ export function AshaFieldVisitScreen() {
           ) : (
             <>
               Case <strong>{caseDetails?.reference || successReferral.reference}</strong> has been successfully referred to{" "}
-              <strong>Kalyanpur Primary Health Center (Dr. Abhinav Sharma)</strong> with Urgent priority flag.
+              <strong>Primary Health Center (Medical Officer)</strong> with Urgent priority flag.
             </>
           )}
         </p>
