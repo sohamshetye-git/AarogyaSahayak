@@ -690,6 +690,11 @@ export const AssistantScreen: React.FC<AssistantScreenProps> = ({
     };
 
     setMessages((prev) => [...prev, confirmationMessage]);
+
+    // Open real request-status screen directly upon submission if handler provided
+    if (srvId && onViewServiceRequest) {
+      onViewServiceRequest(srvId);
+    }
   };
 
   return (

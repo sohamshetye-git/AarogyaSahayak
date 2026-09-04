@@ -924,6 +924,7 @@
   "wizard": {
     "step1_title": "1. Select Patient",
     "step1_desc": "Who needs to speak with the doctor today?",
+    "step1_desc_asha": "Who needs ASHA assistance today?",
     "step1_continue": "Continue with {{name}}",
     "step2_title": "2. Describe Health Concern",
     "step2_patient_badge": "Patient: {{name}} ({{relationship}})",
@@ -953,6 +954,7 @@
     "step4_continue": "Continue to Sharing Scope",
     "step5_title": "5. Consented Sharing Scope",
     "step5_desc": "Select what clinical information will be shared with the PHC Medical Officer.",
+    "step5_desc_asha": "Select what clinical information will be shared with the local ASHA worker.",
     "step5_scope_symptoms": "Confirmed Symptoms & Chief Concern",
     "step5_scope_profile": "Patient Profile & Demographics",
     "step5_scope_location": "Village Location & Landmark",
@@ -962,6 +964,8 @@
     "step5_continue": "Review & Give Explicit Consent",
     "step6_title": "6. Explicit Consent & Submit",
     "step6_summary_title": "Request Summary:",
+    "step6_recipient_doctor": "PHC Medical Officer (Kalyanpur PHC)",
+    "step6_recipient_asha": "Jurisdiction ASHA Worker",
     "step6_field_patient": "Patient:",
     "step6_field_concern": "Primary Health Concern:",
     "step6_field_duration_severity": "Duration & Severity:",
@@ -969,6 +973,7 @@
     "step6_field_location": "Care Location:",
     "step6_field_facility": "Designated Health Centre:",
     "step6_consent_statement": "I explicitly consent to share the selected health concern and clinical details with the PHC Doctor for teleconsultation and medical care.",
+    "step6_consent_statement_asha": "I explicitly consent to share the selected health concern and clinical details with the local ASHA worker for home visit support and care guidance.",
     "step6_submitting": "Submitting Request to Doctor...",
     "step6_submit_btn": "Submit Request & View Status"
   },

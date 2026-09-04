@@ -228,7 +228,7 @@ export const CareHandoffReviewSheet: React.FC<CareHandoffReviewSheetProps> = ({
 
   const handleSubmit = async () => {
     if (!explicitConsent) {
-      setErrorMsg("Please confirm explicit consent before submitting.");
+      setErrorMsg(t("wizard.consent_required", "Please confirm explicit consent before submitting."));
       return;
     }
 
@@ -261,6 +261,8 @@ export const CareHandoffReviewSheet: React.FC<CareHandoffReviewSheetProps> = ({
       preferred_time_window: !isDoc ? preferredTimeWindow : undefined
     };
 
+    const generatedIdempotencyKey = `idemp-${isDoc ? "doc" : "asha"}-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+
     try {
       let submitRes: any;
       if (isDoc) {
@@ -273,7 +275,8 @@ export const CareHandoffReviewSheet: React.FC<CareHandoffReviewSheetProps> = ({
           sharing_scope: sharingScope,
           chief_complaint: editedChiefConcern,
           symptoms: editedSymptoms,
-          preferred_language: locale || "mr-IN"
+          preferred_language: locale || "mr-IN",
+          idempotency_key: generatedIdempotencyKey
         });
       } else {
         submitRes = await apiClient.createCitizenAshaRequest({
@@ -287,15 +290,22 @@ export const CareHandoffReviewSheet: React.FC<CareHandoffReviewSheetProps> = ({
           chief_complaint: editedChiefConcern,
           symptoms: editedSymptoms,
           landmark: landmark || undefined,
-          preferred_language: locale || "mr-IN"
+          preferred_language: locale || "mr-IN",
+          idempotency_key: generatedIdempotencyKey
         });
       }
 
-      onSuccess(submitRes?.data || submitRes);
+      const resData = submitRes?.data || submitRes;
+      onSuccess(resData);
       onClose();
     } catch (err: any) {
       console.error("Failed to submit care request:", err);
-      setErrorMsg(err.message || "Failed to submit care request. Please try again.");
+      const serverMsg =
+        (typeof err?.response?.data?.detail === "string" ? err?.response?.data?.detail : err?.response?.data?.detail?.message) ||
+        err?.response?.data?.message ||
+        err?.message ||
+        "Failed to submit care request. Please try again.";
+      setErrorMsg(serverMsg);
     } finally {
       setSubmitting(false);
     }
@@ -420,7 +430,9 @@ export const CareHandoffReviewSheet: React.FC<CareHandoffReviewSheetProps> = ({
               {step === 1 && (
                 <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
                   <div style={{ fontSize: 15, fontWeight: 800, color: "#0F172A" }}>
-                    {t("wizard.step1_desc", "Who needs to speak with the doctor today?")}
+                    {isDoc
+                      ? t("wizard.step1_desc", "Who needs to speak with the doctor today?")
+                      : t("wizard.step1_desc_asha", "Who needs ASHA assistance today?")}
                   </div>
 
                   {beneficiaries.map((b) => {
@@ -810,7 +822,9 @@ export const CareHandoffReviewSheet: React.FC<CareHandoffReviewSheetProps> = ({
                     {t("wizard.step5_title", "5. Consented Sharing Scope")}
                   </div>
                   <div style={{ fontSize: 12, color: "#64748B", lineHeight: 1.4 }}>
-                    {t("wizard.step5_desc", "Select what clinical information will be shared with the PHC Medical Officer.")}
+                    {isDoc
+                      ? t("wizard.step5_desc", "Select what clinical information will be shared with the PHC Medical Officer.")
+                      : t("wizard.step5_desc_asha", "Select what clinical information will be shared with the local ASHA worker.")}
                   </div>
 
                   {[
@@ -859,7 +873,9 @@ export const CareHandoffReviewSheet: React.FC<CareHandoffReviewSheetProps> = ({
                   <div style={{ backgroundColor: "#F8FAFC", borderRadius: 16, padding: 14, border: "1px solid #E2E8F0" }}>
                     <div style={{ fontSize: 12, fontWeight: 700, color: "#64748B", marginBottom: 4 }}>{t("common.details", "Recipient")}</div>
                     <div style={{ fontSize: 14, fontWeight: 800, color: "#1E293B" }}>
-                      {isDoc ? "PHC Medical Officer (Kalyanpur PHC)" : "Jurisdiction ASHA Worker (Kalyanpur)"}
+                      {isDoc
+                        ? t("wizard.step6_recipient_doctor", "PHC Medical Officer (Kalyanpur PHC)")
+                        : `${t("wizard.step6_recipient_asha", "Jurisdiction ASHA Worker")} (${previewPacket?.location?.village || "Local Area"})`}
                     </div>
 
                     <div style={{ fontSize: 12, fontWeight: 700, color: "#64748B", marginTop: 10, marginBottom: 4 }}>{t("wizard.step6_field_patient", "Patient:")}</div>
@@ -895,7 +911,9 @@ export const CareHandoffReviewSheet: React.FC<CareHandoffReviewSheetProps> = ({
                       style={{ width: 22, height: 22, marginTop: 2, cursor: "pointer" }}
                     />
                     <div style={{ fontSize: 13, fontWeight: 700, color: "#1E293B", lineHeight: 1.4 }}>
-                      {t("wizard.step6_consent_statement", "I explicitly consent to share the selected health concern and clinical details with the PHC Doctor for teleconsultation and medical care.")}
+                      {isDoc
+                        ? t("wizard.step6_consent_statement", "I explicitly consent to share the selected health concern and clinical details with the PHC Doctor for teleconsultation and medical care.")
+                        : t("wizard.step6_consent_statement_asha", "I explicitly consent to share the selected health concern and clinical details with the local ASHA worker for home visit support and care guidance.")}
                     </div>
                   </div>
                 </div>

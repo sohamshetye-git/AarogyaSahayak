@@ -1487,24 +1487,62 @@ class CitizenService:
         if not profile:
             raise ValueError("Citizen profile not found")
 
-        # 1. Resolve Jurisdiction ASHA
+        # 1. Resolve Jurisdiction ASHA Dynamically
         assigned_asha_user = None
         assigned_asha_name = "Assignment Pending"
         init_status = "ASSIGNMENT_PENDING"
 
+        # Tier 1: Profile's directly assigned ASHA worker
         if profile.assigned_asha_id:
-            assigned_asha_user = db.query(User).filter(User.id == profile.assigned_asha_id).first()
-            if assigned_asha_user:
-                assigned_asha_name = f"{assigned_asha_user.name} ({profile.village_name or 'Kalyanpur'})"
-                init_status = "ASHA_ASSIGNED"
-        
+            assigned_asha_user = db.query(User).filter(
+                User.id == profile.assigned_asha_id,
+                User.role.in_([UserRoleEnum.ASHA_WORKER, "ASHA_WORKER", "ASHA"]),
+                User.is_active == True
+            ).first()
+
+        # Tier 2: Match by WorkerProfile coverage (village_name, village_ids, facility_id, district_id)
+        if not assigned_asha_user and (profile.village_name or profile.assigned_facility_id or profile.district):
+            wp_query = db.query(WorkerProfile).join(User, WorkerProfile.user_id == User.id).filter(
+                User.role.in_([UserRoleEnum.ASHA_WORKER, "ASHA_WORKER", "ASHA"]),
+                User.is_active == True
+            )
+            
+            matched_wp = None
+            if profile.village_name:
+                matched_wp = wp_query.filter(
+                    (WorkerProfile.village_name.ilike(f"%{profile.village_name}%")) |
+                    (WorkerProfile.coverage_area.ilike(f"%{profile.village_name}%"))
+                ).first()
+
+            if not matched_wp and profile.assigned_facility_id:
+                matched_wp = wp_query.filter(WorkerProfile.facility_id == profile.assigned_facility_id).first()
+
+            if not matched_wp and profile.district:
+                matched_wp = wp_query.filter(WorkerProfile.district_name.ilike(f"%{profile.district}%")).first()
+
+            if matched_wp:
+                assigned_asha_user = matched_wp.user
+
+        # Tier 3: Active ASHA in system for jurisdiction
         if not assigned_asha_user:
-            # Check village mapping for ASHA
-            mapped_asha = db.query(User).filter(or_(User.role == "ASHA_WORKER", User.role == "ASHA"), User.is_active == True).first()
-            if mapped_asha and ((profile.village_name and "Kalyanpur" in profile.village_name) or not profile.village_name):
-                assigned_asha_user = mapped_asha
-                assigned_asha_name = f"{mapped_asha.name} (Kalyanpur)"
-                init_status = "ASHA_ASSIGNED"
+            assigned_asha_user = db.query(User).filter(
+                User.role.in_([UserRoleEnum.ASHA_WORKER, "ASHA_WORKER", "ASHA"]),
+                User.is_active == True
+            ).first()
+
+        if assigned_asha_user:
+            coverage_label = profile.village_name or (assigned_asha_user.worker_profile.village_name if assigned_asha_user.worker_profile else "Local Area")
+            assigned_asha_name = f"{assigned_asha_user.name} ({coverage_label})"
+            init_status = "ASHA_ASSIGNED"
+        else:
+            from fastapi import HTTPException, status
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail={
+                    "code": "NO_ASHA_AVAILABLE",
+                    "message": "No active ASHA worker is available in your coverage area."
+                }
+            )
 
         # 2. Search or create compatible Case
         case = None
