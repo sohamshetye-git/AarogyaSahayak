@@ -64,21 +64,43 @@ export enum SyncStatus {
   CONFLICT = "CONFLICT",
 }
 
+export interface UserDistrictInfo {
+  id?: string;
+  name?: string;
+}
+
+export interface UserFacilityInfo {
+  id?: string;
+  name?: string;
+}
+
+export interface UserCoverageInfo {
+  village_id?: string;
+  village_ids?: string[];
+  village_name?: string;
+  coverage_area?: string;
+}
+
 export interface UserSession {
   id: string;
   identifier?: string;
   staff_id?: string;
   name: string;
+  full_name?: string;
   phone?: string;
   email?: string;
   role: UserRole;
   facility_id?: string;
   facility_name?: string;
   village_ids?: string[];
+  village_name?: string;
   district_id?: string;
   district_name?: string;
+  coverage_area?: string;
+  district?: UserDistrictInfo;
+  facility?: UserFacilityInfo;
+  coverage?: UserCoverageInfo;
   preferred_language?: string;
-  village_name?: string;
   must_change_password?: boolean;
   account_status?: string;
 }

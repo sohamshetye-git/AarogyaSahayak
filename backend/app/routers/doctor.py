@@ -33,17 +33,18 @@ def get_doctor_dashboard(
     today_start = datetime(now.year, now.month, now.day, tzinfo=timezone.utc)
 
     # 1. Scope query by Doctor's facility
-    facility_id = current_user.worker_profile.facility_id if current_user.worker_profile else "PHC-09"
-    facility_name = current_user.worker_profile.facility_name if current_user.worker_profile and current_user.worker_profile.facility_name else "Kalyanpur Primary Health Center"
-    doctor_name = current_user.name if current_user else "Dr. Abhinav Sharma"
+    worker = getattr(current_user, 'worker_profile', None)
+    facility_id = worker.facility_id if worker and worker.facility_id else None
+    facility_name = worker.facility_name if worker and worker.facility_name else "Assigned PHC"
+    doctor_name = current_user.name if current_user and current_user.name else "PHC Doctor"
 
-    referrals_query = db.query(Referral).join(Case, Referral.case_id == Case.id)
     if facility_id:
-        referrals_query = referrals_query.filter(Referral.to_facility_id == facility_id)
-    
-    # Exclude completed/declined/unreachable cases from the active referral list
-    referrals_query = referrals_query.filter(~Case.status.in_([CaseStatusEnum.COMPLETED, CaseStatusEnum.DECLINED, CaseStatusEnum.UNREACHABLE]))
-    all_referrals = referrals_query.order_by(Referral.created_at.desc()).all()
+        referrals_query = db.query(Referral).join(Case, Referral.case_id == Case.id).filter(Referral.to_facility_id == facility_id)
+        # Exclude completed/declined/unreachable cases from the active referral list
+        referrals_query = referrals_query.filter(~Case.status.in_([CaseStatusEnum.COMPLETED, CaseStatusEnum.DECLINED, CaseStatusEnum.UNREACHABLE]))
+        all_referrals = referrals_query.order_by(Referral.created_at.desc()).all()
+    else:
+        all_referrals = []
 
     # 2. Build detailed referral DTOs
     incoming_items = []
@@ -118,8 +119,8 @@ def get_doctor_dashboard(
             reason=r.reason,
             status=r.status,
             arrival_status=arrival_status,
-            referring_asha_name=r.case.assigned_asha_name or "Sita Patel (ASHA)",
-            referring_asha_phone="9823012345",
+            referring_asha_name=r.case.assigned_asha_name or "ASHA Worker",
+            referring_asha_phone=r.case.citizen.phone if r.case and r.case.citizen else None,
             citizen_reported_concern=r.case.primary_concern if r.case else None,
             asha_confirmed_symptoms=symptoms_list,
             latest_vitals=latest_v,
@@ -185,21 +186,22 @@ def get_doctor_dashboard(
 
     # 6. ASHA Follow-up Monitoring list (Doctor-relevant only)
     followup_items = []
-    for f in doctor_followups_raw[:5]:
+    for f in [x for x in doctor_followups_raw if x.status != "ESCALATED"][:5]:
         cit = f.citizen or (f.case.citizen if f.case else None)
         followup_items.append(
             AshaFollowUpMonitorDTO(
                 id=f.id,
+                followup_id=f.id,
                 citizen_name=cit.display_name if cit else "Beneficiary",
                 citizen_age=cit.age_estimate if cit else 28,
-                village_name=cit.village_name if cit else "Kalyanpur",
+                village_name=cit.village_name if cit else "Assigned Village",
                 is_pregnant=cit.is_pregnant if cit else False,
                 case_id=f.case_id,
                 case_reference=f.case.reference if f.case else "CASE",
                 task_type=f.task_type or "GENERAL_CHECK",
                 reason=f.instructions or f.reason,
-                assigned_asha_name=f.case.assigned_asha_name or "Sita Patel (ASHA)",
-                assigned_asha_phone="9823012345",
+                assigned_asha_name=f.case.assigned_asha_name if f.case and f.case.assigned_asha_name else "ASHA Worker",
+                assigned_asha_phone=cit.phone if cit else None,
                 due_at=f.due_at,
                 status=f.status,
                 completion_result=f.result,
@@ -218,12 +220,12 @@ def get_doctor_dashboard(
                 case_id=f.case_id,
                 case_reference=f.case.reference if f.case else "CASE",
                 citizen_name=cit.display_name if cit else "Citizen",
-                village_name=cit.village_name if cit else "Kalyanpur",
+                village_name=cit.village_name if cit else "Assigned Village",
                 is_pregnant=cit.is_pregnant if cit else False,
                 escalation_reason=f.completion_notes or f.reason or "Persistent elevated symptoms noted in home visit",
                 asha_notes=f.completion_notes,
-                referring_asha_name=f.case.assigned_asha_name or "Sita Patel (ASHA)",
-                referring_asha_phone="9823012345",
+                referring_asha_name=f.case.assigned_asha_name if f.case and f.case.assigned_asha_name else "ASHA Worker",
+                referring_asha_phone=cit.phone if cit else None,
                 urgency="HIGH",
                 escalated_at=f.updated_at or f.created_at,
                 is_acknowledged=False

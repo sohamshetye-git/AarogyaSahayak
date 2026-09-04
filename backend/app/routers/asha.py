@@ -63,10 +63,21 @@ def get_asha_dashboard(
         FollowUp.status == "PENDING"
     ).count()
 
-    total_citizens = db.query(CitizenProfile).count()
+    # Strict ASHA scoping: count only citizens assigned to this ASHA or residing in their assigned village
+    worker = getattr(current_user, 'worker_profile', None)
+    assigned_village = getattr(worker, 'village_name', None) or (worker.village_ids[0] if worker and worker.village_ids else None)
+
+    if assigned_village:
+        total_citizens = db.query(CitizenProfile).filter(
+            (CitizenProfile.assigned_asha_id == current_user.id) | (CitizenProfile.village_name == assigned_village)
+        ).count()
+    else:
+        total_citizens = db.query(CitizenProfile).filter(
+            CitizenProfile.assigned_asha_id == current_user.id
+        ).count()
 
     cases = db.query(Case).filter(
-        (Case.assigned_asha_id == current_user.id) | (Case.assigned_asha_id.is_(None))
+        Case.assigned_asha_id == current_user.id
     ).order_by(Case.created_at.desc()).limit(20).all()
 
     tasks = [
@@ -77,7 +88,7 @@ def get_asha_dashboard(
             citizen_name=c.citizen.display_name if c.citizen else "Citizen",
             citizen_age=c.citizen.age_estimate if c.citizen else None,
             citizen_phone=c.citizen.phone if c.citizen else None,
-            village_name=c.citizen.village_name if c.citizen else "Kalyanpur",
+            village_name=c.citizen.village_name if c.citizen and c.citizen.village_name else (assigned_village or "Assigned Village"),
             priority=c.priority.value,
             status=c.status.value,
             primary_concern=c.primary_concern,
@@ -89,8 +100,8 @@ def get_asha_dashboard(
         for c in cases
     ]
 
-    worker_name = current_user.name if current_user else "Sita Patel"
-    village = "Kalyanpur Village"
+    worker_name = current_user.name if current_user and current_user.name else "ASHA Worker"
+    village = assigned_village or (worker.coverage_area if worker and worker.coverage_area else "Assigned Area")
 
     return StandardResponse(
         data=AshaDashboardResponse(
@@ -178,11 +189,7 @@ def get_asha_investigation_tasks(
 
     query = db.query(InvestigationAshaTask)
     if current_user and current_user.role == "ASHA_WORKER":
-        tasks = query.filter(
-            or_(InvestigationAshaTask.asha_user_id == current_user.id, InvestigationAshaTask.asha_user_id.is_(None))
-        ).all()
-        if not tasks:
-            tasks = query.all()
+        tasks = query.filter(InvestigationAshaTask.asha_user_id == current_user.id).all()
     else:
         tasks = query.all()
 
@@ -1251,9 +1258,9 @@ def get_village_people(
         worker = getattr(current_user, 'worker_profile', None)
         assigned_village = getattr(worker, 'village_name', None) or (worker.village_ids[0] if worker and worker.village_ids else None)
         if assigned_village:
-            query = query.filter((CitizenProfile.assigned_asha_id == current_user.id) | (CitizenProfile.village_name == assigned_village) | (CitizenProfile.assigned_asha_id == None))
+            query = query.filter((CitizenProfile.assigned_asha_id == current_user.id) | (CitizenProfile.village_name == assigned_village))
         else:
-            query = query.filter((CitizenProfile.assigned_asha_id == current_user.id) | (CitizenProfile.assigned_asha_id == None))
+            query = query.filter(CitizenProfile.assigned_asha_id == current_user.id)
 
     citizens = query.all()
     people = []

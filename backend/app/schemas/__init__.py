@@ -21,16 +21,37 @@ class LoginRequest(BaseModel):
     identifier: str = Field(..., description="Username, phone, or staff ID")
     password: str
 
+class UserDistrictDTO(BaseModel):
+    id: Optional[str] = None
+    name: Optional[str] = None
+
+class UserFacilityDTO(BaseModel):
+    id: Optional[str] = None
+    name: Optional[str] = None
+
+class UserCoverageDTO(BaseModel):
+    village_id: Optional[str] = None
+    village_ids: Optional[List[str]] = None
+    village_name: Optional[str] = None
+    coverage_area: Optional[str] = None
+
 class UserSessionDTO(BaseModel):
     id: str
     identifier: str
     name: str
+    full_name: Optional[str] = None
     role: str
     preferred_language: str = "mr-IN"
     facility_id: Optional[str] = None
     facility_name: Optional[str] = None
     village_ids: Optional[List[str]] = None
+    village_name: Optional[str] = None
     district_id: Optional[str] = None
+    district_name: Optional[str] = None
+    coverage_area: Optional[str] = None
+    district: Optional[UserDistrictDTO] = None
+    facility: Optional[UserFacilityDTO] = None
+    coverage: Optional[UserCoverageDTO] = None
     must_change_password: bool = False
     staff_id: Optional[str] = None
     account_status: str = "ACTIVE"
@@ -694,6 +715,8 @@ class StaffCreateRequest(BaseModel):
     district: Optional[str] = None
     district_id: Optional[str] = None
     assigned_facility_id: Optional[str] = None
+    facility_id: Optional[str] = None
+    facility_name: Optional[str] = None
     # ASHA specific
     village_name: Optional[str] = None
     village_ids: Optional[List[str]] = None

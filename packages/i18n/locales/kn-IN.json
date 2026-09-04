@@ -98,7 +98,7 @@
     "listening_in_lang": "ಆಲಿಸಲಾಗುತ್ತಿದೆ...",
     "spoken_transcript": "ಹೇಳಲಾದ ವಿವರ:",
     "role_doctor": "PHC ವೈದ್ಯರು",
-    "role_asha": "ಆಶಾ ಕಾರ್ಯಕರ್ತೆ (ಸೀತಾ ಪಟೇಲ್)",
+    "role_asha": "ಆಶಾ ಕಾರ್ಯಕರ್ತೆ",
     "role_admin": "ಜಿಲ್ಲಾ ಆಡಳಿತ (ಆರ್. ದೇಶಮುಖ)"
   },
   "navigation": {
@@ -142,7 +142,7 @@
     "logging_in": "Signing in...",
     "quick_demo_login": "ತ್ವರಿತ ಡೆಮೊ ಲಾಗಿನ್",
     "select_role_tip": "Select a pre-configured role profile:",
-    "role_asha": "ಆಶಾ ಕಾರ್ಯಕರ್ತೆ (ಸೀತಾ ಪಟೇಲ್)",
+    "role_asha": "ಆಶಾ ಕಾರ್ಯಕರ್ತೆ",
     "role_doctor": "PHC ವೈದ್ಯರು",
     "role_admin": "ಜಿಲ್ಲಾ ಆಡಳಿತ (ಆರ್. ದೇಶಮುಖ)",
     "invalid_credentials": "ಅಮಾನ್ಯ ಬಳಕೆದಾರಹೆಸರು ಅಥವಾ ಪಾಸ್‌ವರ್ಡ್. ದಯವಿಟ್ಟು ಮತ್ತೆ ಪ್ರಯತ್ನಿಸಿ.",

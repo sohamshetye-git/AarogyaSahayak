@@ -98,7 +98,7 @@
     "listening_in_lang": "ଶୁଣୁଛି...",
     "spoken_transcript": "କୁହାଯାଇଥିବା ତଥ୍ୟ:",
     "role_doctor": "PHC ଡାକ୍ତର",
-    "role_asha": "ASHA କର୍ମୀ (ସୀତା ପଟେଲ)",
+    "role_asha": "ASHA କର୍ମୀ",
     "role_admin": "ଜିଲ୍ଲା ପ୍ରଶାସକ (ଆର ଦେଶମୁଖ)"
   },
   "navigation": {
@@ -142,7 +142,7 @@
     "logging_in": "ସାଇନ୍ ଇନ୍ ...",
     "quick_demo_login": "ଦ୍ରୁତ ଡେମୋ ଲଗଇନ୍ |",
     "select_role_tip": "ଏକ ପୂର୍ବ-ବିନ୍ୟାସିତ ଭୂମିକା ପ୍ରୋଫାଇଲ୍ ଚୟନ କରନ୍ତୁ:",
-    "role_asha": "ASHA କର୍ମୀ (ସୀତା ପଟେଲ)",
+    "role_asha": "ASHA କର୍ମୀ",
     "role_doctor": "PHC ଡାକ୍ତର",
     "role_admin": "ଜିଲ୍ଲା ପ୍ରଶାସକ (ଆର ଦେଶମୁଖ)",
     "invalid_credentials": "ଅବ val ଧ ଚାଳକନାମ କିମ୍ବା ପାସୱାର୍ଡ | ଦୟାକରି ପୁନର୍ବାର ଚେଷ୍ଟା କରନ୍ତୁ |",

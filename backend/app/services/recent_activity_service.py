@@ -10,12 +10,13 @@ from app.models import (
     FollowUpEscalation, AuditLog, CitizenProfile, WorkerProfile
 )
 
-def normalize_actor_name(name: Optional[str], role: str = "PHC_DOCTOR", default_name: str = "Dr. Abhinav Sharma") -> str:
+def normalize_actor_name(name: Optional[str], role: str = "PHC_DOCTOR", default_name: Optional[str] = None) -> str:
     """
-    Normalizes professional titles so names never duplicate into 'Dr. Dr. Abhinav Sharma'.
+    Normalizes professional titles so names never duplicate into 'Dr. Dr. Name'.
     """
+    fallback = default_name or ("Doctor" if role in ["PHC_DOCTOR", "DOCTOR"] else "ASHA Worker")
     if not name or str(name).strip().lower() in ["", "none", "null", "undefined"]:
-        return default_name
+        return fallback
     
     s = str(name).strip()
     if role in ["PHC_DOCTOR", "DOCTOR"]:
@@ -74,6 +75,8 @@ def get_doctor_recent_activity_records(
 
     # 1. Referrals (REFERRAL_RECEIVED, REFERRAL_ACKNOWLEDGED, PATIENT_ARRIVED)
     ref_query = db.query(Referral)
+    if facility_id:
+        ref_query = ref_query.filter(Referral.to_facility_id == facility_id)
     referrals = ref_query.all()
     for ref in referrals:
         case = ref.case
@@ -81,8 +84,8 @@ def get_doctor_recent_activity_records(
         p_name = citizen.display_name if citizen else "Citizen"
         c_ref = case.reference if case else "CASE"
         p_id = citizen.id if citizen else (case.citizen_id if case else "")
-        asha_name = normalize_actor_name(case.assigned_asha_name if case else "Sita Patel", role="ASHA_WORKER", default_name="Sita Patel (ASHA)")
-        doc_name = normalize_actor_name(doctor_user.name, role="PHC_DOCTOR")
+        asha_name = normalize_actor_name(case.assigned_asha_name if case else None, role="ASHA_WORKER", default_name="ASHA Worker")
+        doc_name = normalize_actor_name(doctor_user.name if doctor_user else None, role="PHC_DOCTOR")
 
         # REFERRAL_RECEIVED
         if ref.created_at:
@@ -147,14 +150,17 @@ def get_doctor_recent_activity_records(
             })
 
     # 2. Consultations (CONSULTATION_STARTED, CONSULTATION_COMPLETED, HIGHER_CENTER_REFERRAL_CREATED)
-    consults = db.query(Consultation).all()
+    consults_query = db.query(Consultation).join(Case, Consultation.case_id == Case.id)
+    if facility_id:
+        consults_query = consults_query.filter(Case.assigned_facility_id == facility_id)
+    consults = consults_query.all()
     for c in consults:
         case = c.case
         citizen = case.citizen if case else None
         p_name = citizen.display_name if citizen else "Citizen"
         c_ref = case.reference if case else "CASE"
         p_id = citizen.id if citizen else (case.citizen_id if case else "")
-        doc_name = normalize_actor_name(c.doctor_name or doctor_user.name, role="PHC_DOCTOR")
+        doc_name = normalize_actor_name(c.doctor_name or (doctor_user.name if doctor_user else None), role="PHC_DOCTOR")
 
         # CONSULTATION_STARTED
         if c.started_at:
@@ -223,7 +229,10 @@ def get_doctor_recent_activity_records(
             })
 
     # 3. TestOrders (INVESTIGATION_ORDERED, INVESTIGATION_RESULT_AVAILABLE)
-    test_orders = db.query(TestOrder).all()
+    test_orders_query = db.query(TestOrder).join(Consultation, TestOrder.consultation_id == Consultation.id).join(Case, Consultation.case_id == Case.id)
+    if facility_id:
+        test_orders_query = test_orders_query.filter(Case.assigned_facility_id == facility_id)
+    test_orders = test_orders_query.all()
     for t in test_orders:
         c = t.consultation
         case = c.case if c else None
@@ -231,7 +240,7 @@ def get_doctor_recent_activity_records(
         p_name = citizen.display_name if citizen else "Citizen"
         c_ref = case.reference if case else "CASE"
         p_id = citizen.id if citizen else (case.citizen_id if case else "")
-        doc_name = normalize_actor_name(doctor_user.name, role="PHC_DOCTOR")
+        doc_name = normalize_actor_name(doctor_user.name if doctor_user else None, role="PHC_DOCTOR")
 
         # INVESTIGATION_ORDERED
         if t.ordered_at:
@@ -275,7 +284,10 @@ def get_doctor_recent_activity_records(
             })
 
     # 4. Prescriptions (PRESCRIPTION_SIGNED)
-    prescriptions = db.query(Prescription).all()
+    prescriptions_query = db.query(Prescription).join(Consultation, Prescription.consultation_id == Consultation.id).join(Case, Consultation.case_id == Case.id)
+    if facility_id:
+        prescriptions_query = prescriptions_query.filter(Case.assigned_facility_id == facility_id)
+    prescriptions = prescriptions_query.all()
     for rx in prescriptions:
         c = rx.consultation
         case = c.case if c else None
@@ -283,7 +295,7 @@ def get_doctor_recent_activity_records(
         p_name = citizen.display_name if citizen else "Citizen"
         c_ref = case.reference if case else "CASE"
         p_id = citizen.id if citizen else (case.citizen_id if case else "")
-        doc_name = normalize_actor_name(c.doctor_name if c else doctor_user.name, role="PHC_DOCTOR")
+        doc_name = normalize_actor_name(c.doctor_name if c and c.doctor_name else (doctor_user.name if doctor_user else None), role="PHC_DOCTOR")
 
         rx_time = getattr(rx, "issued_at", rx.signed_at or rx.created_at)
         if rx_time:
@@ -306,15 +318,18 @@ def get_doctor_recent_activity_records(
             })
 
     # 5. FollowUps (ASHA_FOLLOWUP_ASSIGNED, ASHA_FOLLOWUP_COMPLETED)
-    follow_ups = db.query(FollowUp).all()
+    followups_query = db.query(FollowUp).join(Case, FollowUp.case_id == Case.id)
+    if facility_id:
+        followups_query = followups_query.filter(Case.assigned_facility_id == facility_id)
+    follow_ups = followups_query.all()
     for fu in follow_ups:
         case = fu.case
         citizen = fu.citizen or (case.citizen if case else None)
         p_name = citizen.display_name if citizen else "Citizen"
         c_ref = case.reference if case else "CASE"
         p_id = citizen.id if citizen else (case.citizen_id if case else "")
-        asha_name = normalize_actor_name(case.assigned_asha_name if case else "Sita Patel", role="ASHA_WORKER", default_name="Sita Patel (ASHA)")
-        doc_name = normalize_actor_name(doctor_user.name, role="PHC_DOCTOR")
+        asha_name = normalize_actor_name(case.assigned_asha_name if case else None, role="ASHA_WORKER", default_name="ASHA Worker")
+        doc_name = normalize_actor_name(doctor_user.name if doctor_user else None, role="PHC_DOCTOR")
 
         # ASHA_FOLLOWUP_ASSIGNED
         if fu.created_at:
@@ -357,15 +372,18 @@ def get_doctor_recent_activity_records(
             })
 
     # 6. FollowUpEscalations (ASHA_ESCALATION_CREATED, ASHA_ESCALATION_REVIEWED)
-    escalations = db.query(FollowUpEscalation).all()
+    escalations_query = db.query(FollowUpEscalation).join(Case, FollowUpEscalation.case_id == Case.id)
+    if facility_id:
+        escalations_query = escalations_query.filter(Case.assigned_facility_id == facility_id)
+    escalations = escalations_query.all()
     for esc in escalations:
         case = esc.case
         citizen = esc.citizen or (case.citizen if case else None)
         p_name = citizen.display_name if citizen else "Citizen"
         c_ref = case.reference if case else "CASE"
         p_id = citizen.id if citizen else (case.citizen_id if case else "")
-        asha_name = normalize_actor_name(case.assigned_asha_name if case else "Sita Patel", role="ASHA_WORKER", default_name="Sita Patel (ASHA)")
-        doc_name = normalize_actor_name(doctor_user.name, role="PHC_DOCTOR")
+        asha_name = normalize_actor_name(case.assigned_asha_name if case else None, role="ASHA_WORKER", default_name="ASHA Worker")
+        doc_name = normalize_actor_name(doctor_user.name if doctor_user else None, role="PHC_DOCTOR")
 
         # ASHA_ESCALATION_CREATED
         if esc.escalated_at or esc.created_at:

@@ -98,7 +98,7 @@
     "listening_in_lang": "Listening to your voice...",
     "spoken_transcript": "Spoken Transcript:",
     "role_doctor": "PHC Doctor",
-    "role_asha": "ASHA Worker (Sita Patel)",
+    "role_asha": "ASHA Worker",
     "role_admin": "District Admin (R. Deshmukh)"
   },
   "navigation": {
@@ -143,7 +143,7 @@
     "logging_in": "Signing in...",
     "quick_demo_login": "Quick Demo Login",
     "select_role_tip": "Select a pre-configured role profile:",
-    "role_asha": "ASHA Worker (Sita Patel)",
+    "role_asha": "ASHA Worker",
     "role_doctor": "PHC Doctor",
     "role_admin": "District Admin (R. Deshmukh)",
     "invalid_credentials": "Invalid username or password. Please try again.",

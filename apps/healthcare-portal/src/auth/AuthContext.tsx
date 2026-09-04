@@ -27,11 +27,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [token, setToken] = useState<string | null>(() => {
     return localStorage.getItem("aarogya_token");
   });
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(() => {
+    return Boolean(localStorage.getItem("aarogya_token")) && !localStorage.getItem("aarogya_user");
+  });
 
   useEffect(() => {
     if (token) {
       apiClient.setToken(token);
+      setIsLoading(true);
       // Fetch authoritative user principal from /api/auth/me
       apiClient.getCurrentUser()
         .then((res: any) => {
@@ -43,7 +46,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         })
         .catch((err: any) => {
           console.warn("Failed to refresh user profile from /auth/me:", err);
+          // If token is invalid or account suspended, clear state
+          if (err?.status === 401 || err?.status === 403 || err?.code === "UNAUTHORIZED" || err?.code === "ACCOUNT_INACTIVE") {
+            logout();
+          }
+        })
+        .finally(() => {
+          setIsLoading(false);
         });
+    } else {
+      setIsLoading(false);
     }
     if (user) {
       ashaSyncService.setUser(user.id, user.role);
@@ -64,19 +76,35 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const login = async (identifier: string, password: string): Promise<UserSession> => {
     setIsLoading(true);
     try {
+      // Clear any prior cached session / user data before storing new login
+      localStorage.removeItem("aarogya_token");
+      localStorage.removeItem("aarogya_user");
+
       const response = await apiClient.login(identifier, password);
       const { access_token, user: userData } = response;
 
       setToken(access_token);
-      setUser(userData);
       apiClient.setToken(access_token);
 
+      // Authoritative hydration from /api/auth/me immediately
+      let authoritativeUser = userData;
+      try {
+        const meRes = await apiClient.getCurrentUser();
+        if (meRes?.data || meRes?.id) {
+          authoritativeUser = meRes?.data || meRes;
+        }
+      } catch (meErr) {
+        console.warn("Direct /auth/me call fallback to login payload:", meErr);
+      }
+
+      setUser(authoritativeUser);
       localStorage.setItem("aarogya_token", access_token);
-      localStorage.setItem("aarogya_user", JSON.stringify(userData));
+      localStorage.setItem("aarogya_user", JSON.stringify(authoritativeUser));
 
-      ashaSyncService.setUser(userData.id, userData.role);
+      ashaSyncService.setUser(authoritativeUser.id, authoritativeUser.role);
+      LocationService.setUserContext(authoritativeUser.id, authoritativeUser.role);
 
-      return userData;
+      return authoritativeUser;
     } finally {
       setIsLoading(false);
     }

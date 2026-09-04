@@ -98,7 +98,7 @@
     "listening_in_lang": "ਸੁਣ ਰਿਹਾ ਹੈ...",
     "spoken_transcript": "ਬੋਲੇ ਗਏ ਸ਼ਬਦ:",
     "role_doctor": "PHC ਡਾਕਟਰ",
-    "role_asha": "ਆਸ਼ਾ ਵਰਕਰ (ਸੀਤਾ ਪਟੇਲ)",
+    "role_asha": "ਆਸ਼ਾ ਵਰਕਰ",
     "role_admin": "ਜ਼ਿਲ੍ਹਾ ਪ੍ਰਸ਼ਾਸਕ (ਆਰ. ਦੇਸ਼ਮੁਖ)"
   },
   "navigation": {
@@ -142,7 +142,7 @@
     "logging_in": "ਸਾਈਨ ਇਨ ਕੀਤਾ ਜਾ ਰਿਹਾ ਹੈ...",
     "quick_demo_login": "ਤੇਜ਼ ਡੈਮੋ ਲਾਗਇਨ",
     "select_role_tip": "ਪਹਿਲਾਂ ਤੋਂ ਸੰਰਚਿਤ ਰੋਲ ਪ੍ਰੋਫਾਈਲ ਚੁਣੋ:",
-    "role_asha": "ਆਸ਼ਾ ਵਰਕਰ (ਸੀਤਾ ਪਟੇਲ)",
+    "role_asha": "ਆਸ਼ਾ ਵਰਕਰ",
     "role_doctor": "PHC ਡਾਕਟਰ",
     "role_admin": "ਜ਼ਿਲ੍ਹਾ ਪ੍ਰਸ਼ਾਸਕ (ਆਰ. ਦੇਸ਼ਮੁਖ)",
     "invalid_credentials": "ਅਵੈਧ ਉਪਭੋਗਤਾ ਨਾਮ ਜਾਂ ਪਾਸਵਰਡ। ਕਿਰਪਾ ਕਰਕੇ ਦੁਬਾਰਾ ਕੋਸ਼ਿਸ਼ ਕਰੋ।",

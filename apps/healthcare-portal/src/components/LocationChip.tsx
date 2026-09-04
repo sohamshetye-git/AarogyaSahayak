@@ -13,8 +13,8 @@ interface LocationChipProps {
 
 export const LocationChip: React.FC<LocationChipProps> = ({
   userRole,
-  defaultVillage = "Kalyanpur Village",
-  defaultFacility = "Kalyanpur PHC",
+  defaultVillage = "Assigned Village",
+  defaultFacility = "Assigned PHC",
   isMobile = false,
 }) => {
   const { t, locale } = useLanguage();

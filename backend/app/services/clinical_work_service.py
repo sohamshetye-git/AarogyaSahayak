@@ -5,7 +5,7 @@ Implements shared PostgreSQL query logic ensuring:
 Dashboard Summary Count === Destination List Result Total
 """
 
-from typing import Dict, Any, List, Tuple
+from typing import Dict, Any, List, Tuple, Optional
 from datetime import datetime, timezone
 from sqlalchemy.orm import Session
 from sqlalchemy import func, distinct, or_, and_
@@ -15,12 +15,12 @@ from app.models import (
     CitizenProfile, AshaVisit, SymptomObservation, VitalRecord
 )
 
-def get_doctor_jurisdiction(db: Session, current_user: User) -> Tuple[str, str]:
+def get_doctor_jurisdiction(db: Session, current_user: User) -> Tuple[str, Optional[str]]:
     """
     Returns (doctor_id, phc_id) for the authenticated doctor.
     """
     doctor_id = current_user.id
-    phc_id = "PHC-09" # Fallback default PHC ID
+    phc_id = None
     if current_user.worker_profile and current_user.worker_profile.facility_id:
         phc_id = current_user.worker_profile.facility_id
     return doctor_id, phc_id

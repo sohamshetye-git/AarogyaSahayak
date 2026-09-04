@@ -299,20 +299,23 @@ class StaffManagementService:
         target_district_name = req.district or admin_dist_name or "District 04"
         target_district_id = req.district_id or admin_dist_id or "dist-04"
 
-        facility_name = None
+        target_facility_id = req.assigned_facility_id or req.facility_id
+        facility_name = req.facility_name
         facility_code = "FAC"
-        if req.assigned_facility_id:
+        if target_facility_id:
             fac = db.query(Facility).filter(
                 or_(
-                    Facility.id == req.assigned_facility_id,
-                    Facility.code == req.assigned_facility_id,
-                    Facility.public_reference == req.assigned_facility_id
+                    Facility.id == target_facility_id,
+                    Facility.code == target_facility_id,
+                    Facility.public_reference == target_facility_id
                 )
             ).first()
             if fac:
                 facility_name = fac.official_name or fac.name
                 facility_code = fac.code or "PHC"
-                req.assigned_facility_id = fac.id
+                target_facility_id = fac.id
+            elif not facility_name:
+                facility_name = target_facility_id
 
         # Generate Collision-Safe Staff ID & Temporary Password
         generated_staff_id = cls.generate_collision_safe_staff_id(db, role_enum, facility_code)
@@ -344,12 +347,12 @@ class StaffManagementService:
             new_worker = WorkerProfile(
                 user_id=user_id,
                 worker_type="ASHA" if role_enum == UserRoleEnum.ASHA_WORKER else "DOCTOR",
-                facility_id=req.assigned_facility_id,
+                facility_id=target_facility_id,
                 facility_name=facility_name,
                 district_id=target_district_id,
                 district_name=target_district_name,
-                village_ids=req.village_ids or ([] if role_enum != UserRoleEnum.ASHA_WORKER else ["VILLAGE-01"]),
-                village_name=req.village_name or ("Kalyanpur" if role_enum == UserRoleEnum.ASHA_WORKER else None),
+                village_ids=req.village_ids or ([] if role_enum != UserRoleEnum.ASHA_WORKER else ([req.village_name] if req.village_name else [])),
+                village_name=req.village_name,
                 coverage_area=req.coverage_area,
                 professional_registration=req.medical_registration_number.strip() if req.medical_registration_number else (f"ASHA-{secrets.token_hex(3).upper()}" if role_enum == UserRoleEnum.ASHA_WORKER else None),
                 employee_id=req.employee_id.strip() if req.employee_id else None,

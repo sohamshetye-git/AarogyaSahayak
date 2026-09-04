@@ -17,7 +17,8 @@ def test_doctor_title_normalization_and_clean_diagnosis():
     assert normalize_actor_name("Dr. Abhinav Sharma", role="PHC_DOCTOR") == "Dr. Abhinav Sharma"
     assert normalize_actor_name("Dr. Dr. Abhinav Sharma", role="PHC_DOCTOR") == "Dr. Abhinav Sharma"
     assert normalize_actor_name("Abhinav Sharma", role="PHC_DOCTOR") == "Dr. Abhinav Sharma"
-    assert normalize_actor_name(None, role="PHC_DOCTOR") == "Dr. Abhinav Sharma"
+    assert normalize_actor_name(None, role="PHC_DOCTOR") == "Doctor"
+    assert normalize_actor_name(None, role="PHC_DOCTOR", default_name="Dr. Abhinav Sharma") == "Dr. Abhinav Sharma"
 
     # Test clean diagnosis
     assert clean_diagnosis(None) is None

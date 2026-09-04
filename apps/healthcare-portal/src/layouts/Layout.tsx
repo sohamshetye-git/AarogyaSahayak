@@ -212,8 +212,8 @@ export function AppLayout({ children, pageTitle, onBack }: LayoutProps) {
           </select>
           <LocationChip
             userRole={user?.role}
-            defaultVillage={user?.village_name || "Kalyanpur Village"}
-            defaultFacility={user?.facility_name || "Kalyanpur PHC"}
+            defaultVillage={user?.village_name || user?.coverage_area || "Assigned Village"}
+            defaultFacility={user?.facility_name || "Assigned PHC"}
             isMobile={true}
           />
           <OnlineStatusBadge isOnline={isOnline} />
@@ -490,8 +490,8 @@ export function AppLayout({ children, pageTitle, onBack }: LayoutProps) {
           <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
             <LocationChip
               userRole={user?.role}
-              defaultVillage={user?.village_name || "Kalyanpur Village"}
-              defaultFacility={user?.facility_name || "Kalyanpur PHC"}
+              defaultVillage={user?.village_name || user?.coverage_area || "Assigned Village"}
+              defaultFacility={user?.facility_name || "Assigned PHC"}
             />
             <div style={{ width: 1, height: 24, backgroundColor: "var(--divider)" }} />
             <div style={{ fontSize: 13, color: "var(--text-secondary)" }}>
