@@ -1496,14 +1496,14 @@ class CitizenService:
         if profile.assigned_asha_id:
             assigned_asha_user = db.query(User).filter(
                 User.id == profile.assigned_asha_id,
-                User.role.in_([UserRoleEnum.ASHA_WORKER, "ASHA_WORKER", "ASHA"]),
+                User.role == UserRoleEnum.ASHA_WORKER,
                 User.is_active == True
             ).first()
 
         # Tier 2: Match by WorkerProfile coverage (village_name, village_ids, facility_id, district_id)
         if not assigned_asha_user and (profile.village_name or profile.assigned_facility_id or profile.district):
             wp_query = db.query(WorkerProfile).join(User, WorkerProfile.user_id == User.id).filter(
-                User.role.in_([UserRoleEnum.ASHA_WORKER, "ASHA_WORKER", "ASHA"]),
+                User.role == UserRoleEnum.ASHA_WORKER,
                 User.is_active == True
             )
             
@@ -1526,7 +1526,7 @@ class CitizenService:
         # Tier 3: Active ASHA in system for jurisdiction
         if not assigned_asha_user:
             assigned_asha_user = db.query(User).filter(
-                User.role.in_([UserRoleEnum.ASHA_WORKER, "ASHA_WORKER", "ASHA"]),
+                User.role == UserRoleEnum.ASHA_WORKER,
                 User.is_active == True
             ).first()
 
